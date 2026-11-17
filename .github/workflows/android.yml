@@ -61,7 +61,8 @@ jobs:
     runs-on: ubuntu-latest
     # 不放在 workflow 顶层：被 release.yml 调用时，顶层 concurrency 会和调用方的分组冲突
     concurrency:
-      group: android-${{ github.ref }}
+      # 带上 github.workflow：被 release.yml 调用时它是调用方的名字，正式发版 / 演练不会和测试版打包互相取消
+      group: android-${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }} # 同一分支连续推送只打最新的；正式发版不取消
     outputs:
       name: ${{ steps.ver.outputs.name }}
