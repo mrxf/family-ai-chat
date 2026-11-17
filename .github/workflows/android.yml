@@ -44,6 +44,10 @@ on:
       tests:
         type: boolean
         default: true
+    outputs:
+      apk_code:
+        description: 'arm64 APK 实际的 versionCode（写进 latest.json）'
+        value: ${{ jobs.build.outputs.apk_code }}
 
 permissions:
   contents: write
@@ -62,6 +66,7 @@ jobs:
     outputs:
       name: ${{ steps.ver.outputs.name }}
       code: ${{ steps.ver.outputs.code }}
+      apk_code: ${{ steps.collect.outputs.apk_code }}
     defaults:
       run:
         working-directory: app
@@ -134,6 +139,7 @@ jobs:
         run: flutter build apk --release --split-per-abi --build-name="${{ steps.ver.outputs.name }}"
 
       - name: Collect
+        id: collect
         shell: bash
         run: |
           NAME="${{ steps.ver.outputs.name }}"
@@ -143,6 +149,11 @@ jobs:
           cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "$OUT/XiaoNuan_${NAME}_Android_armv7.apk"
           rm -f android/key.properties
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          # --split-per-abi 会给 versionCode 加 ABI 偏移（armv7 +1000，arm64 +2000），以 APK 里的实际值为准
+          AAPT2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
+          APK_CODE=$("$AAPT2" dump badging "$OUT/XiaoNuan_${NAME}_Android_arm64.apk" | sed -nE "s/.*versionCode='([0-9]+)'.*/\1/p" | head -1)
+          [[ -n "$APK_CODE" ]] || { echo "::error::读不到 APK 的 versionCode"; exit 1; }
+          echo "apk_code=$APK_CODE" >> "$GITHUB_OUTPUT"
           CERT=$("$APKSIGNER" verify --print-certs "$OUT/XiaoNuan_${NAME}_Android_arm64.apk" 2>/dev/null | grep -m1 'SHA-256' | sed 's/.*: //' || true)
           {
             echo "## Android ${NAME}"
@@ -151,6 +162,8 @@ jobs:
             echo "|---|---|---|"
             echo "| \`XiaoNuan_${NAME}_Android_arm64.apk\` | $(du -h "$OUT/XiaoNuan_${NAME}_Android_arm64.apk" | cut -f1) | 绝大多数手机 |"
             echo "| \`XiaoNuan_${NAME}_Android_armv7.apk\` | $(du -h "$OUT/XiaoNuan_${NAME}_Android_armv7.apk" | cut -f1) | 旧款 32 位手机 |"
+            echo
+            echo "arm64 versionCode：${APK_CODE}"
             echo
             echo "签名：${SIGNING}${CERT:+（证书 SHA-256 \`${CERT:0:23}…\`）}"
           } >> "$GITHUB_STEP_SUMMARY"

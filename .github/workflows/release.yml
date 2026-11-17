@@ -164,7 +164,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.meta.outputs.version }}
-      CODE: ${{ needs.meta.outputs.code }}
+      CODE: ${{ needs.android.outputs.apk_code }} # APK 实际 versionCode，App 自更新拿它和本机比较
     steps:
       - uses: actions/checkout@v5
 

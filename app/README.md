@@ -32,7 +32,7 @@ release 包用 `android/nuan-release.jks` 签名，密码在 `android/key.proper
 
 1. 改 `pubspec.yaml` 的 `version: 1.0.1+10001`（`+` 后面的构建号必须递增）
 2. 打包，把 APK 复制到服务端 `data/app/nuan-1.0.1.apk`
-3. 写 `data/app/latest.json`：`{"version":"1.0.1","build":10001,"notes":"更新内容","apk":"nuan-1.0.1.apk","force":false}`
+3. 写 `data/app/latest.json`，`build` 要填 **APK 里的实际 versionCode**：`--split-per-abi` 会给 arm64 包加 2000（10001 → 12001），可用 `aapt2 dump badging xxx.apk | head -1` 查看：`{"version":"1.0.1","build":12001,"notes":"更新内容","apk":"nuan-1.0.1.apk","force":false}`
 
 家人下次打开 App 会弹出更新提示。
 

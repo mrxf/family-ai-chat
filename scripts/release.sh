@@ -9,6 +9,7 @@
 #
 # 版本号唯一来源：app/pubspec.yaml 的 version: 1.2.3+10203
 #   versionCode 由版本号推出（1.2.3 → 10203），本地和 CI 打的包一致，升级不会被系统当成降级。
+#   注意 --split-per-abi 打出的 APK 会再加 ABI 偏移（arm64 +2000 → 12203），latest.json 由 CI 按 APK 实际值生成。
 # 网络需要代理时：cc-proxy scripts/release.sh
 set -euo pipefail
 
@@ -22,7 +23,7 @@ ARG="patch" NOTES=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -m|--notes) NOTES="${2:-}"; shift 2 ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
     *) ARG="$1"; shift ;;
   esac
 done
