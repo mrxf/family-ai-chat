@@ -24,6 +24,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
   final _name = TextEditingController(text: '管理员');
   final _user = TextEditingController(text: 'admin');
   final _pass = TextEditingController();
+  final _scroll = ScrollController();
   bool _hide = true, _busy = false;
   String? _error;
 
@@ -32,6 +33,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
     for (final c in [_code, _name, _user, _pass]) {
       c.dispose();
     }
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -45,7 +47,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
     } else if (_pass.text.length < 8) {
       err = '管理员密码至少 8 位';
     }
-    setState(() => _error = err);
+    _showError(err);
     if (err != null) return;
     setState(() => _busy = true);
     try {
@@ -63,10 +65,22 @@ class _SetupPageState extends ConsumerState<SetupPage> {
       nav.popUntil((r) => r.isFirst);
       nav.push(addProviderRoute());
     } on ApiError catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      if (mounted) _showError(e.message);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Shows (or clears) the error and scrolls down so it and the button stay in view.
+  void _showError(String? err) {
+    setState(() => _error = err);
+    if (err == null) return;
+    // Wait for the banner's grow animation before measuring the scroll extent.
+    Future.delayed(const Duration(milliseconds: 220), () {
+      if (mounted && _scroll.hasClients) {
+        _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 250), curve: Curves.easeOutCubic);
+      }
+    });
   }
 
   @override
@@ -76,7 +90,10 @@ class _SetupPageState extends ConsumerState<SetupPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('初始化服务器')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+        controller: _scroll,
+        // Explicit padding drops the automatic safe-area inset; add it back so the
+        // button can scroll clear of the gesture bar.
+        padding: EdgeInsets.fromLTRB(20, 4, 20, 32 + MediaQuery.paddingOf(context).bottom),
         children: [
           Row(children: [
             const Mascot(size: 64),
