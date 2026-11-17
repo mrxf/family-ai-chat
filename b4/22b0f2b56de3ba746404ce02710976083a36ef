@@ -1,0 +1,99 @@
+app/lib/core/admin_models.dart
+  s_66c4d16a373824::t_f0ed45effab20e 1-246
+app/lib/core/api.dart
+  s_66c4d16a373824::t_bf3879438d930b 7,113-128,257-293
+app/lib/core/models.dart
+  s_66c4d16a373824::t_ae3955dc273432 12-13,25,27-28
+app/lib/main.dart
+  s_66c4d16a373824::t_2d790771d08d4f 55
+app/lib/state/catalog.dart
+  s_66c4d16a373824::t_58685f8c90b004 1-85
+app/lib/state/session.dart
+  s_66c4d16a373824::t_bc1ecb9c0cdb2b 69-70,74-81,134,146-151
+app/lib/ui/admin/common.dart
+  s_66c4d16a373824::t_67a8538e755188 1-394
+app/lib/ui/admin/model_edit_page.dart
+  s_66c4d16a373824::t_e873c0381a7b8d 1-398
+app/lib/ui/admin/models_page.dart
+  s_66c4d16a373824::t_36d63ba16d3a92 1-343
+app/lib/ui/admin/provider_pages.dart
+  s_66c4d16a373824::t_f0459f1b97024c 1-580
+app/lib/ui/admin/upstream_picker_page.dart
+  s_66c4d16a373824::t_f64cf71dbfd452 1-285
+app/lib/ui/admin/usage_page.dart
+  s_66c4d16a373824::t_0003f18d81464a 1-167
+app/lib/ui/admin_page.dart
+  s_66c4d16a373824::t_1954ec2b4c1149 47,65,198-202
+app/lib/ui/login_page.dart
+  s_66c4d16a373824::t_3b647a425cc0e7 8,29,55-58,60-68,136-163
+app/lib/ui/settings_page.dart
+  s_66c4d16a373824::t_1253016d2fa8c8 2,8-9,58,105-108,112-114,233,235-246,248-298
+app/lib/ui/setup_page.dart
+  s_66c4d16a373824::t_65c8810737faaa 1-166
+app/lib/ui/sheets.dart
+  s_66c4d16a373824::t_d4eab3113512e6 169-174
+app/lib/ui/welcome.dart
+  s_66c4d16a373824::t_29028951896539 9,90-93,124-155
+docs/proposal-v2-providers.md
+  s_66c4d16a373824::t_c76359c41fb435 1-117
+server/.env.example
+  s_66c4d16a373824::t_483ef62e8303ec 22-23,26-27,31
+server/README.md
+  s_66c4d16a373824::t_b02b6c6f801b64 293-294,308-309,311,313,502-503
+server/cmd/server/main.go
+  s_66c4d16a373824::t_7d159acc662c3d 69-75,78
+server/cmd/server/seed.go
+  s_66c4d16a373824::t_bc0a9cfe9b542d 10,15-16,20,32-34,36-38,41-42,45,47-48,65-68,70-74,76-80,82-83,86-89,92-97
+server/cmd/server/seed_test.go
+  s_66c4d16a373824::t_df97cf2efaf781 14,21-23,26,91-117
+server/internal/api/admin.go
+  s_66c4d16a373824::t_90a1c41515a134 131,148-159,163-166,176-182,187-194
+server/internal/api/admin_catalog.go
+  s_66c4d16a373824::t_a683a3838710a7 1-568
+server/internal/api/catalog_test.go
+  s_66c4d16a373824::t_8c5f77aab3c778 1-258
+server/internal/api/files.go
+  s_66c4d16a373824::t_19c97d00c0a688 24,123
+server/internal/api/helpers_test.go
+  s_66c4d16a373824::t_84b79a073fa6eb 139-148,291
+server/internal/api/server.go
+  s_66c4d16a373824::t_701419bc493e83 41-42,68-69,105,108,114-115,118
+server/internal/api/setup.go
+  s_66c4d16a373824::t_27a3c8a2e7abfc 1-127
+server/internal/chat/service.go
+  s_66c4d16a373824::t_46c759b21a53b1 122,165-171,196-230,272-279,286,311-312,322-337,341-344,376-431,465-468
+server/internal/llm/catalog.go
+  s_66c4d16a373824::t_f2fce3fc8d89a7 1-393
+server/internal/llm/catalog_test.go
+  s_66c4d16a373824::t_bca842de26170c 1-119
+server/internal/llm/client.go
+  s_66c4d16a373824::t_ea93fd5708dd3f 16,63-67,84-85,105,107,128-134,140-150,166-173,189,237-240,319
+server/internal/llm/client_test.go
+  s_66c4d16a373824::t_629dc50e58b776 71,110
+server/internal/llm/presets.go
+  s_66c4d16a373824::t_61c7eeabfc63a0 1-68
+server/internal/store/catalog.go
+  s_66c4d16a373824::t_67eba9302fb9e3 11,16,22-42,47,51,65-67,69-72,81,103,108,115-122,131,134-135,137,141-196
+server/internal/store/conversations.go
+  s_66c4d16a373824::t_16246d774a9479 190,307-308,358-372,377,379,387-410
+server/internal/store/migrations/002_providers_v2.sql
+  s_66c4d16a373824::t_c2f2bea5822d19 1-15
+server/internal/store/store_test.go
+  s_66c4d16a373824::t_fda8b073e71d17 81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "b422b0f2b56de3ba746404ce02710976083a36ef",
+  "prompts": {},
+  "sessions": {
+    "s_66c4d16a373824": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c31b29bd-b65d-455b-a4ef-8072ea51a77d",
+        "model": "unknown"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
