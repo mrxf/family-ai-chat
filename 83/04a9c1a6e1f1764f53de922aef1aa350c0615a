@@ -1,0 +1,249 @@
+app/ios/Flutter/Debug.xcconfig
+  s_b8229c28ac2aed::t_3e67da5f3115a4 1-2
+app/ios/Flutter/Release.xcconfig
+  s_b8229c28ac2aed::t_840bc2f4e75bc3 1-2
+app/ios/Podfile
+  s_b8229c28ac2aed::t_bcc08d2c81442b 1-43
+app/lib/core/storage.dart
+  s_b8229c28ac2aed::t_2f75af991f27c3 1-77
+app/lib/core/tts.dart
+  s_b8229c28ac2aed::t_6dbe2cf346f2be 1-74
+app/lib/ui/widgets.dart
+  s_b8229c28ac2aed::t_34eb6a17b4c030 1-167
+server/cmd/server/seed_test.go
+  s_b8229c28ac2aed::t_189614f286a0dc 1-89
+server/deploy/docker-compose.yml
+  s_b8229c28ac2aed::t_52d00088fa451b 1-34
+server/deploy/nginx.conf
+  s_b8229c28ac2aed::t_be66b33f6ef556 1-69
+server/deploy/nuan.service
+  s_b8229c28ac2aed::t_74202e41200c7e 1-44
+server/internal/api/api_test.go
+  s_b8229c28ac2aed::t_153b4148408a88 1-439
+server/internal/api/helpers_test.go
+  s_b8229c28ac2aed::t_6c766311447adf 1-522
+server/internal/chat/hub_test.go
+  s_b8229c28ac2aed::t_d1e8d9020c42b5 1-164
+server/internal/chat/service_test.go
+  s_b8229c28ac2aed::t_a22402948a41e3 1-142
+server/internal/store/store_test.go
+  s_b8229c28ac2aed::t_530f1a20403e4d 1-274
+.github/workflows/android.yml
+  s_66c4d16a373824::t_60a11520463f69 1-197
+.github/workflows/release.yml
+  s_66c4d16a373824::t_15732166612beb 1-252
+.github/workflows/server.yml
+  s_66c4d16a373824::t_1c9f6fc5b3a3e0 1-101
+.gitignore
+  s_66c4d16a373824::t_28a51ff276daa6 1-28
+README.md
+  s_66c4d16a373824::t_e1763a2098fd2a 1-81
+app/README.md
+  s_66c4d16a373824::t_250088a467a87e 1-69
+app/lib/core/api.dart
+  s_66c4d16a373824::t_43b2176a893db9 1-262
+app/pubspec.yaml
+  s_66c4d16a373824::t_5eb0be213bd36c 1-107
+app/tool/setup-signing.sh
+  s_66c4d16a373824::t_f8a710ed85dfc2 1-68
+scripts/release.sh
+  s_66c4d16a373824::t_0b0a35143129a4 1-65
+server/Dockerfile
+  s_66c4d16a373824::t_fd8eb5349c68d2 1-38
+app/.gitignore
+  s_66c4d16a373824::t_a47b6a79c8447b 1-45
+app/.metadata
+  s_66c4d16a373824::t_58dcc148518789 1-33
+app/analysis_options.yaml
+  s_66c4d16a373824::t_ffe29496f91f99 1-28
+app/android/.gitignore
+  s_66c4d16a373824::t_53c074dc3059ac 1-14
+app/android/app/build.gradle.kts
+  s_66c4d16a373824::t_7ac6acf5cd2790 1-63
+app/android/app/src/debug/AndroidManifest.xml
+  s_66c4d16a373824::t_8225131868c372 1-7
+app/android/app/src/main/AndroidManifest.xml
+  s_66c4d16a373824::t_9491814cc8063f 1-61
+app/android/app/src/main/kotlin/com/nuan/chat/MainActivity.kt
+  s_66c4d16a373824::t_b95f85e3534a79 1-5
+app/android/app/src/main/res/drawable-v21/launch_background.xml
+  s_66c4d16a373824::t_e4c7e93bc9bc18 1-7
+app/android/app/src/main/res/drawable/launch_background.xml
+  s_66c4d16a373824::t_9709381d7a35ed 1-7
+app/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+  s_66c4d16a373824::t_d838242f663a1a 1-6
+app/android/app/src/main/res/values-night/colors.xml
+  s_66c4d16a373824::t_04c4a3043f8ffc 1-5
+app/android/app/src/main/res/values-night/styles.xml
+  s_66c4d16a373824::t_e91385c87f428b 1-18
+app/android/app/src/main/res/values/colors.xml
+  s_66c4d16a373824::t_ce34b58c1c860c 1-5
+app/android/app/src/main/res/values/styles.xml
+  s_66c4d16a373824::t_6b2742669521e5 1-18
+app/android/app/src/profile/AndroidManifest.xml
+  s_66c4d16a373824::t_4725079e30751e 1-7
+app/android/build.gradle.kts
+  s_66c4d16a373824::t_6a8cb3bfdb4433 1-24
+app/android/gradle.properties
+  s_66c4d16a373824::t_61bedf4fb80b15 1-6
+app/android/gradle/wrapper/gradle-wrapper.properties
+  s_66c4d16a373824::t_481828e4d97c7f 1-5
+app/android/settings.gradle.kts
+  s_66c4d16a373824::t_f016ae46723104 1-26
+app/ios/.gitignore
+  s_66c4d16a373824::t_febe5906766f13 1-34
+app/ios/Flutter/AppFrameworkInfo.plist
+  s_66c4d16a373824::t_a269bbe473c584 1-24
+app/ios/Runner.xcodeproj/project.pbxproj
+  s_66c4d16a373824::t_ca6cccd9a795a1 1-644
+app/ios/Runner.xcodeproj/project.xcworkspace/contents.xcworkspacedata
+  s_66c4d16a373824::t_acc36a8226fb11 1-7
+app/ios/Runner.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+  s_66c4d16a373824::t_3dd03be4e95e05 1-8
+app/ios/Runner.xcodeproj/project.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+  s_66c4d16a373824::t_cfc944ec8cb65e 1-8
+app/ios/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme
+  s_66c4d16a373824::t_4368a23b19c6d1 1-119
+app/ios/Runner.xcworkspace/contents.xcworkspacedata
+  s_66c4d16a373824::t_7ce340749e7b9d 1-7
+app/ios/Runner.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+  s_66c4d16a373824::t_61b8114480f1ab 1-8
+app/ios/Runner.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+  s_66c4d16a373824::t_a3480a34460d11 1-8
+app/ios/Runner/AppDelegate.swift
+  s_66c4d16a373824::t_8cbbdf8a3e59c3 1-16
+app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Contents.json
+  s_66c4d16a373824::t_b87bc9e65a6b60 1-122
+app/ios/Runner/Assets.xcassets/LaunchImage.imageset/Contents.json
+  s_66c4d16a373824::t_b804483f5564b6 1-23
+app/ios/Runner/Assets.xcassets/LaunchImage.imageset/README.md
+  s_66c4d16a373824::t_8c9d4e3f33b0a1 1-5
+app/ios/Runner/Base.lproj/LaunchScreen.storyboard
+  s_66c4d16a373824::t_adaf6ea4f12731 1-37
+app/ios/Runner/Base.lproj/Main.storyboard
+  s_66c4d16a373824::t_00e36e6c758cbf 1-26
+app/ios/Runner/Info.plist
+  s_66c4d16a373824::t_5aa23d80d38a95 1-70
+app/ios/Runner/Runner-Bridging-Header.h
+  s_66c4d16a373824::t_1868499970e029 1
+app/ios/Runner/SceneDelegate.swift
+  s_66c4d16a373824::t_c92ae13bb98edd 1-6
+app/ios/RunnerTests/RunnerTests.swift
+  s_66c4d16a373824::t_bcd4a871a6e509 1-12
+app/lib/core/models.dart
+  s_66c4d16a373824::t_9c7765aefca3f7 1-228
+app/lib/main.dart
+  s_66c4d16a373824::t_a107f8ece8d9e4 1-85
+app/lib/state/chat.dart
+  s_66c4d16a373824::t_d352b4555a0e2f 1-509
+app/lib/state/conversations.dart
+  s_66c4d16a373824::t_69e65bb3ed6d55 1-129
+app/lib/state/session.dart
+  s_66c4d16a373824::t_a95cae97a7de8c 1-169
+app/lib/ui/admin_page.dart
+  s_66c4d16a373824::t_917363ee10f9f2 1-273
+app/lib/ui/chat_view.dart
+  s_66c4d16a373824::t_aab06956599a72 1-166
+app/lib/ui/composer.dart
+  s_66c4d16a373824::t_8c69f708922c93 1-309
+app/lib/ui/drawer.dart
+  s_66c4d16a373824::t_426b93518d5b38 1-271
+app/lib/ui/home_page.dart
+  s_66c4d16a373824::t_6050c793363fe7 1-145
+app/lib/ui/login_page.dart
+  s_66c4d16a373824::t_e1e1f5be6c21ff 1-199
+app/lib/ui/markdown.dart
+  s_66c4d16a373824::t_a6c9d147bd2f48 1-82
+app/lib/ui/messages.dart
+  s_66c4d16a373824::t_5e2b2a3579ef6f 1-416
+app/lib/ui/settings_page.dart
+  s_66c4d16a373824::t_d4c88208e1bb2e 1-333
+app/lib/ui/sheets.dart
+  s_66c4d16a373824::t_53958e57fb74e5 1-232
+app/lib/ui/theme.dart
+  s_66c4d16a373824::t_52e827f5492f95 1-194
+app/lib/ui/update.dart
+  s_66c4d16a373824::t_bce6212c1181e5 1-48
+app/lib/ui/voice.dart
+  s_66c4d16a373824::t_78114e9ab719fc 1-238
+app/lib/ui/welcome.dart
+  s_66c4d16a373824::t_9761bc8f3b1ef9 1-183
+app/pubspec.lock
+  s_66c4d16a373824::t_f515d4727db43b 1-1071
+app/test/widget_test.dart
+  s_66c4d16a373824::t_dbe2658e561bb3 1-15
+docs/api.md
+  s_66c4d16a373824::t_234aa4a8591d7d 1-1134
+docs/proposal-v1.md
+  s_66c4d16a373824::t_079cae43a68141 1-100
+server/.dockerignore
+  s_66c4d16a373824::t_8d0a90ea557f15 1-19
+server/.env.example
+  s_66c4d16a373824::t_308300e25f1993 1-47
+server/.gitignore
+  s_66c4d16a373824::t_d1b1ac47f57df0 1-3
+server/README.md
+  s_66c4d16a373824::t_58e666ef079ab6 1-522
+server/cmd/server/main.go
+  s_66c4d16a373824::t_8772c773323ab3 1-109
+server/cmd/server/seed.go
+  s_66c4d16a373824::t_1f792140a238f7 1-193
+server/go.mod
+  s_66c4d16a373824::t_4d484f698c181c 1-22
+server/go.sum
+  s_66c4d16a373824::t_4136ebc6201134 1-56
+server/internal/api/admin.go
+  s_66c4d16a373824::t_aceed5635e7ea0 1-382
+server/internal/api/chat.go
+  s_66c4d16a373824::t_dffe535ee0a3e1 1-565
+server/internal/api/files.go
+  s_66c4d16a373824::t_07ac3bcae0035f 1-183
+server/internal/api/server.go
+  s_66c4d16a373824::t_9ecdeba3678d94 1-252
+server/internal/auth/auth.go
+  s_66c4d16a373824::t_d386805a8de8f6 1-179
+server/internal/chat/hub.go
+  s_66c4d16a373824::t_10db89e71c689a 1-189
+server/internal/chat/service.go
+  s_66c4d16a373824::t_e030714f1a2a6c 1-561
+server/internal/config/config.go
+  s_66c4d16a373824::t_3067087c5a9bbc 1-75
+server/internal/llm/client.go
+  s_66c4d16a373824::t_70b25f1e18b61c 1-354
+server/internal/llm/client_test.go
+  s_66c4d16a373824::t_b91bc63858f3e2 1-231
+server/internal/store/catalog.go
+  s_66c4d16a373824::t_c8aa9049245d05 1-259
+server/internal/store/conversations.go
+  s_66c4d16a373824::t_1904344970bdfa 1-381
+server/internal/store/migrations/001_init.sql
+  s_66c4d16a373824::t_aa70c864354f11 1-119
+server/internal/store/store.go
+  s_66c4d16a373824::t_770759fcd3b3eb 1-163
+server/internal/store/users.go
+  s_66c4d16a373824::t_8b23d55f01d683 1-176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "8304a9c1a6e1f1764f53de922aef1aa350c0615a",
+  "prompts": {},
+  "sessions": {
+    "s_66c4d16a373824": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c31b29bd-b65d-455b-a4ef-8072ea51a77d",
+        "model": "unknown"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    },
+    "s_b8229c28ac2aed": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1e52a-dec0-72c3-8826-298cb374e55a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
