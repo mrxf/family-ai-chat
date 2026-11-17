@@ -1,0 +1,34 @@
+services:
+  nuan:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+        VERSION: ${VERSION:-1.0.0}
+    image: nuan-server:latest
+    container_name: nuan
+    restart: unless-stopped
+    stop_grace_period: 20s
+    env_file:
+      - ../.env
+    environment:
+      NUAN_ADDR: ":8080"
+      NUAN_DATA_DIR: "/data"
+      NUAN_LOG_FORMAT: "json"
+    ports:
+      # 默认仅绑定本机回环地址，由宿主机 Nginx / Caddy 反代并终止 HTTPS。
+      # 如需局域网直连调试，可改为 "8080:8080"。
+      - "127.0.0.1:8080:8080"
+    volumes:
+      # 方式一（默认）：使用命名卷，Docker 会自动继承镜像内 /data 的 65532:65532 (nonroot) 权限
+      - nuan-data:/data
+      # 方式二：绑定宿主机目录（便于直接拷贝备份或放置 data/app/latest.json）
+      # 注意：镜像以 nonroot (UID/GID 65532) 运行，启用前需在宿主机执行：
+      #   mkdir -p data && sudo chown -R 65532:65532 data
+      # - ../data:/data
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  nuan-data:

@@ -1,0 +1,44 @@
+[Unit]
+Description=Nuan (小暖) Family AI Chat Server
+Documentation=https://example.com/nuan
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nuan
+Group=nuan
+WorkingDirectory=/var/lib/nuan
+EnvironmentFile=/etc/nuan/nuan.env
+Environment=NUAN_ADDR=127.0.0.1:8080
+Environment=NUAN_DATA_DIR=/var/lib/nuan
+Environment=NUAN_LOG_FORMAT=json
+ExecStart=/usr/local/bin/nuan-server
+
+# 优雅停机：代码内给正在生成的回答预留了 15s 保存部分输出并推送 done 事件
+TimeoutStopSec=20s
+Restart=on-failure
+RestartSec=3s
+LimitNOFILE=65536
+
+# ---- 安全加固项 ----
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+StateDirectory=nuan
+StateDirectoryMode=0750
+ReadWritePaths=/var/lib/nuan
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

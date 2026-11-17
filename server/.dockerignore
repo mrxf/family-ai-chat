@@ -1,0 +1,19 @@
+# 本地构建产物与运行数据目录（保留 *_test.go 等全部源码文件）
+bin/
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# 本地环境变量（含真实密钥，禁止打入镜像）
+.env
+.env.*
+!.env.example
+
+# 部署配置与文档无需参与编译
+deploy/
+README.md
+
+# 系统与版本控制杂项
+.git/
+.DS_Store

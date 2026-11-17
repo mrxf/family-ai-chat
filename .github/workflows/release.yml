@@ -1,0 +1,252 @@
+# 正式发版流水线：Android APK + 服务端各平台二进制 + 服务端 Docker 镜像，推送 v* tag 时自动创建 GitHub Release。
+#
+# 触发方式：
+#   - 推送 tag v1.2.3（scripts/release.sh 会自动做）：打包 → 推送镜像到 GHCR → 创建 GitHub Release
+#   - 推送到 ci/** 分支，或在 Actions 页面手动运行：只打包，安装包在本次运行的 Artifacts 里下载，不发布
+#
+# 版本号唯一来源：app/pubspec.yaml 的 version（1.2.3+10203），tag 必须和它一致。
+# 更新说明：tag 的注释（scripts/release.sh -m "..."）会写进 Release 页面和 App 自更新弹窗。
+name: Build & Release
+
+on:
+  push:
+    tags: ['v*']
+    branches: ['ci/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write # 创建 Release
+  packages: write # 推送镜像到 ghcr.io
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}-server
+
+jobs:
+  meta:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      code: ${{ steps.v.outputs.code }}
+      release: ${{ steps.v.outputs.release }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: v
+        shell: bash
+        run: |
+          LINE=$(grep -E '^version:' app/pubspec.yaml)
+          VERSION=$(sed -E 's/version:[[:space:]]*([0-9.]+).*/\1/' <<<"$LINE")
+          CODE=$(sed -E 's/.*\+([0-9]+).*/\1/' <<<"$LINE")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            if [[ "${GITHUB_REF_NAME#v}" != "$VERSION" ]]; then
+              echo "::error::tag $GITHUB_REF_NAME 和 app/pubspec.yaml 里的版本 $VERSION 不一致"
+              exit 1
+            fi
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "版本 $VERSION（versionCode $CODE，ref: $GITHUB_REF）"
+
+  # Android 打包逻辑在 android.yml（也可以单独手动运行）
+  android:
+    name: Android
+    needs: meta
+    uses: ./.github/workflows/android.yml
+    with:
+      version: ${{ needs.meta.outputs.version }}
+    secrets: inherit
+
+  server:
+    name: Server binaries
+    needs: meta
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Test
+        run: |
+          go vet ./...
+          go test ./...
+
+      # 纯 Go（SQLite 用 modernc），CGO_ENABLED=0 直接交叉编译出各平台的单个可执行文件
+      - name: Build
+        run: |
+          OUT="$GITHUB_WORKSPACE/out"
+          mkdir -p "$OUT"
+          for t in linux/amd64 linux/arm64 darwin/arm64 darwin/amd64 windows/amd64; do
+            os=${t%/*}; arch=${t#*/}
+            name="nuan-server_${VERSION}_${os}_${arch}"
+            dir="$RUNNER_TEMP/$name"
+            mkdir -p "$dir"
+            ext=""; [[ $os == windows ]] && ext=".exe"
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
+              -ldflags="-s -w -X main.version=${VERSION}" -o "$dir/nuan-server$ext" ./cmd/server
+            cp .env.example README.md "$dir/"
+            [[ $os == linux ]] && cp deploy/nuan.service "$dir/"
+            if [[ $os == windows ]]; then
+              (cd "$RUNNER_TEMP" && zip -qr "$OUT/$name.zip" "$name")
+            else
+              tar -C "$RUNNER_TEMP" -czf "$OUT/$name.tar.gz" "$name"
+            fi
+          done
+          ls -lh "$OUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-server
+          path: out/*
+          if-no-files-found: error
+
+  docker:
+    name: Docker
+    needs: meta
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        if: needs.meta.outputs.release == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: docker-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ needs.meta.outputs.release == 'true' }}
+            type=ref,event=branch
+          labels: |
+            org.opencontainers.image.title=小暖 Nuan server
+            org.opencontainers.image.description=家用 AI 对话服务端：Go 单二进制 + SQLite
+
+      # 只有发布时才推送；平时只验证能不能构建
+      - uses: docker/build-push-action@v6
+        with:
+          context: server
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            GOPROXY=https://proxy.golang.org,direct
+            VERSION=${{ needs.meta.outputs.version }}
+          push: ${{ needs.meta.outputs.release == 'true' }}
+          tags: ${{ steps.docker-meta.outputs.tags }}
+          labels: ${{ steps.docker-meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    name: Release
+    needs: [meta, android, server, docker]
+    if: needs.meta.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      CODE: ${{ needs.meta.outputs.code }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          pattern: dist-* # 只要安装包；docker/build-push-action 也会上传构建记录，别混进来
+          merge-multiple: true
+
+      # tag 注释 = 更新说明。actions/checkout 拿到的 tag 可能丢了注释，重新拉一次
+      - name: Update notes
+        run: |
+          git fetch --depth=1 origin "+refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          NOTES=$(git for-each-ref "refs/tags/${GITHUB_REF_NAME}" --format='%(contents)' | sed '/-----BEGIN/,$d' | sed -e 's/[[:space:]]*$//')
+          [[ -z "$NOTES" || "$NOTES" == "$GITHUB_REF_NAME" ]] && NOTES="修复问题，体验优化"
+          printf '%s\n' "$NOTES" > update-notes.txt
+          echo "更新说明："; cat update-notes.txt
+
+      # App 自更新：把 latest.json 和 arm64 APK 放进服务端 <数据目录>/app/，家人打开 App 就会提示更新
+      - name: Self-update bundle
+        run: |
+          APK="XiaoNuan_${VERSION}_Android_arm64.apk"
+          jq -n --arg v "$VERSION" --argjson b "$CODE" --rawfile n update-notes.txt --arg apk "$APK" \
+            '{version: $v, build: $b, notes: ($n | rtrimstr("\n")), apk: $apk, force: false}' > out/latest.json
+          cat out/latest.json
+          cd out && sha256sum * > SHA256SUMS.txt && ls -lh
+
+      - name: Release notes
+        run: |
+          R="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          {
+            echo "## 更新内容"
+            echo
+            cat update-notes.txt
+            echo
+          } > notes.md
+          cat >> notes.md <<EOF
+          ## 下载
+
+          | 用途 | 文件 |
+          |---|---|
+          | Android 手机（绝大多数） | \`XiaoNuan_${VERSION}_Android_arm64.apk\` |
+          | Android 旧款 32 位手机 | \`XiaoNuan_${VERSION}_Android_armv7.apk\` |
+          | 服务端 Linux x86_64（云主机 / 大多数 NAS） | \`nuan-server_${VERSION}_linux_amd64.tar.gz\` |
+          | 服务端 Linux ARM64（树莓派 4/5、ARM NAS） | \`nuan-server_${VERSION}_linux_arm64.tar.gz\` |
+          | 服务端 macOS（Apple 芯片 / Intel） | \`nuan-server_${VERSION}_darwin_arm64.tar.gz\` / \`darwin_amd64\` |
+          | 服务端 Windows | \`nuan-server_${VERSION}_windows_amd64.zip\` |
+          | App 自更新描述文件 | \`latest.json\` |
+
+          Android 安装时允许「安装未知来源应用」。
+
+          ## 服务端
+
+          **Docker（推荐）**
+
+          \`\`\`bash
+          docker pull ${IMAGE}:${VERSION}
+          # 首次部署：先准备好 .env（模板见 server/.env.example）
+          docker run -d --name nuan --restart unless-stopped -p 8080:8080 --env-file .env -v nuan-data:/data ${IMAGE}:${VERSION}
+          \`\`\`
+
+          **二进制**：解压后 \`cp .env.example .env\`，填好管理员密码和上游地址，运行 \`./nuan-server\`（Linux 可用附带的 \`nuan.service\` 托管）。
+
+          ## 推送 App 更新给家人
+
+          把 APK 和 \`latest.json\` 放进服务端数据目录的 \`app/\` 下（实时生效，不用重启）：
+
+          \`\`\`bash
+          # 二进制部署（数据目录默认 ./data）
+          mkdir -p data/app && cd data/app
+          curl -fLO ${R}/XiaoNuan_${VERSION}_Android_arm64.apk
+          curl -fLO ${R}/latest.json
+
+          # Docker 部署
+          mkdir -p app && (cd app && curl -fLO ${R}/XiaoNuan_${VERSION}_Android_arm64.apk && curl -fLO ${R}/latest.json) && docker cp app/. nuan:/data/app/
+          \`\`\`
+
+          文件校验见 \`SHA256SUMS.txt\`。
+          EOF
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: 小暖 v${{ env.VERSION }}
+          body_path: notes.md
+          files: out/*

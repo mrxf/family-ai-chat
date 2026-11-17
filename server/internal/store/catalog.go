@@ -1,0 +1,259 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+)
+
+type Provider struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	BaseURL   string `json:"base_url"`
+	APIKey    string `json:"-"`
+	Enabled   bool   `json:"enabled"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
+type Model struct {
+	ID            string `json:"id"`
+	ProviderID    string `json:"provider_id"`
+	UpstreamModel string `json:"upstream_model"`
+	DisplayName   string `json:"display_name"`
+	Description   string `json:"description"`
+	Vision        bool   `json:"vision"`
+	DefaultEffort string `json:"default_effort"`
+	ThinkEffort   string `json:"think_effort"`
+	ContextWindow int    `json:"context_window"`
+	MaxOutput     int    `json:"max_output"`
+	Enabled       bool   `json:"enabled"`
+	Sort          int    `json:"sort"`
+	CreatedAt     int64  `json:"created_at"`
+	UpdatedAt     int64  `json:"updated_at"`
+}
+
+// ---- providers ----
+
+const providerCols = `id, name, base_url, api_key, enabled, created_at, updated_at`
+
+func scanProvider(row interface{ Scan(...any) error }) (*Provider, error) {
+	var p Provider
+	if err := row.Scan(&p.ID, &p.Name, &p.BaseURL, &p.APIKey, &p.Enabled, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		return nil, notFound(err)
+	}
+	return &p, nil
+}
+
+func (s *Store) UpsertProvider(ctx context.Context, p *Provider) error {
+	now := Now()
+	if p.ID == "" {
+		p.ID = NewID()
+	}
+	if p.CreatedAt == 0 {
+		p.CreatedAt = now
+	}
+	p.UpdatedAt = now
+	_, err := s.w.ExecContext(ctx, `INSERT INTO providers (`+providerCols+`) VALUES (?,?,?,?,?,?,?)
+		ON CONFLICT(id) DO UPDATE SET name=excluded.name, base_url=excluded.base_url, api_key=excluded.api_key, enabled=excluded.enabled, updated_at=excluded.updated_at`,
+		p.ID, p.Name, p.BaseURL, p.APIKey, p.Enabled, p.CreatedAt, p.UpdatedAt)
+	return err
+}
+
+func (s *Store) GetProvider(ctx context.Context, id string) (*Provider, error) {
+	return scanProvider(s.r.QueryRowContext(ctx, `SELECT `+providerCols+` FROM providers WHERE id = ?`, id))
+}
+
+func (s *Store) ListProviders(ctx context.Context) ([]*Provider, error) {
+	rows, err := s.r.QueryContext(ctx, `SELECT `+providerCols+` FROM providers ORDER BY created_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Provider
+	for rows.Next() {
+		p, err := scanProvider(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeleteProvider(ctx context.Context, id string) error {
+	return affected(s.w.ExecContext(ctx, `DELETE FROM providers WHERE id = ?`, id))
+}
+
+// ---- models ----
+
+const modelCols = `id, provider_id, upstream_model, display_name, description, vision, default_effort, think_effort, context_window, max_output, enabled, sort, created_at, updated_at`
+
+func scanModel(row interface{ Scan(...any) error }) (*Model, error) {
+	var m Model
+	if err := row.Scan(&m.ID, &m.ProviderID, &m.UpstreamModel, &m.DisplayName, &m.Description, &m.Vision, &m.DefaultEffort, &m.ThinkEffort,
+		&m.ContextWindow, &m.MaxOutput, &m.Enabled, &m.Sort, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		return nil, notFound(err)
+	}
+	return &m, nil
+}
+
+func (s *Store) UpsertModel(ctx context.Context, m *Model) error {
+	now := Now()
+	if m.ID == "" {
+		m.ID = NewID()
+	}
+	if m.CreatedAt == 0 {
+		m.CreatedAt = now
+	}
+	m.UpdatedAt = now
+	_, err := s.w.ExecContext(ctx, `INSERT INTO models (`+modelCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(id) DO UPDATE SET provider_id=excluded.provider_id, upstream_model=excluded.upstream_model,
+		display_name=excluded.display_name, description=excluded.description, vision=excluded.vision, default_effort=excluded.default_effort, think_effort=excluded.think_effort,
+		context_window=excluded.context_window, max_output=excluded.max_output, enabled=excluded.enabled, sort=excluded.sort,
+		updated_at=excluded.updated_at`,
+		m.ID, m.ProviderID, m.UpstreamModel, m.DisplayName, m.Description, m.Vision, m.DefaultEffort, m.ThinkEffort,
+		m.ContextWindow, m.MaxOutput, m.Enabled, m.Sort, m.CreatedAt, m.UpdatedAt)
+	return err
+}
+
+func (s *Store) GetModel(ctx context.Context, id string) (*Model, error) {
+	return scanModel(s.r.QueryRowContext(ctx, `SELECT `+modelCols+` FROM models WHERE id = ?`, id))
+}
+
+// ListModels returns all models; enabledOnly also requires the provider to be enabled.
+func (s *Store) ListModels(ctx context.Context, enabledOnly bool) ([]*Model, error) {
+	q := `SELECT ` + modelCols + ` FROM models ORDER BY sort, created_at`
+	if enabledOnly {
+		q = `SELECT ` + prefixCols(modelCols, "m.") + ` FROM models m JOIN providers p ON p.id = m.provider_id
+			WHERE m.enabled = 1 AND p.enabled = 1 ORDER BY m.sort, m.created_at`
+	}
+	rows, err := s.r.QueryContext(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Model
+	for rows.Next() {
+		m, err := scanModel(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeleteModel(ctx context.Context, id string) error {
+	return affected(s.w.ExecContext(ctx, `DELETE FROM models WHERE id = ?`, id))
+}
+
+// ---- settings ----
+
+func (s *Store) GetSetting(ctx context.Context, key string) (string, error) {
+	var v string
+	err := s.r.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, key).Scan(&v)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return v, err
+}
+
+func (s *Store) SetSetting(ctx context.Context, key, value string) error {
+	_, err := s.w.ExecContext(ctx, `INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
+	return err
+}
+
+// ---- assistants ----
+
+type Assistant struct {
+	ID           string   `json:"id"`
+	OwnerID      *string  `json:"owner_id"`
+	Name         string   `json:"name"`
+	Avatar       string   `json:"avatar"`
+	Description  string   `json:"description"`
+	SystemPrompt string   `json:"system_prompt"`
+	Greeting     string   `json:"greeting"`
+	Suggestions  []string `json:"suggestions"`
+	ModelID      *string  `json:"model_id"`
+	Temperature  *float64 `json:"temperature"`
+	Sort         int      `json:"sort"`
+	CreatedAt    int64    `json:"created_at"`
+	UpdatedAt    int64    `json:"updated_at"`
+}
+
+const assistantCols = `id, owner_id, name, avatar, description, system_prompt, greeting, suggestions, model_id, temperature, sort, created_at, updated_at`
+
+func scanAssistant(row interface{ Scan(...any) error }) (*Assistant, error) {
+	var a Assistant
+	var sugg string
+	if err := row.Scan(&a.ID, &a.OwnerID, &a.Name, &a.Avatar, &a.Description, &a.SystemPrompt, &a.Greeting, &sugg,
+		&a.ModelID, &a.Temperature, &a.Sort, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		return nil, notFound(err)
+	}
+	_ = json.Unmarshal([]byte(sugg), &a.Suggestions)
+	if a.Suggestions == nil {
+		a.Suggestions = []string{}
+	}
+	return &a, nil
+}
+
+func (s *Store) UpsertAssistant(ctx context.Context, a *Assistant) error {
+	now := Now()
+	if a.ID == "" {
+		a.ID = NewID()
+	}
+	if a.CreatedAt == 0 {
+		a.CreatedAt = now
+	}
+	a.UpdatedAt = now
+	if a.Suggestions == nil {
+		a.Suggestions = []string{}
+	}
+	sugg, _ := json.Marshal(a.Suggestions)
+	_, err := s.w.ExecContext(ctx, `INSERT INTO assistants (`+assistantCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(id) DO UPDATE SET name=excluded.name, avatar=excluded.avatar, description=excluded.description,
+		system_prompt=excluded.system_prompt, greeting=excluded.greeting, suggestions=excluded.suggestions,
+		model_id=excluded.model_id, temperature=excluded.temperature, sort=excluded.sort, updated_at=excluded.updated_at`,
+		a.ID, a.OwnerID, a.Name, a.Avatar, a.Description, a.SystemPrompt, a.Greeting, string(sugg),
+		a.ModelID, a.Temperature, a.Sort, a.CreatedAt, a.UpdatedAt)
+	return err
+}
+
+// GetAssistant returns an assistant visible to userID (shared or owned).
+func (s *Store) GetAssistant(ctx context.Context, id, userID string) (*Assistant, error) {
+	return scanAssistant(s.r.QueryRowContext(ctx, `SELECT `+assistantCols+` FROM assistants
+		WHERE id = ? AND (owner_id IS NULL OR owner_id = ?)`, id, userID))
+}
+
+func (s *Store) ListAssistants(ctx context.Context, userID string) ([]*Assistant, error) {
+	rows, err := s.r.QueryContext(ctx, `SELECT `+assistantCols+` FROM assistants
+		WHERE owner_id IS NULL OR owner_id = ? ORDER BY sort, created_at`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Assistant
+	for rows.Next() {
+		a, err := scanAssistant(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) CountAssistants(ctx context.Context) (int, error) {
+	var n int
+	err := s.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM assistants`).Scan(&n)
+	return n, err
+}
+
+// DeleteAssistant deletes an assistant. If ownerID is non-empty only that owner's assistant is deleted.
+func (s *Store) DeleteAssistant(ctx context.Context, id, ownerID string) error {
+	if ownerID == "" {
+		return affected(s.w.ExecContext(ctx, `DELETE FROM assistants WHERE id = ?`, id))
+	}
+	return affected(s.w.ExecContext(ctx, `DELETE FROM assistants WHERE id = ? AND owner_id = ?`, id, ownerID))
+}

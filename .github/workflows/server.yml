@@ -1,0 +1,101 @@
+# 服务端检查（server/，Go）
+#
+# 触发方式：
+#   - PR / 推送到 main，且 server/ 有改动：go vet + go test + 各平台交叉编译检查 + Docker 镜像构建检查
+#   - 推送到 main 时，额外把镜像推送为 ghcr.io/<仓库>-server:edge（开发版，想尝鲜可以拉这个）
+#   - 手动：Actions 页面 → Server → Run workflow
+# 正式版本的二进制和镜像在 release.yml 里打（推送 v* tag）。
+name: Server
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - '.github/workflows/server.yml'
+  pull_request:
+    paths:
+      - 'server/**'
+      - '.github/workflows/server.yml'
+
+permissions:
+  contents: read
+  packages: write # 推送 edge 镜像
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}-server
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Vet & Test
+        run: |
+          go vet ./...
+          go test -race ./...
+
+      - name: Cross-compile check
+        run: |
+          for t in linux/amd64 linux/arm64 darwin/arm64 darwin/amd64 windows/amd64; do
+            echo "→ $t"
+            CGO_ENABLED=0 GOOS=${t%/*} GOARCH=${t#*/} go build -o /dev/null ./cmd/server
+          done
+
+  docker:
+    name: Docker
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - id: push
+        run: echo "push=${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        if: steps.push.outputs.push == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: docker-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=edge,branch=main
+            type=sha,prefix=edge-
+          labels: |
+            org.opencontainers.image.title=小暖 Nuan server
+            org.opencontainers.image.description=家用 AI 对话服务端（开发版）
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: server
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            GOPROXY=https://proxy.golang.org,direct
+            VERSION=edge-${{ github.sha }}
+          push: ${{ steps.push.outputs.push == 'true' }}
+          tags: ${{ steps.docker-meta.outputs.tags }}
+          labels: ${{ steps.docker-meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
