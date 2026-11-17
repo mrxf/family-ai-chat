@@ -1,0 +1,70 @@
+app/lib/core/admin_models.dart
+  h_8f297825d1fe21 274-366
+app/lib/core/api.dart
+  h_8f297825d1fe21 86-91,273-275
+app/lib/core/models.dart
+  h_8f297825d1fe21 65,69-78,82,92,95,207,210-235,241,244-253
+app/lib/ui/admin/asr_page.dart
+  h_8f297825d1fe21 1-507
+app/lib/ui/admin/common.dart
+  h_8f297825d1fe21 68-69
+app/lib/ui/drawer.dart
+  h_8f297825d1fe21 8,13,16,21-26,30,35,38-53,55,63,69-80,84,112,120,133-138
+app/lib/ui/search_page.dart
+  h_8f297825d1fe21 1-485
+app/lib/ui/settings_page.dart
+  h_8f297825d1fe21 8,111-118
+app/lib/ui/sheets.dart
+  h_8f297825d1fe21 14,17,43
+app/lib/ui/voice.dart
+  h_8f297825d1fe21 2,4-5,19-20,36-37,40-46,51-53,56-57,66,73-81,88-172,174,176,182-185,187-223,230,240-241,243,245,247-310,313,318-327,371-379,383-384,400-401,405-406,413-415,419-420,422,427-457,459
+app/test/search_page_test.dart
+  h_8f297825d1fe21 1-135
+app/test/widget_test.dart
+  h_8f297825d1fe21 2,13-33
+server/cmd/server/main.go
+  h_8f297825d1fe21 110-111
+server/cmd/server/seed.go
+  h_8f297825d1fe21 8,53-76
+server/deploy/nginx.conf
+  h_8f297825d1fe21 58-69
+server/internal/api/asr.go
+  h_8f297825d1fe21 1-389
+server/internal/api/asr_test.go
+  h_8f297825d1fe21 1-233
+server/internal/api/chat.go
+  h_8f297825d1fe21 75,82-83
+server/internal/api/server.go
+  h_8f297825d1fe21 17,25,39,52,100,109-111
+server/internal/asr/asr.go
+  h_8f297825d1fe21 1-286
+server/internal/asr/asr_test.go
+  h_8f297825d1fe21 1-223
+server/internal/asr/openai.go
+  h_8f297825d1fe21 1-88
+server/internal/asr/tencent.go
+  h_8f297825d1fe21 1-557
+server/internal/asr/ws.go
+  h_8f297825d1fe21 1-361
+server/internal/asr/xfyun.go
+  h_8f297825d1fe21 1-25
+server/internal/store/asr.go
+  h_8f297825d1fe21 1-67
+server/internal/store/conversations.go
+  h_8f297825d1fe21 8,20,66-73,75,80-81,86,94-105,107-108,113-169
+server/internal/store/migrations/005_asr.sql
+  h_8f297825d1fe21 1-12
+server/internal/store/store_test.go
+  h_8f297825d1fe21 9,82,275-291
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "2d385aa0cf7eee9adee953148524b83f835d9724",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
