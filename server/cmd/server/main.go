@@ -63,9 +63,6 @@ func run() error {
 
 	svc := chat.NewService(st, cfg.DataDir, log)
 	apiCfg := api.Config{DataDir: cfg.DataDir, AppVersion: version}
-	if cfg.ASRURL != "" && cfg.ASRKey != "" {
-		apiCfg.ASR = &api.ASRConfig{BaseURL: cfg.ASRURL, APIKey: cfg.ASRKey, Model: cfg.ASRModel}
-	}
 	if err := svc.RepairSettings(ctx); err != nil {
 		return err
 	}
@@ -110,7 +107,8 @@ func run() error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Info("listening", "addr", cfg.Addr, "version", version, "data", cfg.DataDir, "voice", apiCfg.ASR != nil)
+		voiceOn, _, voiceKind := apiSrv.ASR.ActiveStatus(context.Background())
+		log.Info("listening", "addr", cfg.Addr, "version", version, "data", cfg.DataDir, "voice", voiceOn, "asr", voiceKind)
 		errCh <- srv.ListenAndServe()
 	}()
 

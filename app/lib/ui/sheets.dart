@@ -11,9 +11,10 @@ import 'widgets.dart';
 class SheetAction {
   final IconData icon;
   final String label;
+  final String? subtitle;
   final VoidCallback onTap;
   final bool danger;
-  const SheetAction(this.icon, this.label, this.onTap, {this.danger = false});
+  const SheetAction(this.icon, this.label, this.onTap, {this.subtitle, this.danger = false});
 }
 
 /// A simple bottom sheet of large, easy-to-hit actions.
@@ -39,6 +40,7 @@ Future<void> showActionSheet(BuildContext context, {String? title, required List
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   leading: Icon(a.icon, color: a.danger ? p.bad : p.text),
                   title: Text(a.label, style: TextStyle(fontSize: 17, color: a.danger ? p.bad : p.text)),
+                  subtitle: a.subtitle == null ? null : Text(a.subtitle!, style: TextStyle(fontSize: 13, color: p.muted)),
                   onTap: () {
                     Navigator.pop(ctx);
                     a.onTap();

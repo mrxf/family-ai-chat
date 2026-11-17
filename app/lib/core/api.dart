@@ -83,6 +83,12 @@ class Api {
 
   Map<String, String> get authHeaders => {if (token != null) 'Authorization': 'Bearer $token'};
   String fileUrl(String id) => '$baseUrl/api/files/$id';
+  String asrStreamUrl() {
+    final wsBase = baseUrl.startsWith('https://')
+        ? 'wss://${baseUrl.substring(8)}'
+        : (baseUrl.startsWith('http://') ? 'ws://${baseUrl.substring(7)}' : 'ws://$baseUrl');
+    return '$wsBase/api/asr/stream';
+  }
 
   Future<Uint8List> fileBytes(String id) async {
     try {
@@ -264,6 +270,9 @@ class Api {
   Future<Map<String, dynamic>> adminSettings() async => ((await _req('GET', '/api/admin/settings')) as Map).cast();
   Future<Map<String, dynamic>> adminPutSettings(Map<String, dynamic> body) async => ((await _req('PUT', '/api/admin/settings', body: body)) as Map).cast();
   Future<UsageReport> adminUsage(int days) async => UsageReport.fromJson(((await _req('GET', '/api/admin/usage', query: {'days': days})) as Map).cast());
+  Future<AdminAsrState> adminAsr() async => AdminAsrState.fromJson(((await _req('GET', '/api/admin/asr')) as Map).cast());
+  Future<AdminAsrState> adminPutAsr(Map<String, dynamic> body) async => AdminAsrState.fromJson(((await _req('PUT', '/api/admin/asr', body: body)) as Map).cast());
+  Future<AsrTestResult> adminTestAsr(Map<String, dynamic> body) async => AsrTestResult.fromJson(((await _req('POST', '/api/admin/asr/test', body: body)) as Map).cast());
 
   // ---- admin: providers & models ----
   static List<T> _list<T>(dynamic d, T Function(Map<String, dynamic>) f) => ((d as List?) ?? const []).map((e) => f((e as Map).cast<String, dynamic>())).toList();

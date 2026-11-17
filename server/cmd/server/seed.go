@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"nuan/internal/asr"
 	"nuan/internal/auth"
 	"nuan/internal/config"
 	"nuan/internal/llm"
@@ -45,6 +46,30 @@ func seed(ctx context.Context, st *store.Store, cfg config.Config, log *slog.Log
 			log.Info("created default provider", "url", cfg.UpstreamURL, "models", cfg.Models)
 		}
 		if err := st.SetSetting(ctx, "providers_seeded", "1"); err != nil {
+			return err
+		}
+	}
+
+	// Import .env ASR config once so admins can switch or turn it off from the app afterwards.
+	if done, err := st.GetSetting(ctx, "asr_seeded"); err != nil {
+		return err
+	} else if done == "" && cfg.ASRURL != "" && cfg.ASRKey != "" {
+		active, _ := st.GetSetting(ctx, asr.SettingActiveProvider)
+		if active == "" {
+			if err := st.UpsertASRConfig(ctx, &store.ASRConfig{
+				Kind:      asr.KindOpenAI,
+				BaseURL:   cfg.ASRURL,
+				SecretKey: cfg.ASRKey,
+				Model:     cfg.ASRModel,
+			}); err != nil {
+				return err
+			}
+			if err := st.SetSetting(ctx, asr.SettingActiveProvider, asr.KindOpenAI); err != nil {
+				return err
+			}
+			log.Info("seeded default ASR provider", "kind", asr.KindOpenAI, "url", cfg.ASRURL)
+		}
+		if err := st.SetSetting(ctx, "asr_seeded", "1"); err != nil {
 			return err
 		}
 	}

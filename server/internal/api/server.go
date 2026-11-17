@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"nuan/internal/asr"
 	"nuan/internal/auth"
 	"nuan/internal/chat"
 	"nuan/internal/store"
@@ -21,7 +22,7 @@ import (
 
 type Config struct {
 	DataDir    string
-	ASR        *ASRConfig // nil = voice input disabled
+	ASR        *ASRConfig // optional legacy fallback; DB-backed ASR config takes precedence
 	AppVersion string
 }
 
@@ -35,6 +36,7 @@ type Server struct {
 	Cfg      Config
 	Store    *store.Store
 	Chat     *chat.Service
+	ASR      *asr.Service
 	Sessions *auth.Sessions
 	Limiter  *auth.Limiter
 	Log      *slog.Logger
@@ -47,6 +49,7 @@ func New(cfg Config, st *store.Store, svc *chat.Service, log *slog.Logger) *Serv
 		Cfg:      cfg,
 		Store:    st,
 		Chat:     svc,
+		ASR:      asr.NewService(st),
 		Sessions: &auth.Sessions{Store: st},
 		Limiter:  auth.NewLimiter(8, 15*time.Minute),
 		Log:      log,
@@ -94,6 +97,7 @@ func (s *Server) Routes() http.Handler {
 
 			r.Post("/files", s.uploadFile)
 			r.Get("/files/{id}", s.getFile)
+			r.Get("/asr/stream", s.asrStream)
 			r.Post("/audio/transcriptions", s.transcribe)
 
 			r.Route("/admin", func(r chi.Router) {
@@ -102,6 +106,9 @@ func (s *Server) Routes() http.Handler {
 				r.Post("/users", s.adminCreateUser)
 				r.Patch("/users/{id}", s.adminUpdateUser)
 				r.Delete("/users/{id}", s.adminDeleteUser)
+				r.Get("/asr", s.adminGetASR)
+				r.Put("/asr", s.adminPutASR)
+				r.Post("/asr/test", s.adminTestASR)
 				r.Get("/provider-presets", s.adminProviderPresets)
 				r.Get("/providers", s.adminListProviders)
 				r.Post("/providers", s.adminSaveProvider)

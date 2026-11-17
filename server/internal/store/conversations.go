@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"strings"
+	"unicode"
 )
 
 type Conversation struct {
@@ -16,6 +17,7 @@ type Conversation struct {
 	Pinned      bool    `json:"pinned"`
 	CreatedAt   int64   `json:"created_at"`
 	UpdatedAt   int64   `json:"updated_at"`
+	Snippet     string  `json:"snippet,omitempty"`
 }
 
 const convCols = `id, user_id, assistant_id, model_id, title, pinned, created_at, updated_at`
@@ -61,19 +63,27 @@ func (s *Store) ListConversations(ctx context.Context, q ConversationQuery) ([]*
 	if q.Limit <= 0 || q.Limit > 200 {
 		q.Limit = 50
 	}
+	search := strings.TrimSpace(q.Search)
+	selectCols := prefixCols(convCols, "c.")
+	args := []any{}
+	if search != "" {
+		like := "%" + escapeLike(search) + "%"
+		selectCols += `, COALESCE((SELECT m.content FROM messages m WHERE m.conversation_id = c.id AND m.content LIKE ? ESCAPE '\' ORDER BY m.id DESC LIMIT 1), '')`
+		args = append(args, like)
+	}
 	where := []string{"c.user_id = ?"}
-	args := []any{q.UserID}
+	args = append(args, q.UserID)
 	if q.Before > 0 {
 		where = append(where, "c.updated_at < ?")
 		args = append(args, q.Before)
 	}
-	if s := strings.TrimSpace(q.Search); s != "" {
-		like := "%" + escapeLike(s) + "%"
+	if search != "" {
+		like := "%" + escapeLike(search) + "%"
 		where = append(where, `(c.title LIKE ? ESCAPE '\' OR EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.content LIKE ? ESCAPE '\'))`)
 		args = append(args, like, like)
 	}
 	args = append(args, q.Limit)
-	rows, err := s.r.QueryContext(ctx, `SELECT `+prefixCols(convCols, "c.")+` FROM conversations c
+	rows, err := s.r.QueryContext(ctx, `SELECT `+selectCols+` FROM conversations c
 		WHERE `+strings.Join(where, " AND ")+` ORDER BY c.updated_at DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
@@ -81,13 +91,80 @@ func (s *Store) ListConversations(ctx context.Context, q ConversationQuery) ([]*
 	defer rows.Close()
 	out := []*Conversation{}
 	for rows.Next() {
-		c, err := scanConv(rows)
-		if err != nil {
-			return nil, err
+		if search == "" {
+			c, err := scanConv(rows)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, c)
+			continue
 		}
-		out = append(out, c)
+		var c Conversation
+		var body string
+		if err := rows.Scan(&c.ID, &c.UserID, &c.AssistantID, &c.ModelID, &c.Title, &c.Pinned, &c.CreatedAt, &c.UpdatedAt, &body); err != nil {
+			return nil, notFound(err)
+		}
+		c.Snippet = makeSnippet(body, search)
+		out = append(out, &c)
 	}
 	return out, rows.Err()
+}
+
+// makeSnippet extracts a compact single-line excerpt around the first match of needle.
+func makeSnippet(content, needle string) string {
+	clean := strings.Join(strings.Fields(content), " ")
+	q := strings.Join(strings.Fields(needle), " ")
+	if clean == "" || q == "" {
+		return ""
+	}
+	runes := []rune(clean)
+	qRunes := []rune(q)
+	const (
+		contextBefore = 18
+		maxWindow     = 72
+	)
+	if len(runes) <= maxWindow {
+		return clean
+	}
+	idx := indexFoldRunes(runes, qRunes)
+	if idx < 0 {
+		idx = 0
+	}
+	start := max(0, idx-contextBefore)
+	end := start + maxWindow
+	if end > len(runes) {
+		end = len(runes)
+		start = max(0, end-maxWindow)
+	}
+	var b strings.Builder
+	if start > 0 {
+		b.WriteString("…")
+	}
+	b.WriteString(string(runes[start:end]))
+	if end < len(runes) {
+		b.WriteString("…")
+	}
+	return b.String()
+}
+
+func indexFoldRunes(haystack, needle []rune) int {
+	if len(needle) == 0 || len(needle) > len(haystack) {
+		return -1
+	}
+	limit := len(haystack) - len(needle)
+	for i := 0; i <= limit; i++ {
+		match := true
+		for j, nr := range needle {
+			if unicode.ToLower(haystack[i+j]) != unicode.ToLower(nr) {
+				match = false
+				break
+			}
+		}
+		if match {
+			return i
+		}
+	}
+	return -1
 }
 
 func escapeLike(s string) string {

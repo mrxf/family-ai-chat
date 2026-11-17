@@ -72,13 +72,15 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	def, _ := s.Store.GetSetting(ctx, "default_model_id")
+	voiceInput, voiceMode := s.voiceStatus(ctx)
 	writeJSON(w, 200, map[string]any{
 		"user":             u,
 		"models":           publicModels(models),
 		"assistants":       assistants,
 		"default_model_id": def,
 		"features": map[string]any{
-			"voice_input":      s.Cfg.ASR != nil,
+			"voice_input":      voiceInput,
+			"voice_mode":       voiceMode,
 			"image_generation": s.Chat.ImageAvailable(ctx),
 			"images_left":      s.Chat.ImagesLeftToday(ctx, u),
 		},

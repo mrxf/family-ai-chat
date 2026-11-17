@@ -271,3 +271,96 @@ class UsageReport {
         total: UsageRow.user(((j['total'] as Map?) ?? const {}).cast()),
       );
 }
+
+// ---- speech-to-text (ASR) admin models ----
+
+class AsrModelOption {
+  final String id, name, description;
+  const AsrModelOption({required this.id, required this.name, required this.description});
+  factory AsrModelOption.fromJson(Map<String, dynamic> j) => AsrModelOption(
+        id: _str(j['id']),
+        name: _str(j['name']),
+        description: _str(j['description']),
+      );
+}
+
+class AdminAsrProvider {
+  final String kind, name, description, mode, keyUrl, defaultUrl, defaultModel;
+  final bool available, hasSecret, ready;
+  final String appId, accessKey, secretKeyHint, baseUrl, model;
+  final List<AsrModelOption> models;
+
+  const AdminAsrProvider({
+    required this.kind,
+    required this.name,
+    required this.description,
+    required this.mode,
+    required this.available,
+    required this.keyUrl,
+    required this.defaultUrl,
+    required this.defaultModel,
+    required this.appId,
+    required this.accessKey,
+    required this.hasSecret,
+    required this.secretKeyHint,
+    required this.baseUrl,
+    required this.model,
+    required this.ready,
+    required this.models,
+  });
+
+  bool get isStream => mode == 'stream';
+
+  factory AdminAsrProvider.fromJson(Map<String, dynamic> j) => AdminAsrProvider(
+        kind: _str(j['kind']),
+        name: _str(j['name']),
+        description: _str(j['description']),
+        mode: _str(j['mode']),
+        available: j['available'] == true,
+        keyUrl: _str(j['key_url']),
+        defaultUrl: _str(j['default_url']),
+        defaultModel: _str(j['default_model']),
+        appId: _str(j['app_id']),
+        accessKey: _str(j['access_key']),
+        hasSecret: j['has_secret'] == true,
+        secretKeyHint: _str(j['secret_key_hint']),
+        baseUrl: _str(j['base_url']),
+        model: _str(j['model']),
+        ready: j['ready'] == true,
+        models: ((j['models'] as List?) ?? const []).map((e) => AsrModelOption.fromJson((e as Map).cast())).toList(),
+      );
+}
+
+class AdminAsrState {
+  final String active, mode;
+  final bool enabled;
+  final List<AdminAsrProvider> providers;
+  const AdminAsrState({required this.active, required this.enabled, required this.mode, required this.providers});
+
+  AdminAsrProvider? byKind(String kind) {
+    for (final p in providers) {
+      if (p.kind == kind) return p;
+    }
+    return null;
+  }
+
+  factory AdminAsrState.fromJson(Map<String, dynamic> j) => AdminAsrState(
+        active: _str(j['active']),
+        enabled: j['enabled'] == true,
+        mode: _str(j['mode']),
+        providers: ((j['providers'] as List?) ?? const []).map((e) => AdminAsrProvider.fromJson((e as Map).cast())).toList(),
+      );
+}
+
+class AsrTestResult {
+  final bool ok;
+  final int latencyMs;
+  final String appId, message;
+  const AsrTestResult({required this.ok, required this.latencyMs, required this.appId, required this.message});
+  factory AsrTestResult.fromJson(Map<String, dynamic> j) => AsrTestResult(
+        ok: j['ok'] == true,
+        latencyMs: _int(j['latency_ms']),
+        appId: _str(j['app_id']),
+        message: _str(j['message']),
+      );
+}

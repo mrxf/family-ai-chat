@@ -5,6 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../core/api.dart';
 import '../state/session.dart';
+import 'admin/asr_page.dart';
 import 'admin/models_page.dart';
 import 'admin/usage_page.dart';
 import 'admin_page.dart';
@@ -106,6 +107,14 @@ class SettingsPage extends ConsumerWidget {
                 title: '模型与供应商',
                 subtitle: session.boot?.defaultModel == null ? '还没有可用的模型，点这里添加' : '默认：${session.boot!.defaultModel!.displayName} · 共 ${session.boot!.models.length} 个模型${session.boot!.imageGeneration ? (session.boot!.imagesLeft >= 0 ? ' · 今天还能画 ${session.boot!.imagesLeft} 张' : ' · 能画图') : ''}',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ModelsPage())),
+              ),
+              _Tile(
+                icon: Icons.mic_rounded,
+                title: '语音输入',
+                subtitle: session.boot?.voiceInput == true
+                    ? (session.boot?.voiceMode == 'stream' ? '已开启 · 实时边说边出字' : '已开启 · 录音转文字')
+                    : '未开启 · 配置密钥后聊天框才会出现麦克风',
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AsrAdminPage())),
               ),
               _Tile(
                 icon: Icons.bar_chart_rounded,

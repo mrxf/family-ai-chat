@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -78,7 +79,7 @@ func TestMigrationsRepeatableAndPersistData(t *testing.T) {
 		}
 	}
 	var n int
-	if err := s.r.QueryRowContext(t.Context(), "SELECT count(*) FROM schema_migrations").Scan(&n); err != nil || n != 4 {
+	if err := s.r.QueryRowContext(t.Context(), "SELECT count(*) FROM schema_migrations").Scan(&n); err != nil || n != 5 {
 		t.Errorf("migration count=%d err=%v", n, err)
 	}
 	if err := s.Close(); err != nil {
@@ -270,5 +271,22 @@ func TestListConversationsSearch(t *testing.T) {
 				}
 			}
 		})
+	}
+	// Verify snippet behavior: title-only match has empty snippet; long message match extracts windowed excerpt.
+	longConv := testConv(t, s, u, "周末饮食")
+	longBody := strings.Repeat("这是一段前置铺垫文字，用来测试长文本摘要截断。", 3) + "\n关键重点是动物肝脏能有效补铁。\n" + strings.Repeat("后面还有一些补充说明注意事项。", 4)
+	if err := s.ApplyTurn(t.Context(), Turn{ConversationID: longConv.ID, Append: []*Message{{Role: "assistant", Content: longBody, Status: StatusDone}}}); err != nil {
+		t.Fatal(err)
+	}
+	cs, err := s.ListConversations(t.Context(), ConversationQuery{UserID: u.ID, Search: "动物肝脏"})
+	if err != nil || len(cs) != 1 {
+		t.Fatalf("long search: got=%v err=%v", cs, err)
+	}
+	if !strings.Contains(cs[0].Snippet, "动物肝脏") || !strings.HasPrefix(cs[0].Snippet, "…") || !strings.HasSuffix(cs[0].Snippet, "…") {
+		t.Errorf("unexpected snippet: %q", cs[0].Snippet)
+	}
+	titleOnly, err := s.ListConversations(t.Context(), ConversationQuery{UserID: u.ID, Search: "标题"})
+	if err != nil || len(titleOnly) != 1 || titleOnly[0].Snippet != "" {
+		t.Errorf("title-only match should have empty snippet: %+v err=%v", titleOnly, err)
 	}
 }

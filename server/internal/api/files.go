@@ -10,18 +10,15 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	_ "golang.org/x/image/webp"
 
-	"nuan/internal/llm"
 	"nuan/internal/store"
 )
 
@@ -88,59 +85,6 @@ func (s *Server) getFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", f.Mime)
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 	http.ServeFile(w, r, f.Path)
-}
-
-// transcribe proxies a short voice recording to an OpenAI-compatible
-// /audio/transcriptions endpoint (e.g. SiliconFlow SenseVoice).
-func (s *Server) transcribe(w http.ResponseWriter, r *http.Request) {
-	asr := s.Cfg.ASR
-	if asr == nil {
-		writeErr(w, 404, "voice_disabled", "服务器没有开启语音识别")
-		return
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
-	file, hdr, err := r.FormFile("file")
-	if err != nil {
-		writeErr(w, 400, "bad_file", "没有收到录音")
-		return
-	}
-	defer file.Close()
-
-	var body bytes.Buffer
-	mw := multipart.NewWriter(&body)
-	_ = mw.WriteField("model", asr.Model)
-	name := hdr.Filename
-	if name == "" {
-		name = "voice.m4a"
-	}
-	part, _ := mw.CreateFormFile("file", name)
-	if _, err := io.Copy(part, file); err != nil {
-		writeErr(w, 400, "bad_file", "录音读取失败")
-		return
-	}
-	mw.Close()
-
-	req, _ := http.NewRequestWithContext(r.Context(), http.MethodPost, llm.Endpoint(asr.BaseURL, "/audio/transcriptions"), &body)
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	req.Header.Set("Authorization", "Bearer "+asr.APIKey)
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		writeErr(w, 502, "asr_failed", "语音识别服务连接失败")
-		return
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode/100 != 2 {
-		s.Log.Warn("asr failed", "status", resp.StatusCode, "body", truncate(string(raw), 300))
-		writeErr(w, 502, "asr_failed", "语音识别失败，请再说一次")
-		return
-	}
-	var out struct {
-		Text string `json:"text"`
-	}
-	_ = json.Unmarshal(raw, &out)
-	writeJSON(w, 200, map[string]string{"text": strings.TrimSpace(out.Text)})
 }
 
 // ---- app self-update ----

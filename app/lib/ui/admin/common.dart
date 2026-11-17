@@ -65,6 +65,8 @@ class ProviderIcon extends StatelessWidget {
     'deepseek': (Color(0xFF4D6BFE), 'DS'),
     'dashscope': (Color(0xFFFF6A00), '百'),
     'siliconflow': (Color(0xFF7C3AED), '硅'),
+    'tencent': (Color(0xFF0052D9), '腾'),
+    'xfyun': (Color(0xFF096DD9), '讯'),
   };
 
   @override

@@ -62,14 +62,24 @@ class Assistant {
 }
 
 class Conversation {
-  final String id, title;
+  final String id, title, snippet;
   final String? assistantId, modelId;
   final bool pinned;
   final int createdAt, updatedAt;
-  const Conversation({required this.id, required this.title, this.assistantId, this.modelId, required this.pinned, required this.createdAt, required this.updatedAt});
+  const Conversation({
+    required this.id,
+    required this.title,
+    this.snippet = '',
+    this.assistantId,
+    this.modelId,
+    required this.pinned,
+    required this.createdAt,
+    required this.updatedAt,
+  });
   factory Conversation.fromJson(Map<String, dynamic> j) => Conversation(
         id: _str(j['id']),
         title: _str(j['title']),
+        snippet: _str(j['snippet']),
         assistantId: _strN(j['assistant_id']),
         modelId: _strN(j['model_id']),
         pinned: j['pinned'] == true,
@@ -79,9 +89,10 @@ class Conversation {
   Map<String, dynamic> toJson() =>
       {'id': id, 'title': title, 'assistant_id': assistantId, 'model_id': modelId, 'pinned': pinned, 'created_at': createdAt, 'updated_at': updatedAt};
 
-  Conversation copyWith({String? title, bool? pinned, int? updatedAt, String? modelId}) => Conversation(
+  Conversation copyWith({String? title, String? snippet, bool? pinned, int? updatedAt, String? modelId}) => Conversation(
         id: id,
         title: title ?? this.title,
+        snippet: snippet ?? this.snippet,
         assistantId: assistantId,
         modelId: modelId ?? this.modelId,
         pinned: pinned ?? this.pinned,
@@ -193,30 +204,53 @@ class Bootstrap {
   final List<Assistant> assistants;
   final String defaultModelId;
   final bool voiceInput, imageGeneration;
+  final String voiceMode; // 'stream' | 'upload' | ''
   /// Pictures the user may still draw today; -1 = no limit.
   final int imagesLeft;
-  const Bootstrap(
-      {required this.user, required this.models, required this.assistants, required this.defaultModelId, required this.voiceInput, this.imageGeneration = false, this.imagesLeft = -1});
+  const Bootstrap({
+    required this.user,
+    required this.models,
+    required this.assistants,
+    required this.defaultModelId,
+    required this.voiceInput,
+    this.voiceMode = '',
+    this.imageGeneration = false,
+    this.imagesLeft = -1,
+  });
 
-  factory Bootstrap.fromJson(Map<String, dynamic> j) => Bootstrap(
-        user: User.fromJson((j['user'] as Map).cast()),
-        models: ((j['models'] as List?) ?? const []).map((e) => ChatModel.fromJson((e as Map).cast())).toList(),
-        assistants: ((j['assistants'] as List?) ?? const []).map((e) => Assistant.fromJson((e as Map).cast())).toList(),
-        defaultModelId: _str(j['default_model_id']),
-        voiceInput: ((j['features'] as Map?)?['voice_input']) == true,
-        imageGeneration: ((j['features'] as Map?)?['image_generation']) == true,
-        imagesLeft: (j['features'] as Map?)?['images_left'] is num ? ((j['features'] as Map)['images_left'] as num).toInt() : -1,
-      );
+  factory Bootstrap.fromJson(Map<String, dynamic> j) {
+    final feat = j['features'] as Map?;
+    final voiceOn = feat?['voice_input'] == true;
+    final rawMode = _str(feat?['voice_mode']);
+    return Bootstrap(
+      user: User.fromJson((j['user'] as Map).cast()),
+      models: ((j['models'] as List?) ?? const []).map((e) => ChatModel.fromJson((e as Map).cast())).toList(),
+      assistants: ((j['assistants'] as List?) ?? const []).map((e) => Assistant.fromJson((e as Map).cast())).toList(),
+      defaultModelId: _str(j['default_model_id']),
+      voiceInput: voiceOn,
+      voiceMode: rawMode.isNotEmpty ? rawMode : (voiceOn ? 'upload' : ''),
+      imageGeneration: feat?['image_generation'] == true,
+      imagesLeft: feat?['images_left'] is num ? (feat!['images_left'] as num).toInt() : -1,
+    );
+  }
   Map<String, dynamic> toJson() => {
         'user': user.toJson(),
         'models': models.map((m) => m.toJson()).toList(),
         'assistants': assistants.map((a) => a.toJson()).toList(),
         'default_model_id': defaultModelId,
-        'features': {'voice_input': voiceInput, 'image_generation': imageGeneration, 'images_left': imagesLeft},
+        'features': {'voice_input': voiceInput, 'voice_mode': voiceMode, 'image_generation': imageGeneration, 'images_left': imagesLeft},
       };
 
-  Bootstrap copyWith({User? user}) =>
-      Bootstrap(user: user ?? this.user, models: models, assistants: assistants, defaultModelId: defaultModelId, voiceInput: voiceInput, imageGeneration: imageGeneration, imagesLeft: imagesLeft);
+  Bootstrap copyWith({User? user}) => Bootstrap(
+        user: user ?? this.user,
+        models: models,
+        assistants: assistants,
+        defaultModelId: defaultModelId,
+        voiceInput: voiceInput,
+        voiceMode: voiceMode,
+        imageGeneration: imageGeneration,
+        imagesLeft: imagesLeft,
+      );
 
   ChatModel? model(String? id) {
     for (final m in models) {
