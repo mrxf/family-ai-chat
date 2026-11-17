@@ -180,7 +180,7 @@ func TestChatDrawsPictureThroughTool(t *testing.T) {
 		e := s.next()
 		switch e.name {
 		case "activity":
-			activities = append(activities, decodeEvent[map[string]string](t, e)["text"])
+			activities = append(activities, decodeEvent[struct{ Text string `json:"text"` }](t, e).Text)
 		case "attachments":
 			sawAttachments = true
 		case "done":
