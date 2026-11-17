@@ -1,0 +1,35 @@
+app/lib/main.dart
+  s_d395c7b5dfae4e::t_55149e62564710 10,18
+app/lib/ui/login_page.dart
+  s_d395c7b5dfae4e::t_53f26f38a097c5 9,115
+app/lib/ui/mascot_anim.dart
+  s_d395c7b5dfae4e::t_99dc475921d09a 1-183
+app/lib/ui/mascot_sheets.dart
+  s_d395c7b5dfae4e::t_3f4edf585ed3a4 1-22
+app/lib/ui/messages.dart
+  s_d395c7b5dfae4e::t_0787729df13170 13,331
+app/lib/ui/welcome.dart
+  s_d395c7b5dfae4e::t_d667cd834b1115 10,76
+app/pubspec.yaml
+  s_d395c7b5dfae4e::t_e898e19db11f43 77
+app/test/mascot_anim_test.dart
+  s_d395c7b5dfae4e::t_c8cc40f6b1969a 1-55
+scripts/pack_mascot.py
+  s_d395c7b5dfae4e::t_e6a56d1a948db3 1-127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "891f4670c6ab86df6abe3772a685626b01af2469",
+  "prompts": {},
+  "sessions": {
+    "s_d395c7b5dfae4e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8c8b2ee5-3cbf-4f83-a2dd-1562876c76cc",
+        "model": "unknown"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
