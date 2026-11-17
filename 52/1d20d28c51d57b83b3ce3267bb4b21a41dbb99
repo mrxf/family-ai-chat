@@ -1,0 +1,14 @@
+server/internal/api/images_test.go
+  h_8f297825d1fe21 183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "521d20d28c51d57b83b3ce3267bb4b21a41dbb99",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
