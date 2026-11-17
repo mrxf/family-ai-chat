@@ -1,0 +1,25 @@
+app/lib/ui/admin/common.dart
+  s_66c4d16a373824::t_edd6250a941015 129-180,191,195,197-198,249,254,256-257,398-405
+app/lib/ui/admin/model_edit_page.dart
+  s_66c4d16a373824::t_a3474b7a74073e 25-26,238,244-245,247,253-254,260,262-263,269-271,277,280-281,283-284,291-292,298,344-348
+app/lib/ui/admin/provider_pages.dart
+  s_66c4d16a373824::t_7f90c51f3a5d04 296
+app/lib/ui/settings_page.dart
+  s_66c4d16a373824::t_b8ddd3e893e27b 338-341
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "9c23d1e8d05dcbe814b3d58e4eb84400f596ecf3",
+  "prompts": {},
+  "sessions": {
+    "s_66c4d16a373824": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c31b29bd-b65d-455b-a4ef-8072ea51a77d",
+        "model": "unknown"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
