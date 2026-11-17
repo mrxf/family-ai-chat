@@ -1,0 +1,25 @@
+.github/workflows/android.yml
+  s_66c4d16a373824::t_b303499f167e43 47-50,69,142,152-156,166-167
+.github/workflows/release.yml
+  s_66c4d16a373824::t_92dad6799d1188 167
+app/README.md
+  s_66c4d16a373824::t_8a5d6db59b2478 35
+scripts/release.sh
+  s_66c4d16a373824::t_cb921a5188268c 12,26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "6a48339453693b3f97c2372a561f9229a4794d42",
+  "prompts": {},
+  "sessions": {
+    "s_66c4d16a373824": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c31b29bd-b65d-455b-a4ef-8072ea51a77d",
+        "model": "unknown"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
