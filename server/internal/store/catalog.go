@@ -18,13 +18,21 @@ type Provider struct {
 	UpdatedAt int64  `json:"updated_at"`
 }
 
+// Model kinds.
+const (
+	KindChat  = "chat"
+	KindImage = "image"
+)
+
 type Model struct {
 	ID            string  `json:"id"`
 	ProviderID    string  `json:"provider_id"`
+	Kind          string  `json:"kind"` // KindChat | KindImage
 	UpstreamModel string  `json:"upstream_model"`
 	DisplayName   string  `json:"display_name"`
 	Description   string  `json:"description"`
 	Vision        bool    `json:"vision"`
+	Tools         bool    `json:"tools"` // may call tools (chat models)
 	DefaultEffort string  `json:"default_effort"`
 	ThinkEffort   string  `json:"think_effort"`
 	ContextWindow int     `json:"context_window"`
@@ -100,11 +108,11 @@ func (s *Store) DeleteProvider(ctx context.Context, id string) error {
 
 // ---- models ----
 
-const modelCols = `id, provider_id, upstream_model, display_name, description, vision, default_effort, think_effort, context_window, max_output, input_price, output_price, enabled, sort, created_at, updated_at`
+const modelCols = `id, provider_id, kind, upstream_model, display_name, description, vision, tools, default_effort, think_effort, context_window, max_output, input_price, output_price, enabled, sort, created_at, updated_at`
 
 func scanModel(row interface{ Scan(...any) error }) (*Model, error) {
 	var m Model
-	if err := row.Scan(&m.ID, &m.ProviderID, &m.UpstreamModel, &m.DisplayName, &m.Description, &m.Vision, &m.DefaultEffort, &m.ThinkEffort,
+	if err := row.Scan(&m.ID, &m.ProviderID, &m.Kind, &m.UpstreamModel, &m.DisplayName, &m.Description, &m.Vision, &m.Tools, &m.DefaultEffort, &m.ThinkEffort,
 		&m.ContextWindow, &m.MaxOutput, &m.InputPrice, &m.OutputPrice, &m.Enabled, &m.Sort, &m.CreatedAt, &m.UpdatedAt); err != nil {
 		return nil, notFound(err)
 	}
@@ -128,12 +136,15 @@ func upsertModel(ctx context.Context, db execer, m *Model) error {
 		m.CreatedAt = now
 	}
 	m.UpdatedAt = now
-	_, err := db.ExecContext(ctx, `INSERT INTO models (`+modelCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(id) DO UPDATE SET provider_id=excluded.provider_id, upstream_model=excluded.upstream_model,
-		display_name=excluded.display_name, description=excluded.description, vision=excluded.vision, default_effort=excluded.default_effort, think_effort=excluded.think_effort,
+	if m.Kind == "" {
+		m.Kind = KindChat
+	}
+	_, err := db.ExecContext(ctx, `INSERT INTO models (`+modelCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(id) DO UPDATE SET provider_id=excluded.provider_id, kind=excluded.kind, upstream_model=excluded.upstream_model,
+		display_name=excluded.display_name, description=excluded.description, vision=excluded.vision, tools=excluded.tools, default_effort=excluded.default_effort, think_effort=excluded.think_effort,
 		context_window=excluded.context_window, max_output=excluded.max_output, input_price=excluded.input_price, output_price=excluded.output_price,
 		enabled=excluded.enabled, sort=excluded.sort, updated_at=excluded.updated_at`,
-		m.ID, m.ProviderID, m.UpstreamModel, m.DisplayName, m.Description, m.Vision, m.DefaultEffort, m.ThinkEffort,
+		m.ID, m.ProviderID, m.Kind, m.UpstreamModel, m.DisplayName, m.Description, m.Vision, m.Tools, m.DefaultEffort, m.ThinkEffort,
 		m.ContextWindow, m.MaxOutput, m.InputPrice, m.OutputPrice, m.Enabled, m.Sort, m.CreatedAt, m.UpdatedAt)
 	return err
 }
@@ -198,12 +209,13 @@ func (s *Store) GetModel(ctx context.Context, id string) (*Model, error) {
 	return scanModel(s.r.QueryRowContext(ctx, `SELECT `+modelCols+` FROM models WHERE id = ?`, id))
 }
 
-// ListModels returns all models; enabledOnly also requires the provider to be enabled.
-func (s *Store) ListModels(ctx context.Context, enabledOnly bool) ([]*Model, error) {
+// ListModels returns all models (every kind). usableChat returns only enabled
+// chat models whose provider is enabled too, i.e. what the family can pick.
+func (s *Store) ListModels(ctx context.Context, usableChat bool) ([]*Model, error) {
 	q := `SELECT ` + modelCols + ` FROM models ORDER BY sort, created_at`
-	if enabledOnly {
+	if usableChat {
 		q = `SELECT ` + prefixCols(modelCols, "m.") + ` FROM models m JOIN providers p ON p.id = m.provider_id
-			WHERE m.enabled = 1 AND p.enabled = 1 ORDER BY m.sort, m.created_at`
+			WHERE m.enabled = 1 AND p.enabled = 1 AND m.kind = 'chat' ORDER BY m.sort, m.created_at`
 	}
 	rows, err := s.r.QueryContext(ctx, q)
 	if err != nil {

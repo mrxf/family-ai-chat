@@ -26,6 +26,14 @@ const _defaultSuggestions = [
   ('✈️', '周末带孩子去哪里玩比较好？'),
 ];
 
+// Shown (one at a time) when the server can draw pictures.
+const _drawSuggestions = [
+  ('🎨', '帮我画一只可爱的小猫'),
+  ('🖼️', '画一张春天公园的水彩画'),
+  ('🧧', '帮我画一张新年贺卡，写上「阖家幸福」'),
+  ('🌄', '画一张适合做手机壁纸的风景画'),
+];
+
 String greeting() {
   final h = DateTime.now().hour;
   if (h < 5) return '夜深了';
@@ -46,6 +54,7 @@ class Welcome extends ConsumerStatefulWidget {
 
 class _WelcomeState extends ConsumerState<Welcome> {
   late List<(String, String)> _picks = _shuffle();
+  late final _drawPick = _drawSuggestions[math.Random().nextInt(_drawSuggestions.length)];
 
   List<(String, String)> _shuffle() => (List.of(_defaultSuggestions)..shuffle(math.Random())).take(4).toList();
 
@@ -58,7 +67,11 @@ class _WelcomeState extends ConsumerState<Welcome> {
     final assistant = boot.assistant(assistantId);
     final name = boot.user.displayName;
 
-    final List<(String, String)> suggestions = assistant != null ? [for (final s in assistant.suggestions) ('', s)] : _picks;
+    final List<(String, String)> suggestions = assistant != null
+        ? [for (final s in assistant.suggestions) ('', s)]
+        : boot.imageGeneration && boot.imagesLeft != 0
+            ? [_drawPick, ..._picks.take(3)]
+            : _picks;
 
     return LayoutBuilder(builder: (context, c) {
       return SingleChildScrollView(

@@ -72,13 +72,13 @@ func TestMigrationsRepeatableAndPersistData(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := testUser(t, s, "preserved")
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 4; i++ {
 		if err := s.migrate(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 	}
 	var n int
-	if err := s.r.QueryRowContext(t.Context(), "SELECT count(*) FROM schema_migrations").Scan(&n); err != nil || n != 2 {
+	if err := s.r.QueryRowContext(t.Context(), "SELECT count(*) FROM schema_migrations").Scan(&n); err != nil || n != 4 {
 		t.Errorf("migration count=%d err=%v", n, err)
 	}
 	if err := s.Close(); err != nil {

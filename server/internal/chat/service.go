@@ -40,6 +40,11 @@ type Service struct {
 
 	clientsMu sync.Mutex
 	clients   map[string]*llm.Client // by provider id + updated_at
+
+	noTools sync.Map // model id@updated_at -> upstream rejected tools
+
+	drawMu      sync.Mutex
+	drawPending map[string]int // user id -> pictures being drawn (daily limit)
 }
 
 func NewService(st *store.Store, dataDir string, log *slog.Logger) *Service {
@@ -257,7 +262,20 @@ func (s *Service) pickModel(ctx context.Context, conv *store.Conversation, userI
 	return nil, nil, ErrNoModel
 }
 
+// usableModel returns an enabled chat model whose provider is enabled.
 func (s *Service) usableModel(ctx context.Context, id string) (*store.Model, *store.Provider, bool) {
+	m, p, ok := s.usableAny(ctx, id)
+	if !ok || m.Kind != store.KindChat {
+		return nil, nil, false
+	}
+	return m, p, true
+}
+
+// usableAny is usableModel for every kind of model.
+func (s *Service) usableAny(ctx context.Context, id string) (*store.Model, *store.Provider, bool) {
+	if id == "" {
+		return nil, nil, false
+	}
 	m, err := s.Store.GetModel(ctx, id)
 	if err != nil || !m.Enabled {
 		return nil, nil, false
@@ -272,7 +290,7 @@ func (s *Service) usableModel(ctx context.Context, id string) (*store.Model, *st
 // Client returns the (cached) upstream client of a provider.
 func (s *Service) Client(p *store.Provider) *llm.Client { return s.client(p) }
 
-// UsableModel returns an enabled model whose provider is enabled.
+// UsableModel returns an enabled chat model whose provider is enabled.
 func (s *Service) UsableModel(ctx context.Context, id string) (*store.Model, *store.Provider, bool) {
 	return s.usableModel(ctx, id)
 }
@@ -301,51 +319,121 @@ func (s *Service) startRun(user *store.User, conv *store.Conversation, asst *sto
 		started := time.Now()
 		msg := *asst
 		var firstToken time.Duration
+		var usage llm.Usage
+		turn := &toolTurn{user: user, convID: conv.ID, asstID: asst.ID, run: run}
 
 		if needTitle {
 			go s.generateTitle(conv.ID, user.ID, model, provider, run)
 		}
 
-		req, err := s.buildRequest(ctx, user, conv, asst.ID, model)
-		if err == nil {
-			req.ReasoningEffort = effortFor(model, think)
-			onEvent := func(ev llm.Event) {
-				if firstToken == 0 {
-					firstToken = time.Since(started)
-				}
-				if ev.Reasoning != "" {
-					run.appendReasoning(ev.Reasoning)
-				}
-				if ev.Content != "" {
-					run.appendContent(ev.Content)
-				}
+		// After a tool round the model continues in a new paragraph.
+		needBreak, produced := false, false
+		onEvent := func(ev llm.Event) {
+			produced = true
+			if firstToken == 0 {
+				firstToken = time.Since(started)
 			}
+			if ev.Reasoning != "" {
+				run.appendReasoning(ev.Reasoning)
+			}
+			if ev.Content != "" {
+				if needBreak {
+					needBreak = false
+					if run.contentLen() > 0 {
+						ev.Content = "\n\n" + strings.TrimLeft(ev.Content, "\n")
+					}
+				}
+				run.appendContent(ev.Content)
+			}
+		}
+		addUsage := func(res *llm.Result, m *store.Model) {
+			if res == nil || res.Usage == nil {
+				return
+			}
+			u := res.Usage
+			usage.PromptTokens += u.PromptTokens
+			usage.CompletionTokens += u.CompletionTokens
+			cost := u.Cost
+			if cost <= 0 {
+				cost = m.EstimateCost(u.PromptTokens, u.CompletionTokens)
+			}
+			usage.Cost += cost
+		}
+
+		tools := s.toolsFor(ctx, model)
+		req, err := s.buildRequest(ctx, user, conv, asst.ID, model, tools != nil)
+		for round := 0; err == nil && round < maxToolRounds; round++ {
+			req.ReasoningEffort = effortFor(model, think)
+			req.Tools = tools
+			if round == maxToolRounds-1 {
+				req.Tools = nil // last round: answer in words
+			}
+			roundStart := run.contentLen()
+			produced = false
 			var res *llm.Result
 			res, err = s.streamWithRetry(ctx, s.client(provider), req, onEvent)
+			// Upstream rejects tools: answer without them rather than fail.
+			if err != nil && !produced && len(req.Tools) > 0 && isBadRequest(err) && ctx.Err() == nil {
+				s.Log.Warn("upstream rejected tools, retrying without", "message_id", asst.ID, "model", model.UpstreamModel, "err", err)
+				s.markToolsRejected(model)
+				tools, req.Tools = nil, nil
+				req.Messages[0].Content = s.systemPrompt(ctx, user, conv, false)
+				res, err = s.streamWithRetry(ctx, s.client(provider), req, onEvent)
+			}
 			// Nothing reached the user yet: let the fallback model answer instead of showing an error.
-			if err != nil && firstToken == 0 && ctx.Err() == nil {
+			if err != nil && round == 0 && firstToken == 0 && ctx.Err() == nil {
 				if fm, fp := s.fallbackModel(ctx, model.ID); fm != nil {
 					s.Log.Warn("primary model failed, using fallback", "message_id", asst.ID, "model", model.UpstreamModel, "fallback", fm.UpstreamModel, "err", err)
-					freq, ferr := s.buildRequest(ctx, user, conv, asst.ID, fm)
+					ftools := s.toolsFor(ctx, fm)
+					freq, ferr := s.buildRequest(ctx, user, conv, asst.ID, fm, ftools != nil)
 					if ferr == nil {
-						model, provider = fm, fp
+						model, provider, tools, req = fm, fp, ftools, freq
 						msg.ModelID = &fm.ID
-						freq.ReasoningEffort = effortFor(fm, think)
-						res, err = s.streamWithRetry(ctx, s.client(fp), freq, onEvent)
+						req.ReasoningEffort = effortFor(fm, think)
+						req.Tools = tools
+						res, err = s.streamWithRetry(ctx, s.client(fp), req, onEvent)
 					}
 				}
 			}
-			if res != nil && res.Usage != nil {
-				msg.PromptTokens = res.Usage.PromptTokens
-				msg.CompletionTokens = res.Usage.CompletionTokens
-				msg.Cost = res.Usage.Cost
-				if msg.Cost <= 0 {
-					msg.Cost = model.EstimateCost(msg.PromptTokens, msg.CompletionTokens)
+			addUsage(res, model)
+			if err != nil || res == nil || len(res.ToolCalls) == 0 || len(req.Tools) == 0 {
+				break
+			}
+			if firstToken == 0 {
+				firstToken = time.Since(started) // the model answered with tool calls only
+			}
+			// Hand the calls and their results back to the model for the next round.
+			calls := res.ToolCalls
+			for i := range calls {
+				if calls[i].ID == "" {
+					calls[i].ID = fmt.Sprintf("call_%d_%d", round, i)
 				}
+			}
+			content, _ := run.text()
+			req.Messages = append(req.Messages, llm.Message{Role: "assistant", Content: strings.TrimSpace(content[roundStart:]), ToolCalls: calls})
+			for i, result := range s.runTools(ctx, turn, calls) {
+				req.Messages = append(req.Messages, llm.Message{Role: "tool", ToolCallID: calls[i].ID, Content: result})
+			}
+			needBreak = true
+			if ctx.Err() != nil {
+				err = context.Cause(ctx)
+				break
 			}
 		}
 
 		msg.Content, msg.Reasoning = run.text()
+		msg.Attachments = run.Snapshot().Attachments
+		// The pictures are what the user asked for: a failure while the model
+		// was only wrapping up must not turn the reply into an error.
+		if err != nil && len(msg.Attachments) > 0 && ctx.Err() == nil {
+			s.Log.Warn("reply failed after drawing, keeping the pictures", "message_id", asst.ID, "err", err)
+			err = nil
+			if strings.TrimSpace(msg.Content) == "" {
+				msg.Content = "画好啦，看看喜不喜欢～需要调整的话告诉我。"
+			}
+		}
+		msg.PromptTokens, msg.CompletionTokens = usage.PromptTokens, usage.CompletionTokens
+		msg.Cost = usage.Cost + turn.cost
 		msg.FirstTokenMs = firstToken.Milliseconds()
 		msg.DurationMs = time.Since(started).Milliseconds()
 		cause := context.Cause(ctx)
@@ -368,9 +456,14 @@ func (s *Service) startRun(user *store.User, conv *store.Conversation, asst *sto
 		}
 		_ = s.Store.TouchConversation(pctx, conv.ID)
 		s.Log.Info("generation finished", "message_id", msg.ID, "model", model.UpstreamModel, "status", msg.Status,
-			"first_token_ms", msg.FirstTokenMs, "duration_ms", msg.DurationMs, "tokens", msg.CompletionTokens)
+			"first_token_ms", msg.FirstTokenMs, "duration_ms", msg.DurationMs, "tokens", msg.CompletionTokens, "images", len(msg.Attachments))
 		run.finish(&FinalEvent{Message: &msg})
 	})
+}
+
+func isBadRequest(err error) bool {
+	var ae *llm.APIError
+	return errors.As(err, &ae) && (ae.Status == 400 || ae.Status == 422)
 }
 
 func effortFor(m *store.Model, think bool) string {
@@ -415,12 +508,17 @@ func (s *Service) RepairSettings(ctx context.Context) error {
 			}
 		}
 	}
-	for _, k := range []string{"fallback_model_id", "title_model_id"} {
+	for _, k := range []string{"fallback_model_id", "title_model_id", "image_model_id"} {
 		v, err := s.Store.GetSetting(ctx, k)
 		if err != nil {
 			return err
 		}
-		if _, _, ok := s.usableModel(ctx, v); v != "" && !ok {
+		m, _, ok := s.usableAny(ctx, v)
+		want := store.KindChat
+		if k == "image_model_id" {
+			want = store.KindImage
+		}
+		if v != "" && (!ok || m.Kind != want) {
 			if err := s.Store.SetSetting(ctx, k, ""); err != nil {
 				return err
 			}
@@ -488,9 +586,10 @@ const basePrompt = `你是「小暖」，一位耐心、温暖、可靠的 AI �
 - 如果用户描述的情况疑似电信诈骗（如陌生人要求转账、索要验证码、冒充公检法或客服、高回报投资等），要明确、直接地提醒用户注意防骗。
 - 不确定的事情就说不确定，不要编造。`
 
-func (s *Service) systemPrompt(ctx context.Context, user *store.User, conv *store.Conversation) string {
+func (s *Service) systemPrompt(ctx context.Context, user *store.User, conv *store.Conversation, canDraw bool) string {
 	var b strings.Builder
 	b.WriteString(basePrompt)
+	b.WriteString(s.drawPrompt(ctx, canDraw))
 	now := time.Now().In(shanghai)
 	fmt.Fprintf(&b, "\n\n当前时间：%s（%s）。", now.Format("2006年1月2日 15:04"), weekdays[now.Weekday()])
 	if user.DisplayName != "" {
@@ -529,12 +628,12 @@ func estimateTokens(s string) int {
 
 const imageTokens = 1100
 
-func (s *Service) buildRequest(ctx context.Context, user *store.User, conv *store.Conversation, asstID string, model *store.Model) (llm.Request, error) {
+func (s *Service) buildRequest(ctx context.Context, user *store.User, conv *store.Conversation, asstID string, model *store.Model, canDraw bool) (llm.Request, error) {
 	history, err := s.Store.ListMessages(ctx, conv.ID, asstID, 500)
 	if err != nil {
 		return llm.Request{}, err
 	}
-	sys := s.systemPrompt(ctx, user, conv)
+	sys := s.systemPrompt(ctx, user, conv, canDraw)
 
 	budget := model.ContextWindow
 	if budget <= 0 {
@@ -546,16 +645,29 @@ func (s *Service) buildRequest(ctx context.Context, user *store.User, conv *stor
 	}
 	budget -= reserve + estimateTokens(sys)
 
+	// Pictures are numbered (图N) so the model can name the one to modify.
+	var num map[string]int
+	if canDraw {
+		num = map[string]int{}
+		for i, a := range collectRefs(history) {
+			num[a.FileID] = i + 1
+		}
+	}
+
 	// Walk backwards, keeping as much recent history as fits.
 	var picked []llm.Message
 	imagesLeft := maxImageMessages
 	for i := len(history) - 1; i >= 0; i-- {
 		m := history[i]
-		if m.Role == "assistant" && (m.Status == store.StatusError || strings.TrimSpace(m.Content) == "") {
+		drew := m.Role == "assistant" && len(m.Attachments) > 0
+		if m.Role == "assistant" && !drew && (m.Status == store.StatusError || strings.TrimSpace(m.Content) == "") {
 			continue
 		}
 		lm := llm.Message{Role: m.Role, Content: m.Content}
-		cost := estimateTokens(m.Content)
+		if drew {
+			lm.Content = drawnNote(m.Attachments, num) + m.Content
+		}
+		cost := estimateTokens(lm.Content)
 		if m.Role == "user" && len(m.Attachments) > 0 {
 			if model.Vision && imagesLeft > 0 {
 				imagesLeft--
@@ -572,9 +684,16 @@ func (s *Service) buildRequest(ctx context.Context, user *store.User, conv *stor
 				if text == "" {
 					text = "（用户发送了图片）"
 				}
+				if refs := refList(m.Attachments, num); refs != "" {
+					text = "（这条消息里的图片：" + refs + "）\n" + text
+				}
 				lm.Parts = append(parts, llm.Part{Type: "text", Text: text})
 			} else {
-				lm.Content = fmt.Sprintf("[用户发送了 %d 张图片，当前已不可见]\n%s", len(m.Attachments), m.Content)
+				n := fmt.Sprintf("%d 张图片", len(m.Attachments))
+				if refs := refList(m.Attachments, num); refs != "" {
+					n += "（" + refs + "）"
+				}
+				lm.Content = fmt.Sprintf("[用户发送了 %s，当前已不可见]\n%s", n, m.Content)
 			}
 		}
 		if budget-cost < 0 && len(picked) > 0 {
@@ -602,6 +721,41 @@ func (s *Service) buildRequest(ctx context.Context, user *store.User, conv *stor
 		}
 	}
 	return req, nil
+}
+
+// drawnNote tells the model which pictures it drew in an earlier reply
+// (the pictures themselves are not sent back). num gives their numbers (图N)
+// when the model can draw.
+func drawnNote(atts []store.Attachment, num map[string]int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "（系统附注，不是对话内容，回复时不要写这种附注：这条回复里你调用 generate_image 画了 %d 张图并展示给了用户", len(atts))
+	for i, a := range atts {
+		label := fmt.Sprintf("第 %d 张", i+1)
+		if n := num[a.FileID]; n > 0 {
+			label += fmt.Sprintf("是图%d", n)
+			if src := num[a.Source]; src > 0 {
+				label += fmt.Sprintf("，由图%d 修改而来", src)
+			}
+		}
+		if a.Prompt != "" {
+			fmt.Fprintf(&b, "；%s，提示词：%s", label, clip(a.Prompt, 300))
+		} else if num != nil {
+			fmt.Fprintf(&b, "；%s", label)
+		}
+	}
+	b.WriteString("）\n")
+	return b.String()
+}
+
+// refList is "图3、图4" for a message's pictures (empty when not numbering).
+func refList(atts []store.Attachment, num map[string]int) string {
+	var parts []string
+	for _, a := range atts {
+		if n := num[a.FileID]; n > 0 {
+			parts = append(parts, fmt.Sprintf("图%d", n))
+		}
+	}
+	return strings.Join(parts, "、")
 }
 
 func (s *Service) dataURL(ctx context.Context, fileID, userID string) (string, error) {

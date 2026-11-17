@@ -170,6 +170,11 @@
     "height": 960
   }
   ```
+  助手消息的 `attachments` 是小暖在这条回复里**画的图**（JPEG，属于对话的用户，同样通过 `GET /api/files/{file_id}` 读取），额外带 `prompt` 字段：画这张图用的提示词；在已有图片上修改出来的图还带 `source` 字段：原图的 `file_id`。
+
+  **图片编号与改图**：一段对话里的所有图片（用户发的照片和小暖画的图）按时间顺序统一编号「图1」「图2」…，服务端会把编号写进发给模型的历史。模型调用 `generate_image` 时填 `image: "图N"` 就是在那张图上修改：服务端把原图（长边不超过 2048px 的 JPEG）发给画图模型的 `/v1/images/edits`（OpenRouter 则放进 chat 请求）。画图模型不支持编辑、而原图是小暖画的时，改用「原提示词 + 修改要求」重新生成一张。
+
+  **文件清理**：服务端每小时清理一次没有任何消息引用、且创建超过 24 小时的文件（删除的对话、被编辑或重新生成掉的消息、上传后没发出去的图片、管理员的测试图），以及磁盘上已没有对应记录的文件（例如被删除用户的文件）。
 
 ---
 
@@ -189,12 +194,12 @@
 - **任务仍在生成中时**：
   ```text
   event: snapshot
-  data: {"content":"已累积的正文","reasoning":"已累积的思考过程","status":"streaming","title":""}
+  data: {"content":"已累积的正文","reasoning":"已累积的思考过程","status":"streaming","title":"","activity":"","activity_at":0,"attachments":[]}
   ```
 - **连接时任务已结束（已落盘回放）**：
   ```text
   event: snapshot
-  data: {"content":"最终完整正文","reasoning":"最终完整思考过程","status":"done"}
+  data: {"content":"最终完整正文","reasoning":"最终完整思考过程","status":"done","attachments":[]}
   ```
   > 注意：回放分支下 `snapshot` 不含 `title` 字段，`status` 为数据库中的终态（`"done"` / `"error"` / `"cancelled"` / `"interrupted"`），紧接着服务端会立即发送一帧 `done` 并关闭连接。
 
@@ -219,7 +224,25 @@ event: title
 data: {"conversation_id":"01933c90-1200-7000-8000-000000000010","title":"体检报告指标解读"}
 ```
 
-#### (4) `done` —— 生成结束终态帧（最后一帧）
+#### (4) `activity` —— 工具正在做什么（画图）
+
+聊天模型调用工具时推送，`text` 为空字符串表示结束；`at` 是开始时间（Unix 毫秒），重连后用它接着显示「已经 N 秒」：
+
+```text
+event: activity
+data: {"text":"正在画图…","at":1763280103000}
+```
+
+#### (5) `attachments` —— 这条回复已画好的图（全量）
+
+每画好一张图推送一次，`attachments` 是到目前为止的**完整列表**（直接替换本地列表）：
+
+```text
+event: attachments
+data: {"attachments":[{"file_id":"...","mime":"image/jpeg","width":1254,"height":1254,"prompt":"A cute puppy ..."}]}
+```
+
+#### (6) `done` —— 生成结束终态帧（最后一帧）
 
 无论正常完成、用户取消、服务停机中断还是上游报错，流最终均以 `done` 事件收尾，携带持久化后的完整 `Message` 对象，随后服务端主动关闭连接：
 
@@ -405,11 +428,15 @@ data: {"message":{"id":"01933c90-1210-7000-8000-000000000012","conversation_id":
     ],
     "default_model_id": "m-gpt-6.1-terra",
     "features": {
-      "voice_input": true
+      "voice_input": true,
+      "image_generation": true,
+      "images_left": -1
     },
     "server_version": "1.0.0"
   }
   ```
+  - `features.image_generation`：管理员是否开通了画图（对话里说「帮我画…」即可）。
+  - `features.images_left`：当前用户今天还能画几张；`-1` 表示不限（没设上限，或者是管理员）。
 
 ### 5.4 获取当前用户信息
 
@@ -1020,10 +1047,12 @@ data: {"message":{"id":"01933c90-1210-7000-8000-000000000012","conversation_id":
     {
       "id": "m-gpt-6.1-terra",
       "provider_id": "default",
+      "kind": "chat",
       "upstream_model": "gpt-6.1-terra",
       "display_name": "GPT-6.1 Terra",
       "description": "聪明均衡，日常首选",
       "vision": true,
+      "tools": true,
       "default_effort": "none",
       "think_effort": "high",
       "context_window": 200000,
@@ -1064,6 +1093,9 @@ data: {"message":{"id":"01933c90-1210-7000-8000-000000000012","conversation_id":
     - `context_window`：默认 `128000`（用于裁剪历史消息 Token 预算）。
     - `max_output`：默认 `0`（`0` 表示请求上游时不传 `max_tokens`，上下文预算按预留 `8192` 估算）。
     - `enabled`：默认 `true`。
+    - `kind`：仅创建时有效。`"chat"`（默认，家人聊天用）或 `"image"`（画图模型：不出现在家人的模型列表，只供聊天模型通过 `generate_image` 工具调用；价格按画图接口返回的 token 用量估算）。
+    - `tools`：聊天模型是否会用工具（画图），默认 `true`。上游拒绝 `tools` 参数时服务端会自动去掉工具重试，并记住到该模型下次被修改为止。
+  - 新增第一个 `kind: "image"` 模型且尚未设置 `image_model_id` 时，自动把它设为画图模型。
 - **成功响应** (`200 OK`)：返回完整 `Model` 对象。
 - **错误码**：
   - `400 bad_model`：`请填写上游模型名`
@@ -1093,16 +1125,22 @@ data: {"message":{"id":"01933c90-1210-7000-8000-000000000012","conversation_id":
   ```json
   {
     "default_model_id": "m-gpt-6.1-terra",
-    "title_model_id": ""
+    "fallback_model_id": "",
+    "title_model_id": "",
+    "image_model_id": "",
+    "image_daily_limit": ""
   }
   ```
   - `default_model_id`：未显式指定模型时使用的全局默认模型 ID。
+  - `fallback_model_id`：默认模型出错且还没输出任何内容时，自动改用的备用模型（留空不启用）。
   - `title_model_id`：首轮对话自动生成简短标题时使用的模型 ID（留空则复用当前对话所用的模型）。
+  - `image_model_id`：画图模型（必须是 `kind: "image"`；留空表示不开通画图）。前三项必须是 `kind: "chat"` 的模型，混用返回 `400 bad_model`。
+  - `image_daily_limit`：每位家人每天最多画几张（上海时间零点重置；只算画成功的，删除对话不退回；管理员不受限）。空或 `"0"` 表示不限；更新时须为 0–10000 的整数，否则返回 `400 bad_limit`。
 
 #### (2) 更新全局设置
 
 - **方法与路径**：`PUT /api/admin/settings`
-- **请求体**（仅识别 `default_model_id` 与 `title_model_id` 两个键，可只传其一，其余键忽略）：
+- **请求体**（识别上面四个键，可只传其中几个，其余键忽略）：
   ```json
   {
     "default_model_id": "m-gpt-6.1-terra",

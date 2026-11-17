@@ -55,6 +55,7 @@ class _UpstreamPickerPageState extends ConsumerState<UpstreamPickerPage> {
     setState(() => _busy = true);
     try {
       final before = ref.read(catalogProvider).value?.settings.defaultModelId ?? '';
+      final imageBefore = ref.read(catalogProvider).value?.settings.imageModelId ?? '';
       final added = await ref.read(apiProvider).adminBatchModels(widget.providerId, picks.map((e) => e.toModelJson()).toList());
       await ref.read(catalogProvider.notifier).reload();
       if (!mounted) return;
@@ -63,7 +64,10 @@ class _UpstreamPickerPageState extends ConsumerState<UpstreamPickerPage> {
       final def = c?.settings.defaultModelId ?? '';
       final becameDefault = before.isEmpty && def.isNotEmpty;
       Navigator.of(context).pop();
-      showToast(context, '已添加 ${added.length} 个模型${becameDefault ? '，「${c?.model(def)?.displayName}」设为全家默认' : ''}');
+      final img = c?.settings.imageModelId ?? '';
+      final becameImage = imageBefore.isEmpty && img.isNotEmpty;
+      showToast(context,
+          '已添加 ${added.length} 个模型${becameDefault ? '，「${c?.model(def)?.displayName}」设为全家默认' : ''}${becameImage ? '，「${c?.model(img)?.displayName}」用来画图' : ''}');
     } on ApiError catch (e) {
       if (mounted) showToast(context, e.message);
     } finally {
@@ -134,7 +138,8 @@ class _UpstreamPickerPageState extends ConsumerState<UpstreamPickerPage> {
     final shown = all.where(_match).toList();
     final rec = shown.where((e) => e.chat && e.recommended).toList();
     final chat = shown.where((e) => e.chat && !e.recommended).toList();
-    final others = shown.where((e) => !e.chat).toList();
+    final images = shown.where((e) => !e.chat && e.image).toList();
+    final others = shown.where((e) => !e.chat && !e.image).toList();
     final searching = _search.text.trim().isNotEmpty;
 
     final rows = <Widget>[];
@@ -156,13 +161,14 @@ class _UpstreamPickerPageState extends ConsumerState<UpstreamPickerPage> {
 
     group('推荐', rec, subtitle: '主流的新模型，参数已经帮你调好');
     group(rec.isEmpty ? '对话模型' : '其他对话模型', chat);
+    group('画图模型', images, subtitle: '加一个就够了：家人说「帮我画…」时，聊天模型会自动调用它');
     if (others.isNotEmpty) {
       if (_showOthers || searching) {
-        group('其他模型', others, subtitle: '向量、语音、画图等，一般不能用来聊天');
+        group('其他模型', others, subtitle: '向量、语音、视频等，不能用来聊天，一般不需要添加');
       } else {
         rows.add(Padding(
           padding: const EdgeInsets.only(top: 16),
-          child: TextButton(onPressed: () => setState(() => _showOthers = true), child: Text('显示其他 ${others.length} 个非聊天模型（向量、语音、画图等）')),
+          child: TextButton(onPressed: () => setState(() => _showOthers = true), child: Text('显示其他 ${others.length} 个模型（向量、语音、视频等）')),
         ));
       }
     }
@@ -273,6 +279,10 @@ class _ItemTile extends StatelessWidget {
                   if (it.chat) ...[
                     const SizedBox(height: 7),
                     Wrap(spacing: 6, runSpacing: 6, children: modelTags(context, vision: it.vision, think: it.think, inPrice: it.inputPrice, outPrice: it.outputPrice)),
+                  ],
+                  if (it.image) ...[
+                    const SizedBox(height: 7),
+                    const Tag('画图', icon: Icons.palette_outlined, color: Color(0xFFDB2777)),
                   ],
                 ]),
               ),

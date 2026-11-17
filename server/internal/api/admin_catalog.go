@@ -299,10 +299,19 @@ func (s *Server) adminUpstreamModels(w http.ResponseWriter, r *http.Request) {
 		sg := llm.Suggest(p.Kind, m)
 		items = append(items, upstreamItem{sg, existing[sg.UpstreamModel]})
 	}
+	rank := func(sg llm.Suggestion) int {
+		switch {
+		case sg.Chat:
+			return 0
+		case sg.Image:
+			return 1
+		}
+		return 2
+	}
 	sort.SliceStable(items, func(i, j int) bool {
 		a, b := items[i], items[j]
-		if a.Chat != b.Chat {
-			return a.Chat
+		if rank(a.Suggestion) != rank(b.Suggestion) {
+			return rank(a.Suggestion) < rank(b.Suggestion)
 		}
 		if a.Recommended != b.Recommended {
 			return a.Recommended
@@ -328,6 +337,8 @@ func (s *Server) adminListModels(w http.ResponseWriter, r *http.Request) {
 
 type modelInput struct {
 	ProviderID    *string  `json:"provider_id"`
+	Kind          *string  `json:"kind"` // only honoured when creating
+	Tools         *bool    `json:"tools"`
 	UpstreamModel *string  `json:"upstream_model"`
 	DisplayName   *string  `json:"display_name"`
 	Description   *string  `json:"description"`
@@ -340,6 +351,15 @@ type modelInput struct {
 	OutputPrice   *float64 `json:"output_price"`
 	Enabled       *bool    `json:"enabled"`
 	Sort          *int     `json:"sort"`
+}
+
+// newModel is a fresh model of the requested kind (chat unless "image").
+func newModel(kind *string) *store.Model {
+	m := &store.Model{Kind: store.KindChat, Enabled: true, Tools: true, ContextWindow: llm.MaxSuggestedContext}
+	if kind != nil && *kind == store.KindImage {
+		m.Kind, m.Tools = store.KindImage, false
+	}
+	return m
 }
 
 func (in *modelInput) apply(m *store.Model) (code, msg string) {
@@ -357,7 +377,7 @@ func (in *modelInput) apply(m *store.Model) (code, msg string) {
 	for _, b := range []struct {
 		dst *bool
 		v   *bool
-	}{{&m.Vision, in.Vision}, {&m.Enabled, in.Enabled}} {
+	}{{&m.Vision, in.Vision}, {&m.Enabled, in.Enabled}, {&m.Tools, in.Tools}} {
 		if b.v != nil {
 			*b.dst = *b.v
 		}
@@ -381,6 +401,9 @@ func (in *modelInput) apply(m *store.Model) (code, msg string) {
 	if m.DisplayName == "" {
 		m.DisplayName = llm.PrettyName(m.UpstreamModel)
 	}
+	if m.Kind != store.KindChat && m.Kind != store.KindImage {
+		return "bad_model", "模型类型不正确"
+	}
 	switch {
 	case m.UpstreamModel == "":
 		return "bad_model", "请填写上游模型名"
@@ -401,7 +424,7 @@ func (s *Server) adminSaveModel(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	m := &store.Model{Enabled: true, ContextWindow: llm.MaxSuggestedContext}
+	m := newModel(in.Kind)
 	id := chi.URLParam(r, "id")
 	if id != "" {
 		var err error
@@ -427,6 +450,9 @@ func (s *Server) adminSaveModel(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.writeStoreErr(w, r, err)
 		return
+	}
+	if id == "" {
+		s.adoptImageModel(r, []*store.Model{m})
 	}
 	s.repairSettings(r)
 	writeJSON(w, 200, m)
@@ -459,7 +485,7 @@ func (s *Server) adminBatchModels(w http.ResponseWriter, r *http.Request) {
 	}
 	var add []*store.Model
 	for _, mi := range in.Models {
-		m := &store.Model{Enabled: true, ContextWindow: llm.MaxSuggestedContext}
+		m := newModel(mi.Kind)
 		mi.ProviderID, mi.Sort = &in.ProviderID, nil
 		if code, msg := mi.apply(m); code != "" {
 			writeErr(w, 400, code, msg)
@@ -476,6 +502,7 @@ func (s *Server) adminBatchModels(w http.ResponseWriter, r *http.Request) {
 			s.writeStoreErr(w, r, err)
 			return
 		}
+		s.adoptImageModel(r, add)
 	}
 	s.repairSettings(r)
 	def, _ := s.Store.GetSetting(r.Context(), "default_model_id")
@@ -508,6 +535,22 @@ func (s *Server) adminReorderModels(w http.ResponseWriter, r *http.Request) {
 	s.adminListModels(w, r)
 }
 
+// adoptImageModel makes the first newly added image model the one conversations
+// draw with, when none is set yet (adding one means the admin wants drawing).
+func (s *Server) adoptImageModel(r *http.Request, added []*store.Model) {
+	if cur, _ := s.Store.GetSetting(r.Context(), "image_model_id"); cur != "" {
+		return
+	}
+	for _, m := range added {
+		if m.Kind == store.KindImage && m.Enabled {
+			if err := s.Store.SetSetting(r.Context(), "image_model_id", m.ID); err != nil {
+				s.Log.Error("set image model", "err", err)
+			}
+			return
+		}
+	}
+}
+
 // adminTestModel sends one short real request with the model's current settings,
 // so wrong ids or unsupported reasoning settings show up before the family hits them.
 func (s *Server) adminTestModel(w http.ResponseWriter, r *http.Request) {
@@ -525,6 +568,10 @@ func (s *Server) adminTestModel(w http.ResponseWriter, r *http.Request) {
 	p, err := s.Store.GetProvider(r.Context(), m.ProviderID)
 	if err != nil {
 		s.writeStoreErr(w, r, err)
+		return
+	}
+	if m.Kind == store.KindImage {
+		s.testImageModel(w, r, m, p)
 		return
 	}
 	req := llm.Request{
@@ -564,5 +611,36 @@ func (s *Server) adminTestModel(w http.ResponseWriter, r *http.Request) {
 		}
 		out["prompt_tokens"], out["completion_tokens"], out["cost"] = res.Usage.PromptTokens, res.Usage.CompletionTokens, cost
 	}
+	writeJSON(w, 200, out)
+}
+
+// testImageModel draws one small test picture and stores it as the admin's file.
+func (s *Server) testImageModel(w http.ResponseWriter, r *http.Request, m *store.Model, p *store.Provider) {
+	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Minute)
+	defer cancel()
+	start := time.Now()
+	res, err := s.Chat.Client(p).GenerateImage(ctx, llm.ImageRequest{
+		Model: m.UpstreamModel, Prompt: "A cute small orange cat sitting on a sunny windowsill, soft watercolor illustration", Size: "1024x1024", Quality: "low",
+	})
+	out := map[string]any{"ok": err == nil, "duration_ms": time.Since(start).Milliseconds()}
+	if err != nil {
+		out["message"] = providerError(err)
+		writeJSON(w, 200, out)
+		return
+	}
+	f, err := s.Chat.SaveImage(r.Context(), currentUser(r).ID, res.Data)
+	if err != nil {
+		out["ok"], out["message"] = false, "图片保存失败："+err.Error()
+		writeJSON(w, 200, out)
+		return
+	}
+	cost := 0.0
+	if u := res.Usage; u != nil {
+		cost = u.Cost
+		if cost <= 0 {
+			cost = m.EstimateCost(u.PromptTokens, u.CompletionTokens)
+		}
+	}
+	out["file_id"], out["width"], out["height"], out["cost"] = f.ID, f.Width, f.Height, cost
 	writeJSON(w, 200, out)
 }

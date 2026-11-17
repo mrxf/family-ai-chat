@@ -84,6 +84,15 @@ class Api {
   Map<String, String> get authHeaders => {if (token != null) 'Authorization': 'Bearer $token'};
   String fileUrl(String id) => '$baseUrl/api/files/$id';
 
+  Future<Uint8List> fileBytes(String id) async {
+    try {
+      final r = await dio.get<List<int>>('/api/files/$id', options: Options(responseType: ResponseType.bytes));
+      return Uint8List.fromList(r.data ?? const []);
+    } catch (e) {
+      throw ApiError.from(e);
+    }
+  }
+
   Future<dynamic> _req(String method, String path, {Object? body, Map<String, dynamic>? query, CancelToken? cancel}) async {
     try {
       final r = await dio.request(path, data: body, queryParameters: query, cancelToken: cancel, options: Options(method: method));
@@ -279,9 +288,11 @@ class Api {
   Future<List<AdminModel>> adminBatchModels(String providerId, List<Map<String, dynamic>> models) async =>
       _list(((await _req('POST', '/api/admin/models/batch', body: {'provider_id': providerId, 'models': models})) as Map)['items'], AdminModel.fromJson);
   Future<List<AdminModel>> adminReorderModels(List<String> ids) async => _list(await _req('PUT', '/api/admin/models/order', body: {'ids': ids}), AdminModel.fromJson);
-  Future<ModelTestResult> adminTestModel(String id, {bool think = false}) async {
+  Future<ModelTestResult> adminTestModel(String id, {bool think = false, bool image = false}) async {
     try {
-      final r = await dio.post('/api/admin/models/$id/test', data: {'think': think}, options: Options(receiveTimeout: const Duration(seconds: 100)));
+      // Drawing a test picture takes half a minute or more.
+      final wait = Duration(seconds: image ? 250 : 100);
+      final r = await dio.post('/api/admin/models/$id/test', data: {'think': think}, options: Options(receiveTimeout: wait));
       return ModelTestResult.fromJson((r.data as Map).cast());
     } catch (e) {
       throw ApiError.from(e);

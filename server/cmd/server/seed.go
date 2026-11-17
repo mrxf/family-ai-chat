@@ -92,6 +92,7 @@ func seedProvider(ctx context.Context, st *store.Store, cfg config.Config) error
 // ModelFromSuggestion converts an inferred configuration into an enabled model.
 func ModelFromSuggestion(sg llm.Suggestion) *store.Model {
 	return &store.Model{
+		Kind: store.KindChat, Tools: sg.Tools,
 		UpstreamModel: sg.UpstreamModel, DisplayName: sg.DisplayName, Description: sg.Description, Vision: sg.Vision,
 		DefaultEffort: sg.DefaultEffort, ThinkEffort: sg.ThinkEffort, ContextWindow: sg.ContextWindow,
 		InputPrice: sg.InputPrice, OutputPrice: sg.OutputPrice, Enabled: true,

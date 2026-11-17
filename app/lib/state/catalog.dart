@@ -28,10 +28,23 @@ class Catalog {
 
   List<AdminModel> modelsOf(String providerId) => models.where((m) => m.providerId == providerId).toList();
 
-  /// Enabled model whose provider is enabled too, i.e. visible to the family.
-  bool usable(AdminModel m) => m.enabled && (provider(m.providerId)?.enabled ?? false);
+  /// Models the family chats with (image models only draw for the chat models).
+  List<AdminModel> get chatModels => models.where((m) => !m.isImage).toList();
+  List<AdminModel> get imageModels => models.where((m) => m.isImage).toList();
+
+  /// Enabled and its provider is enabled too.
+  bool enabledNow(AdminModel m) => m.enabled && (provider(m.providerId)?.enabled ?? false);
+
+  /// Chat model visible to the family.
+  bool usable(AdminModel m) => !m.isImage && enabledNow(m);
 
   List<AdminModel> get usableModels => models.where(usable).toList();
+
+  /// The image model the chat models draw with, when it is usable.
+  AdminModel? get imageModel {
+    final m = model(settings.imageModelId);
+    return m != null && m.isImage && enabledNow(m) ? m : null;
+  }
 
   Catalog copyWith({List<AdminProvider>? providers, List<AdminModel>? models, ModelSettings? settings}) =>
       Catalog(providers: providers ?? this.providers, models: models ?? this.models, settings: settings ?? this.settings);

@@ -163,6 +163,8 @@ type Attachment struct {
 	Mime   string `json:"mime"`
 	Width  int    `json:"width,omitempty"`
 	Height int    `json:"height,omitempty"`
+	Prompt string `json:"prompt,omitempty"` // pictures drawn by the assistant: the prompt used
+	Source string `json:"source,omitempty"` // a modified picture: file id of the picture it was made from
 }
 
 const (
@@ -303,9 +305,21 @@ func (s *Store) ListMessages(ctx context.Context, convID, before string, limit i
 // FinishMessage writes the final state of an assistant message.
 func (s *Store) FinishMessage(ctx context.Context, m *Message) error {
 	m.UpdatedAt = Now()
-	_, err := s.w.ExecContext(ctx, `UPDATE messages SET content=?, reasoning=?, status=?, error=?, model_id=?, prompt_tokens=?, completion_tokens=?,
+	if m.Attachments == nil {
+		m.Attachments = []Attachment{}
+	}
+	att, _ := json.Marshal(m.Attachments)
+	_, err := s.w.ExecContext(ctx, `UPDATE messages SET content=?, reasoning=?, attachments=?, status=?, error=?, model_id=?, prompt_tokens=?, completion_tokens=?,
 		first_token_ms=?, duration_ms=?, cost=?, updated_at=? WHERE id=?`,
-		m.Content, m.Reasoning, m.Status, m.Error, m.ModelID, m.PromptTokens, m.CompletionTokens, m.FirstTokenMs, m.DurationMs, m.Cost, m.UpdatedAt, m.ID)
+		m.Content, m.Reasoning, string(att), m.Status, m.Error, m.ModelID, m.PromptTokens, m.CompletionTokens, m.FirstTokenMs, m.DurationMs, m.Cost, m.UpdatedAt, m.ID)
+	return err
+}
+
+// SetAttachments saves a streaming message's pictures as soon as they exist,
+// so they survive a restart in the middle of the reply.
+func (s *Store) SetAttachments(ctx context.Context, messageID string, atts []Attachment) error {
+	att, _ := json.Marshal(atts)
+	_, err := s.w.ExecContext(ctx, `UPDATE messages SET attachments=?, updated_at=? WHERE id=?`, string(att), Now(), messageID)
 	return err
 }
 

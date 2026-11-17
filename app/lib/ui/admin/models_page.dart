@@ -7,6 +7,7 @@ import '../../core/api.dart';
 import '../../state/catalog.dart';
 import '../../state/session.dart';
 import '../theme.dart';
+import '../sheets.dart';
 import '../widgets.dart';
 import 'common.dart';
 import 'model_edit_page.dart';
@@ -61,6 +62,7 @@ class _Body extends ConsumerWidget {
     final s = c.settings;
     String nameOf(String id, String empty) => id.isEmpty ? empty : (c.model(id)?.displayName ?? '已删除');
     final noUsable = c.usableModels.isEmpty;
+    final chat = c.chatModels, images = c.imageModels;
 
     return CustomScrollView(slivers: [
       SliverPadding(
@@ -70,7 +72,7 @@ class _Body extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.only(top: 12),
               child: ResultBanner(ok: false, title: '家人现在没有可用的模型', lines: [
-                c.models.isEmpty ? '到下面的供应商里添加几个模型。' : '请至少启用一个模型，并确认它所在的供应商没有停用。',
+                chat.isEmpty ? '到下面的供应商里添加几个模型。' : '请至少启用一个模型，并确认它所在的供应商没有停用。',
               ]),
             ),
           const SectionHeader('全家使用'),
@@ -98,17 +100,17 @@ class _Body extends ConsumerWidget {
               onTap: noUsable ? null : () => _assign(context, ref, 'title_model_id', '起标题的模型', s.titleModelId, noneLabel: '跟随当前对话的模型'),
             ),
           ]),
-          if (c.models.isNotEmpty)
+          if (chat.isNotEmpty)
             SectionHeader('家人能看到的模型', subtitle: '按住右边的把手拖动排序，开关控制家人能不能选', trailing: Text('${c.usableModels.length} 个', style: TextStyle(color: p.muted))),
         ]),
       ),
-      if (c.models.isNotEmpty)
+      if (chat.isNotEmpty)
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           sliver: SliverReorderableList(
-            itemCount: c.models.length,
+            itemCount: chat.length,
             onReorderItem: (from, to) {
-              final ids = c.models.map((m) => m.id).toList();
+              final ids = chat.map((m) => m.id).toList();
               ids.insert(to, ids.removeAt(from));
               HapticFeedback.selectionClick();
               ref.read(catalogProvider.notifier).reorder(ids).catchError((Object e) {
@@ -121,7 +123,7 @@ class _Body extends ConsumerWidget {
               child: child,
             ),
             itemBuilder: (context, i) {
-              final m = c.models[i];
+              final m = chat[i];
               return Padding(
                 key: ValueKey(m.id),
                 padding: const EdgeInsets.only(bottom: 8),
@@ -133,6 +135,28 @@ class _Body extends ConsumerWidget {
       SliverPadding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
         sliver: SliverList.list(children: [
+          SectionHeader('画图', subtitle: images.isEmpty ? '家人说「帮我画一张…」时，小暖会自动调用画图模型。先到供应商里添加一个画图模型（比如 gpt-image）' : '家人说「帮我画一张…」时，小暖会自动调用它画'),
+          GroupCard(children: [
+            InfoRow(
+              icon: Icons.palette_rounded,
+              title: '画图模型',
+              subtitle: images.isEmpty ? '还没有添加' : '用哪个模型画',
+              value: s.imageModelId.isEmpty ? '未开通' : nameOf(s.imageModelId, '未开通'),
+              valueColor: c.imageModel == null ? p.muted : p.text,
+              onTap: images.isEmpty
+                  ? () => showToast(context, '先到下面的供应商里，挑选一个画图模型（列表里标着「画图」）')
+                  : () => _assign(context, ref, 'image_model_id', '画图模型', s.imageModelId, noneLabel: '不开通画图', image: true),
+            ),
+            if (s.imageModelId.isNotEmpty)
+              InfoRow(
+                icon: Icons.event_repeat_rounded,
+                title: '每人每天',
+                subtitle: '最多画几张，管理员不受限',
+                value: s.imageDailyLimit > 0 ? '${s.imageDailyLimit} 张' : '不限',
+                onTap: () => _pickDailyLimit(context, ref, s.imageDailyLimit),
+              ),
+          ]),
+          for (final m in images) Padding(padding: const EdgeInsets.only(top: 8), child: ModelRow(model: m, catalog: c)),
           SectionHeader('供应商',
               subtitle: '模型从这里来，费用也由它们收取',
               trailing: TextButton.icon(onPressed: () => openAddProvider(context), icon: const Icon(Icons.add_rounded), label: const Text('添加'))),
@@ -143,8 +167,37 @@ class _Body extends ConsumerWidget {
     ]);
   }
 
-  Future<void> _assign(BuildContext context, WidgetRef ref, String key, String title, String current, {bool allowNone = true, String noneLabel = '不使用'}) async {
-    final picked = await showAdminModelChooser(context, c, title: title, current: current, noneLabel: allowNone ? noneLabel : null);
+  Future<void> _pickDailyLimit(BuildContext context, WidgetRef ref, int current) async {
+    Future<void> save(int n) async {
+      try {
+        final s = await ref.read(apiProvider).adminPutModelSettings({'image_daily_limit': '$n'});
+        ref.read(catalogProvider.notifier).setSettings(s);
+        if (context.mounted) showToast(context, '已保存');
+      } on ApiError catch (e) {
+        if (context.mounted) showToast(context, e.message);
+      }
+    }
+
+    SheetAction option(int n) => SheetAction(n == current ? Icons.check_circle_rounded : Icons.circle_outlined, n == 0 ? '不限' : '$n 张', () => save(n));
+    await showActionSheet(context, title: '每人每天最多画几张（画好的才算，失败不算）', actions: [
+      for (final n in const [0, 5, 10, 20]) option(n),
+      if (current > 0 && !const [5, 10, 20].contains(current)) option(current),
+      SheetAction(Icons.edit_rounded, '自定义…', () async {
+        final v = await showTextEditor(context, title: '每人每天最多画几张', initial: current > 0 ? '$current' : '', maxLines: 1, hint: '填数字，0 表示不限');
+        if (v == null) return;
+        final n = int.tryParse(v.trim());
+        if (n == null || n < 0) {
+          if (context.mounted) showToast(context, '请填一个数字');
+          return;
+        }
+        await save(n);
+      }),
+    ]);
+  }
+
+  Future<void> _assign(BuildContext context, WidgetRef ref, String key, String title, String current,
+      {bool allowNone = true, String noneLabel = '不使用', bool image = false}) async {
+    final picked = await showAdminModelChooser(context, c, title: title, current: current, noneLabel: allowNone ? noneLabel : null, image: image);
     if (picked == null || picked == current) return;
     try {
       final s = await ref.read(apiProvider).adminPutModelSettings({key: picked});
@@ -171,7 +224,7 @@ class ModelRow extends ConsumerWidget {
     final m = model;
     final provider = catalog.provider(m.providerId);
     final providerOff = provider != null && !provider.enabled;
-    final visible = catalog.usable(m);
+    final visible = m.isImage ? catalog.enabledNow(m) : catalog.usable(m);
     final isDefault = catalog.settings.defaultModelId == m.id;
     final isFallback = catalog.settings.fallbackModelId == m.id;
     return Pressable(
@@ -201,7 +254,9 @@ class ModelRow extends ConsumerWidget {
                 const SizedBox(height: 7),
                 Wrap(spacing: 6, runSpacing: 6, children: [
                   if (providerOff) Tag('供应商已停用', color: p.bad),
-                  ...modelTags(context, vision: m.vision, think: m.think),
+                  if (m.isImage) Tag('画图', icon: Icons.palette_outlined, color: const Color(0xFFDB2777)),
+                  if (m.isImage && catalog.settings.imageModelId == m.id) Tag('正在使用', color: p.accent),
+                  if (!m.isImage) ...modelTags(context, vision: m.vision, think: m.think),
                 ]),
               ]),
             ),
@@ -271,7 +326,7 @@ class ProviderCard extends StatelessWidget {
 
 /// Bottom sheet listing the family-visible models, grouped by provider.
 /// Returns the chosen id, '' for [noneLabel], or null when dismissed.
-Future<String?> showAdminModelChooser(BuildContext context, Catalog c, {required String title, required String current, String? noneLabel}) {
+Future<String?> showAdminModelChooser(BuildContext context, Catalog c, {required String title, required String current, String? noneLabel, bool image = false}) {
   return showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
@@ -309,7 +364,7 @@ Future<String?> showAdminModelChooser(BuildContext context, Catalog c, {required
 
       final groups = <Widget>[];
       for (final pr in c.providers.where((x) => x.enabled)) {
-        final ms = c.modelsOf(pr.id).where((m) => m.enabled).toList();
+        final ms = c.modelsOf(pr.id).where((m) => m.enabled && m.isImage == image).toList();
         if (ms.isEmpty) continue;
         groups.add(Padding(
           padding: const EdgeInsets.fromLTRB(4, 10, 4, 8),

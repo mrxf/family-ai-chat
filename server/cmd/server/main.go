@@ -89,6 +89,24 @@ func run() error {
 			_ = st.DeleteExpiredSessions(context.Background())
 		}
 	}()
+	go func() {
+		sweep := func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			if n, err := svc.CleanupFiles(ctx, chat.FileGrace); err != nil {
+				log.Warn("file cleanup", "removed", n, "err", err)
+			} else if n > 0 {
+				log.Info("file cleanup", "removed", n)
+			}
+		}
+		time.Sleep(2 * time.Minute) // let startup settle
+		sweep()
+		t := time.NewTicker(time.Hour)
+		defer t.Stop()
+		for range t.C {
+			sweep()
+		}
+	}()
 
 	errCh := make(chan error, 1)
 	go func() {

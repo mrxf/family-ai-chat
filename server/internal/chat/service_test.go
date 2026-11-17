@@ -61,7 +61,7 @@ func TestBuildRequestKeepsOnlyFourRecentImageMessages(t *testing.T) {
 	}
 	id := contextHistory(t, s, c, history...)
 	model := &store.Model{UpstreamModel: "fake", Vision: true, ContextWindow: 128000, MaxOutput: 100}
-	req, err := s.buildRequest(t.Context(), u, c, id, model)
+	req, err := s.buildRequest(t.Context(), u, c, id, model, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestBuildRequestKeepsOnlyFourRecentImageMessages(t *testing.T) {
 		}
 	}
 	model.Vision = false
-	req, err = s.buildRequest(t.Context(), u, c, id, model)
+	req, err = s.buildRequest(t.Context(), u, c, id, model, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,8 +98,8 @@ func TestBuildRequestTrimsBudgetAndDropsLeadingAssistant(t *testing.T) {
 	latest := &store.Message{Role: "user", Content: "最新问题", Status: store.StatusDone}
 	id := contextHistory(t, s, c, old, answer, latest)
 	reserve := 100
-	model := &store.Model{UpstreamModel: "fake", MaxOutput: reserve, ContextWindow: reserve + estimateTokens(s.systemPrompt(t.Context(), u, c)) + estimateTokens(answer.Content) + estimateTokens(latest.Content)}
-	req, err := s.buildRequest(t.Context(), u, c, id, model)
+	model := &store.Model{UpstreamModel: "fake", MaxOutput: reserve, ContextWindow: reserve + estimateTokens(s.systemPrompt(t.Context(), u, c, false)) + estimateTokens(answer.Content) + estimateTokens(latest.Content)}
+	req, err := s.buildRequest(t.Context(), u, c, id, model, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestBuildRequestTrimsBudgetAndDropsLeadingAssistant(t *testing.T) {
 		t.Fatalf("missing user/time system context: %s", req.Messages[0].Content)
 	}
 	model.ContextWindow = 1
-	req, err = s.buildRequest(t.Context(), u, c, id, model)
+	req, err = s.buildRequest(t.Context(), u, c, id, model, false)
 	if err != nil || len(req.Messages) != 2 || req.Messages[1].Content != latest.Content {
 		t.Fatalf("newest user must survive small budget: %+v err=%v", req, err)
 	}
@@ -127,7 +127,7 @@ func TestBuildRequestSkipsFailedAndEmptyAssistantMessages(t *testing.T) {
 		&store.Message{Role: "assistant", Content: "useful partial", Status: store.StatusCancelled},
 		&store.Message{Role: "user", Content: "latest", Status: store.StatusDone},
 	)
-	req, err := s.buildRequest(t.Context(), u, c, id, &store.Model{ContextWindow: 128000})
+	req, err := s.buildRequest(t.Context(), u, c, id, &store.Model{ContextWindow: 128000}, false)
 	if err != nil {
 		t.Fatal(err)
 	}

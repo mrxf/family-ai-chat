@@ -104,7 +104,7 @@ class SettingsPage extends ConsumerWidget {
               _Tile(
                 icon: Icons.hub_rounded,
                 title: '模型与供应商',
-                subtitle: session.boot?.defaultModel == null ? '还没有可用的模型，点这里添加' : '默认：${session.boot!.defaultModel!.displayName} · 共 ${session.boot!.models.length} 个模型',
+                subtitle: session.boot?.defaultModel == null ? '还没有可用的模型，点这里添加' : '默认：${session.boot!.defaultModel!.displayName} · 共 ${session.boot!.models.length} 个模型${session.boot!.imageGeneration ? (session.boot!.imagesLeft >= 0 ? ' · 今天还能画 ${session.boot!.imagesLeft} 张' : ' · 能画图') : ''}',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ModelsPage())),
               ),
               _Tile(

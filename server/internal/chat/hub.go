@@ -4,6 +4,9 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
+
+	"nuan/internal/store"
 )
 
 // Run is one in-flight assistant generation. Output accumulates in memory;
@@ -21,20 +24,26 @@ type Run struct {
 	cancel context.CancelCauseFunc
 	done   chan struct{}
 
-	mu        sync.Mutex
-	content   strings.Builder
-	reasoning strings.Builder
-	title     string
-	final     any // set when finished: the final message payload
-	subs      map[chan struct{}]struct{}
+	mu          sync.Mutex
+	content     strings.Builder
+	reasoning   strings.Builder
+	title       string
+	activity    string             // what a tool is doing right now ("正在画图…"), "" when idle
+	activityAt  int64              // unix ms when the activity started
+	attachments []store.Attachment // pictures drawn so far
+	final       any                // set when finished: the final message payload
+	subs        map[chan struct{}]struct{}
 }
 
 // Snapshot is the complete visible state of a run at one point in time.
 type Snapshot struct {
-	Content   string
-	Reasoning string
-	Title     string
-	Final     any // non-nil once the run has finished
+	Content     string
+	Reasoning   string
+	Title       string
+	Activity    string
+	ActivityAt  int64
+	Attachments []store.Attachment
+	Final       any // non-nil once the run has finished
 }
 
 func (r *Run) notifyLocked() {
@@ -67,6 +76,31 @@ func (r *Run) setTitle(t string) {
 	r.mu.Unlock()
 }
 
+func (r *Run) setActivity(a string) {
+	r.mu.Lock()
+	r.activity = a
+	r.activityAt = 0
+	if a != "" {
+		r.activityAt = time.Now().UnixMilli()
+	}
+	r.notifyLocked()
+	r.mu.Unlock()
+}
+
+func (r *Run) addAttachment(a store.Attachment) []store.Attachment {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.attachments = append(r.attachments, a)
+	r.notifyLocked()
+	return append([]store.Attachment(nil), r.attachments...)
+}
+
+func (r *Run) contentLen() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.content.Len()
+}
+
 func (r *Run) text() (string, string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -85,7 +119,10 @@ func (r *Run) finish(final any) {
 func (r *Run) Snapshot() Snapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return Snapshot{Content: r.content.String(), Reasoning: r.reasoning.String(), Title: r.title, Final: r.final}
+	return Snapshot{
+		Content: r.content.String(), Reasoning: r.reasoning.String(), Title: r.title, Activity: r.activity, ActivityAt: r.activityAt,
+		Attachments: append([]store.Attachment(nil), r.attachments...), Final: r.final,
+	}
 }
 
 // Subscribe registers a wake-up channel. Call the returned func to unsubscribe.

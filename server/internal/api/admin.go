@@ -128,7 +128,7 @@ func (s *Server) adminDeleteUser(w http.ResponseWriter, r *http.Request) {
 
 // ---- settings & usage ----
 
-var settingKeys = []string{"default_model_id", "fallback_model_id", "title_model_id"}
+var settingKeys = []string{"default_model_id", "fallback_model_id", "title_model_id", "image_model_id", "image_daily_limit"}
 
 func (s *Server) adminGetSettings(w http.ResponseWriter, r *http.Request) {
 	out := map[string]string{}
@@ -150,13 +150,32 @@ func (s *Server) adminPutSettings(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		v = strings.TrimSpace(v)
+		if k == "image_daily_limit" {
+			// Pictures per person per day; empty or 0 = no limit.
+			if n, err := strconv.Atoi(v); v != "" && (err != nil || n < 0 || n > 10000) {
+				writeErr(w, 400, "bad_limit", "每天的张数要填 0 到 10000 之间的整数（0 表示不限）")
+				return
+			} else if n == 0 {
+				v = ""
+			}
+			if err := s.Store.SetSetting(r.Context(), k, v); err != nil {
+				s.writeStoreErr(w, r, err)
+				return
+			}
+			continue
+		}
 		if v == "" && k == "default_model_id" {
 			writeErr(w, 400, "bad_model", "全家默认模型不能为空")
 			return
 		}
 		if v != "" {
-			if _, err := s.Store.GetModel(r.Context(), v); err != nil {
+			m, err := s.Store.GetModel(r.Context(), v)
+			if err != nil {
 				writeErr(w, 400, "bad_model", "模型不存在")
+				return
+			}
+			if (k == "image_model_id") != (m.Kind == store.KindImage) {
+				writeErr(w, 400, "bad_model", "这里不能选这种模型（画图模型和聊天模型不能混用）")
 				return
 			}
 		}

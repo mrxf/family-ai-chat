@@ -78,7 +78,9 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
 		"assistants":       assistants,
 		"default_model_id": def,
 		"features": map[string]any{
-			"voice_input": s.Cfg.ASR != nil,
+			"voice_input":      s.Cfg.ASR != nil,
+			"image_generation": s.Chat.ImageAvailable(ctx),
+			"images_left":      s.Chat.ImagesLeftToday(ctx, u),
 		},
 		"server_version": s.Cfg.AppVersion,
 	})
@@ -497,7 +499,7 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 	run := s.Chat.Hub.Get(id)
 	if run == nil || run.UserID != u.ID {
 		// Already finished (or interrupted): replay the stored result.
-		send("snapshot", map[string]any{"content": msg.Content, "reasoning": msg.Reasoning, "status": msg.Status})
+		send("snapshot", map[string]any{"content": msg.Content, "reasoning": msg.Reasoning, "status": msg.Status, "attachments": msg.Attachments})
 		send("done", chat.FinalEvent{Message: msg})
 		return
 	}
@@ -505,10 +507,12 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 	wake, unsub := run.Subscribe()
 	defer unsub()
 	snap := run.Snapshot()
-	if !send("snapshot", map[string]any{"content": snap.Content, "reasoning": snap.Reasoning, "status": store.StatusStreaming, "title": snap.Title}) {
+	if !send("snapshot", map[string]any{"content": snap.Content, "reasoning": snap.Reasoning, "status": store.StatusStreaming, "title": snap.Title,
+		"activity": snap.Activity, "activity_at": snap.ActivityAt, "attachments": nonNil(snap.Attachments)}) {
 		return
 	}
 	offC, offR, title := len(snap.Content), len(snap.Reasoning), snap.Title
+	activity, nAtt := snap.Activity, len(snap.Attachments)
 	if snap.Final != nil {
 		send("done", snap.Final)
 		return
@@ -545,6 +549,14 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 			if len(delta) > 0 && !send("delta", delta) {
 				return
 			}
+			if len(snap.Attachments) != nAtt {
+				nAtt = len(snap.Attachments)
+				send("attachments", map[string]any{"attachments": snap.Attachments})
+			}
+			if snap.Activity != activity {
+				activity = snap.Activity
+				send("activity", map[string]any{"text": activity, "at": snap.ActivityAt})
+			}
 			if snap.Title != "" && snap.Title != title {
 				title = snap.Title
 				send("title", map[string]string{"conversation_id": run.ConversationID, "title": title})
@@ -555,6 +567,13 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+func nonNil(a []store.Attachment) []store.Attachment {
+	if a == nil {
+		return []store.Attachment{}
+	}
+	return a
 }
 
 func truncate(s string, n int) string {

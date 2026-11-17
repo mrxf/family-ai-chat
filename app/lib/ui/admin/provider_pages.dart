@@ -421,7 +421,7 @@ class _ProviderDetailPageState extends ConsumerState<ProviderDetailPage> {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(pr.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
-                    Text(pr.enabled ? '已启用 · ${pr.enabledModelCount} 个模型给家人用' : '已停用 · 家人看不到它的模型',
+                    Text(pr.enabled ? '已启用 · ${models.where((m) => m.enabled && !m.isImage).length} 个模型给家人用' : '已停用 · 家人看不到它的模型',
                         style: TextStyle(fontSize: 13.5, color: pr.enabled ? p.muted : p.bad)),
                   ]),
                 ),

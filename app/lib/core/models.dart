@@ -93,12 +93,16 @@ class Conversation {
 class Attachment {
   final String fileId, mime;
   final int width, height;
+  /// Pictures drawn by the assistant: the prompt it used.
+  final String prompt;
+  /// A modified picture: the file it was made from.
+  final String source;
   /// Local file path for an image that is still uploading / just sent (optimistic UI).
   final String? localPath;
-  const Attachment({required this.fileId, required this.mime, this.width = 0, this.height = 0, this.localPath});
+  const Attachment({required this.fileId, required this.mime, this.width = 0, this.height = 0, this.prompt = '', this.source = '', this.localPath});
   factory Attachment.fromJson(Map<String, dynamic> j) =>
-      Attachment(fileId: _str(j['file_id']), mime: _str(j['mime']), width: _int(j['width']), height: _int(j['height']));
-  Map<String, dynamic> toJson() => {'file_id': fileId, 'mime': mime, 'width': width, 'height': height};
+      Attachment(fileId: _str(j['file_id']), mime: _str(j['mime']), width: _int(j['width']), height: _int(j['height']), prompt: _str(j['prompt']), source: _str(j['source']));
+  Map<String, dynamic> toJson() => {'file_id': fileId, 'mime': mime, 'width': width, 'height': height, if (prompt.isNotEmpty) 'prompt': prompt, if (source.isNotEmpty) 'source': source};
   double get aspect => width > 0 && height > 0 ? width / height : 1;
 }
 
@@ -188,8 +192,11 @@ class Bootstrap {
   final List<ChatModel> models;
   final List<Assistant> assistants;
   final String defaultModelId;
-  final bool voiceInput;
-  const Bootstrap({required this.user, required this.models, required this.assistants, required this.defaultModelId, required this.voiceInput});
+  final bool voiceInput, imageGeneration;
+  /// Pictures the user may still draw today; -1 = no limit.
+  final int imagesLeft;
+  const Bootstrap(
+      {required this.user, required this.models, required this.assistants, required this.defaultModelId, required this.voiceInput, this.imageGeneration = false, this.imagesLeft = -1});
 
   factory Bootstrap.fromJson(Map<String, dynamic> j) => Bootstrap(
         user: User.fromJson((j['user'] as Map).cast()),
@@ -197,17 +204,19 @@ class Bootstrap {
         assistants: ((j['assistants'] as List?) ?? const []).map((e) => Assistant.fromJson((e as Map).cast())).toList(),
         defaultModelId: _str(j['default_model_id']),
         voiceInput: ((j['features'] as Map?)?['voice_input']) == true,
+        imageGeneration: ((j['features'] as Map?)?['image_generation']) == true,
+        imagesLeft: (j['features'] as Map?)?['images_left'] is num ? ((j['features'] as Map)['images_left'] as num).toInt() : -1,
       );
   Map<String, dynamic> toJson() => {
         'user': user.toJson(),
         'models': models.map((m) => m.toJson()).toList(),
         'assistants': assistants.map((a) => a.toJson()).toList(),
         'default_model_id': defaultModelId,
-        'features': {'voice_input': voiceInput},
+        'features': {'voice_input': voiceInput, 'image_generation': imageGeneration, 'images_left': imagesLeft},
       };
 
   Bootstrap copyWith({User? user}) =>
-      Bootstrap(user: user ?? this.user, models: models, assistants: assistants, defaultModelId: defaultModelId, voiceInput: voiceInput);
+      Bootstrap(user: user ?? this.user, models: models, assistants: assistants, defaultModelId: defaultModelId, voiceInput: voiceInput, imageGeneration: imageGeneration, imagesLeft: imagesLeft);
 
   ChatModel? model(String? id) {
     for (final m in models) {

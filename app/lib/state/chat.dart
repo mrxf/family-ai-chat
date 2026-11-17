@@ -17,13 +17,39 @@ enum LivePhase { waiting, reasoning, answering }
 @immutable
 class LiveText {
   final String content, reasoning;
-  const LiveText(this.content, this.reasoning);
+
+  /// What a tool is doing right now ("正在画图…"), empty when idle.
+  final String activity;
+
+  /// Pictures drawn so far in this reply.
+  final List<Attachment> attachments;
+
+  /// When the current activity started (for the elapsed-seconds counter).
+  final DateTime? activitySince;
+
+  const LiveText(this.content, this.reasoning, {this.activity = '', this.attachments = const [], this.activitySince});
   static const empty = LiveText('', '');
+
   LivePhase get phase => content.isNotEmpty
       ? LivePhase.answering
       : reasoning.isNotEmpty
           ? LivePhase.reasoning
           : LivePhase.waiting;
+
+  bool get drawing => activity.isNotEmpty;
+
+  /// [activityAt] is the server's start time (unix ms) when known, so the
+  /// elapsed counter survives reconnects.
+  LiveText copyWith({String? content, String? reasoning, String? activity, int? activityAt, List<Attachment>? attachments}) {
+    final act = activity ?? this.activity;
+    DateTime? since;
+    if (act.isNotEmpty) {
+      since = activityAt != null && activityAt > 0
+          ? DateTime.fromMillisecondsSinceEpoch(activityAt)
+          : (act == this.activity ? activitySince : null) ?? DateTime.now();
+    }
+    return LiveText(content ?? this.content, reasoning ?? this.reasoning, activity: act, attachments: attachments ?? this.attachments, activitySince: since);
+  }
 }
 
 /// An image picked by the user, already compressed.
@@ -438,10 +464,20 @@ class ChatController extends Notifier<ChatState> {
           backoff = const Duration(milliseconds: 600);
           switch (ev.event) {
             case 'snapshot':
-              live.value = LiveText('${ev.data['content'] ?? ''}', '${ev.data['reasoning'] ?? ''}');
+              live.value = live.value.copyWith(
+                content: '${ev.data['content'] ?? ''}',
+                reasoning: '${ev.data['reasoning'] ?? ''}',
+                activity: '${ev.data['activity'] ?? ''}',
+                activityAt: (ev.data['activity_at'] as num?)?.toInt(),
+                attachments: _attachments(ev.data['attachments']),
+              );
             case 'delta':
               final v = live.value;
-              live.value = LiveText('${v.content}${ev.data['content'] ?? ''}', '${v.reasoning}${ev.data['reasoning'] ?? ''}');
+              live.value = v.copyWith(content: '${v.content}${ev.data['content'] ?? ''}', reasoning: '${v.reasoning}${ev.data['reasoning'] ?? ''}');
+            case 'activity':
+              live.value = live.value.copyWith(activity: '${ev.data['text'] ?? ''}', activityAt: (ev.data['at'] as num?)?.toInt());
+            case 'attachments':
+              live.value = live.value.copyWith(attachments: _attachments(ev.data['attachments']));
             case 'title':
               final cid = '${ev.data['conversation_id']}';
               final title = '${ev.data['title']}';
@@ -465,12 +501,16 @@ class ChatController extends Notifier<ChatState> {
     }
   }
 
+  static List<Attachment> _attachments(dynamic raw) =>
+      raw is List ? [for (final e in raw) if (e is Map) Attachment.fromJson(e.cast())] : const [];
+
   void _finish(String expectedId, Message? finalMsg) {
     if (state.activeId != expectedId) return;
+    final v = live.value;
     final msgs = [
       for (final m in state.messages)
         if (m.id == expectedId)
-          finalMsg ?? m.copyWith(content: live.value.content, reasoning: live.value.reasoning, status: MsgStatus.interrupted)
+          finalMsg ?? m.copyWith(content: v.content, reasoning: v.reasoning, attachments: v.attachments, status: MsgStatus.interrupted)
         else
           m,
     ];
@@ -478,6 +518,11 @@ class ChatController extends Notifier<ChatState> {
     _streamCancel = null;
     final cid = state.conversationId;
     if (cid != null) _convs.touch(cid);
+    // A limited user's "pictures left today" changes with each drawing.
+    final boot = ref.read(sessionProvider).boot;
+    if ((finalMsg?.attachments.isNotEmpty ?? false) && boot != null && boot.imagesLeft >= 0) {
+      ref.read(sessionProvider.notifier).refresh();
+    }
     _persist();
   }
 

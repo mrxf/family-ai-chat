@@ -137,6 +137,8 @@ type Suggestion struct {
 	InputPrice    float64 `json:"input_price"`  // USD per million tokens
 	OutputPrice   float64 `json:"output_price"` // USD per million tokens
 	Chat          bool    `json:"chat"`         // false for embeddings, TTS, image generation, ...
+	Image         bool    `json:"image"`        // draws pictures (can be added as an image model)
+	Tools         bool    `json:"tools"`        // likely supports tool calling
 	Recommended   bool    `json:"recommended"`  // a current mainstream chat model
 	Created       int64   `json:"created"`
 }
@@ -158,6 +160,23 @@ var nonChatMarkers = []string{
 	"moderation", "rerank", "realtime", "audio", "speech", "aqa", "babbage", "davinci", "turbo-instruct", "deep-research",
 }
 
+var imageMarkers = []string{
+	"gpt-image", "dall-e", "imagen", "flux", "seedream", "-image", "image-", "cogview", "kolors", "stable-diffusion", "sdxl",
+	"recraft", "ideogram", "wanx", "midjourney",
+}
+
+// Chat models that are known to reject the tools parameter.
+var noToolMarkers = []string{"o1-mini", "o1-preview", "reasoner", "-r1", "qwq", "gemma", "-vl", "vl-", "instruct"}
+
+func hasAny(s string, subs []string) bool {
+	for _, x := range subs {
+		if strings.Contains(s, x) {
+			return true
+		}
+	}
+	return false
+}
+
 // Suggest infers a model configuration. Rules are deliberately simple; the admin
 // can test and adjust every field afterwards.
 func Suggest(kind string, um UpstreamModel) Suggestion {
@@ -176,6 +195,15 @@ func Suggest(kind string, um UpstreamModel) Suggestion {
 	}
 	if um.Rich && len(um.OutputModalities) > 0 && !contains(um.OutputModalities, "text") {
 		s.Chat = false
+	}
+	s.Image = (hasAny(base, imageMarkers) && !hasAny(base, []string{"embed", "video", "veo", "sora", "vision"})) ||
+		(um.Rich && contains(um.OutputModalities, "image"))
+	if s.Image {
+		s.Chat = false
+	}
+	s.Tools = s.Chat && !hasAny(base, noToolMarkers)
+	if s.Chat && um.Rich && len(um.SupportedParams) > 0 {
+		s.Tools = contains(um.SupportedParams, "tools")
 	}
 
 	if um.Rich {

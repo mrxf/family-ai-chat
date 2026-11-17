@@ -39,7 +39,9 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
   final _maxOut = TextEditingController();
   final _inPrice = TextEditingController();
   final _outPrice = TextEditingController();
-  bool _vision = false, _enabled = true;
+  bool _vision = false, _enabled = true, _tools = true;
+  String _kind = 'chat';
+  bool get _image => _kind == 'image';
   bool _loaded = false, _dirty = false, _saving = false, _advanced = false;
   ModelTestResult? _test;
   bool? _testingThink; // null = not testing
@@ -70,6 +72,8 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
     _outPrice.text = _priceText(m?.outputPrice ?? 0);
     _vision = m?.vision ?? false;
     _enabled = m?.enabled ?? true;
+    _tools = m?.tools ?? true;
+    _kind = m?.kind ?? 'chat';
     _advanced = m != null && (!_dailyOptions.any((o) => o.$1 == m.defaultEffort) || !_thinkOptions.any((o) => o.$1 == m.thinkEffort));
     _loaded = true;
   }
@@ -85,18 +89,20 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
   }
 
   Map<String, dynamic> _body() => {
-        'display_name': _name.text.trim(),
-        'description': _desc.text.trim(),
-        'upstream_model': _upstream.text.trim(),
-        'default_effort': _daily.text.trim(),
-        'think_effort': _think.text.trim(),
-        'context_window': int.tryParse(_context.text.trim()) ?? 128000,
-        'max_output': int.tryParse(_maxOut.text.trim()) ?? 0,
-        'input_price': double.tryParse(_inPrice.text.trim()) ?? 0,
-        'output_price': double.tryParse(_outPrice.text.trim()) ?? 0,
-        'vision': _vision,
-        'enabled': _enabled,
-      };
+    'display_name': _name.text.trim(),
+    'description': _desc.text.trim(),
+    'upstream_model': _upstream.text.trim(),
+    'default_effort': _daily.text.trim(),
+    'think_effort': _think.text.trim(),
+    'context_window': int.tryParse(_context.text.trim()) ?? 128000,
+    'max_output': int.tryParse(_maxOut.text.trim()) ?? 0,
+    'input_price': double.tryParse(_inPrice.text.trim()) ?? 0,
+    'output_price': double.tryParse(_outPrice.text.trim()) ?? 0,
+    'vision': _vision,
+    'tools': _tools,
+    'enabled': _enabled,
+    if (_isNew) 'kind': _kind,
+  };
 
   /// Saves; returns the saved model id, or null on failure.
   Future<String?> _save({bool quiet = false}) async {
@@ -107,9 +113,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
     setState(() => _saving = true);
     try {
       final api = ref.read(apiProvider);
-      final m = _isNew
-          ? await api.adminCreateModel({..._body(), 'provider_id': widget.providerId})
-          : await api.adminUpdateModel(widget.modelId!, _body());
+      final m = _isNew ? await api.adminCreateModel({..._body(), 'provider_id': widget.providerId}) : await api.adminUpdateModel(widget.modelId!, _body());
       await ref.read(catalogProvider.notifier).reload();
       if (!mounted) return m.id;
       setState(() => _dirty = false);
@@ -136,7 +140,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
       _test = null;
     });
     try {
-      final r = await ref.read(apiProvider).adminTestModel(widget.modelId!, think: think);
+      final r = await ref.read(apiProvider).adminTestModel(widget.modelId!, think: think, image: _image);
       if (mounted) setState(() => _test = r);
     } on ApiError catch (e) {
       if (mounted) showToast(context, e.message);
@@ -147,11 +151,13 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
 
   Future<void> _delete(Catalog c, AdminModel m) async {
     final isDefault = c.settings.defaultModelId == m.id;
-    final ok = await confirm(context,
-        title: '删除「${m.displayName}」？',
-        body: isDefault ? '它是全家默认模型，删除后会自动换成其他可用的模型。聊天记录不受影响。' : '家人将不能再选择它，聊天记录不受影响。',
-        ok: '删除',
-        danger: true);
+    final ok = await confirm(
+      context,
+      title: '删除「${m.displayName}」？',
+      body: isDefault ? '它是全家默认模型，删除后会自动换成其他可用的模型。聊天记录不受影响。' : '家人将不能再选择它，聊天记录不受影响。',
+      ok: '删除',
+      danger: true,
+    );
     if (!ok) return;
     try {
       await ref.read(apiProvider).adminDeleteModel(m.id);
@@ -188,7 +194,10 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
     final c = catalog.value;
     final m = _isNew ? null : c?.model(widget.modelId!);
     if (c == null || (!_isNew && m == null)) {
-      return Scaffold(appBar: AppBar(), body: catalog.hasError ? ErrorView(message: ApiError.from(catalog.error!).message) : const LoadingView());
+      return Scaffold(
+        appBar: AppBar(),
+        body: catalog.hasError ? ErrorView(message: ApiError.from(catalog.error!).message) : const LoadingView(),
+      );
     }
     if (!_loaded) _load(m);
     final provider = c.provider(m?.providerId ?? widget.providerId!);
@@ -206,13 +215,20 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
         appBar: AppBar(
           title: Text(_isNew ? '手动添加模型' : '模型设置'),
           actions: [
-            if (m != null) IconButton(tooltip: '删除', icon: Icon(Icons.delete_outline_rounded, color: p.bad), onPressed: () => _delete(c, m)),
+            if (m != null)
+              IconButton(
+                tooltip: '删除',
+                icon: Icon(Icons.delete_outline_rounded, color: p.bad),
+                onPressed: () => _delete(c, m),
+              ),
           ],
         ),
         bottomNavigationBar: AnimatedSize(
           duration: const Duration(milliseconds: 200),
           child: _dirty || _isNew
-              ? BottomBar(child: PrimaryButton(label: _isNew ? '添加' : '保存修改', busy: _saving, onTap: _save))
+              ? BottomBar(
+                  child: PrimaryButton(label: _isNew ? '添加' : '保存修改', busy: _saving, onTap: _save),
+                )
               : const SizedBox(width: double.infinity),
         ),
         body: ListView(
@@ -220,173 +236,274 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           children: [
             if (provider != null)
-              Row(children: [
-                ProviderIcon(kind: provider.kind, size: 22),
-                const SizedBox(width: 8),
-                Expanded(child: Text('来自「${provider.name}」', style: TextStyle(color: p.muted, fontSize: 14))),
-                if (m != null && !isDefault && c.usable(m)) TextButton.icon(onPressed: () => _makeDefault(m), icon: const Icon(Icons.star_outline_rounded, size: 18), label: const Text('设为全家默认')),
-                if (isDefault) Tag('全家默认', icon: Icons.star_rounded, color: p.accent),
-              ]),
+              Row(
+                children: [
+                  ProviderIcon(kind: provider.kind, size: 22),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('来自「${provider.name}」', style: TextStyle(color: p.muted, fontSize: 14)),
+                  ),
+                  if (m != null && !isDefault && c.usable(m))
+                    TextButton.icon(onPressed: () => _makeDefault(m), icon: const Icon(Icons.star_outline_rounded, size: 18), label: const Text('设为全家默认')),
+                  if (isDefault) Tag('全家默认', icon: Icons.star_rounded, color: p.accent),
+                ],
+              ),
+
+            if (_isNew) ...[
+              const SectionHeader('模型类型'),
+              Choice<String>(value: _kind, options: const [('chat', '聊天'), ('image', '画图')], onChanged: (v) => setState(() => _kind = v)),
+            ],
 
             // ---- what the family sees ----
-            const SectionHeader('家人看到的'),
-            _field(_name, '显示名称', hint: '例如：GPT-5 Mini', maxLength: 40),
+            SectionHeader(_image ? '基本信息' : '家人看到的'),
+            _field(_name, '显示名称', hint: _image ? '例如：GPT Image' : '例如：GPT-5 Mini', maxLength: 40),
+            if (!_image) ...[const SizedBox(height: 12), _field(_desc, '一句话介绍', hint: '例如：反应快，适合日常问答', maxLength: 60)],
             const SizedBox(height: 12),
-            _field(_desc, '一句话介绍', hint: '例如：反应快，适合日常问答', maxLength: 60),
-            const SizedBox(height: 12),
-            GroupCard(children: [
-              SwitchRow(
-                value: _enabled,
-                onChanged: (v) => setState(() {
-                  _enabled = v;
-                  _dirty = true;
-                }),
-                title: '给家人使用',
-                desc: '关掉后家人在模型列表里看不到它',
-              ),
-              SwitchRow(
-                value: _vision,
-                onChanged: (v) => setState(() {
-                  _vision = v;
-                  _dirty = true;
-                }),
-                title: '能看图片',
-                desc: '打开后才会把照片发给它；不支持看图的模型打开会报错',
-              ),
-            ]),
+            GroupCard(
+              children: [
+                SwitchRow(
+                  value: _enabled,
+                  onChanged: (v) => setState(() {
+                    _enabled = v;
+                    _dirty = true;
+                  }),
+                  title: _image ? '启用' : '给家人使用',
+                  desc: _image ? '关掉后不会再用它画图' : '关掉后家人在模型列表里看不到它',
+                ),
+                if (!_image) ...[
+                  SwitchRow(
+                    value: _vision,
+                    onChanged: (v) => setState(() {
+                      _vision = v;
+                      _dirty = true;
+                    }),
+                    title: '能看图片',
+                    desc: '打开后才会把照片发给它；不支持看图的模型打开会报错',
+                  ),
+                  SwitchRow(
+                    value: _tools,
+                    onChanged: (v) => setState(() {
+                      _tools = v;
+                      _dirty = true;
+                    }),
+                    title: '会用工具',
+                    desc: '家人说「帮我画…」时由它自己调用画图模型。这个模型回答总出错时可以关掉试试',
+                  ),
+                ],
+              ],
+            ),
 
             // ---- thinking ----
-            const SectionHeader('思考设置', subtitle: '模型先想一想再回答，更准但更慢、更贵'),
-            GroupCard(padding: const EdgeInsets.fromLTRB(18, 18, 18, 8), children: [
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const TitleDesc('平时回答', desc: '「快速」首字最快；不能关掉思考的模型（如 GPT-5）选「少想」或「稍想一下」；老模型选「不发送」'),
-                const SizedBox(height: 12),
-                Choice<String>(
-                  value: _dailyOptions.any((o) => o.$1 == _daily.text) ? _daily.text : '?',
-                  options: _dailyOptions,
-                  onChanged: (v) => setState(() => _daily.text = v),
-                ),
-                Padding(padding: const EdgeInsets.symmetric(vertical: 18), child: Divider(height: 1, color: p.line)),
-                const TitleDesc('「深度思考」按钮', desc: '家人打开「深度思考」时用的强度；选「不支持」就不显示这个按钮'),
-                const SizedBox(height: 12),
-                Choice<String>(
-                  value: _thinkOptions.any((o) => o.$1 == _think.text) ? _think.text : '?',
-                  options: _thinkOptions,
-                  onChanged: (v) => setState(() => _think.text = v),
-                ),
-                const SizedBox(height: 6),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    style: TextButton.styleFrom(foregroundColor: p.muted, padding: const EdgeInsets.symmetric(horizontal: 4), textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                    onPressed: () => setState(() => _advanced = !_advanced),
-                    icon: Icon(_advanced ? Icons.expand_less_rounded : Icons.tune_rounded, size: 18),
-                    label: Text(_advanced ? '收起高级设置' : '高级：直接填写参数值'),
+            if (!_image) ...[
+              const SectionHeader('思考设置', subtitle: '模型先想一想再回答，更准但更慢、更贵'),
+              GroupCard(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const TitleDesc('平时回答', desc: '「快速」首字最快；不能关掉思考的模型（如 GPT-5）选「少想」或「稍想一下」；老模型选「不发送」'),
+                      const SizedBox(height: 12),
+                      Choice<String>(
+                        value: _dailyOptions.any((o) => o.$1 == _daily.text) ? _daily.text : '?',
+                        options: _dailyOptions,
+                        onChanged: (v) => setState(() => _daily.text = v),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        child: Divider(height: 1, color: p.line),
+                      ),
+                      const TitleDesc('「深度思考」按钮', desc: '家人打开「深度思考」时用的强度；选「不支持」就不显示这个按钮'),
+                      const SizedBox(height: 12),
+                      Choice<String>(
+                        value: _thinkOptions.any((o) => o.$1 == _think.text) ? _think.text : '?',
+                        options: _thinkOptions,
+                        onChanged: (v) => setState(() => _think.text = v),
+                      ),
+                      const SizedBox(height: 6),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          style: TextButton.styleFrom(
+                            foregroundColor: p.muted,
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                          ),
+                          onPressed: () => setState(() => _advanced = !_advanced),
+                          icon: Icon(_advanced ? Icons.expand_less_rounded : Icons.tune_rounded, size: 18),
+                          label: Text(_advanced ? '收起高级设置' : '高级：直接填写参数值'),
+                        ),
+                      ),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 200),
+                        child: _advanced
+                            ? Column(
+                                children: [
+                                  Text('会作为 reasoning_effort 发给上游，例如 minimal、low、medium、high、none；留空表示不发送。', style: AdminText.desc(p)),
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
+                                      Expanded(child: _field(_daily, '平时', mono: true)),
+                                      const SizedBox(width: 10),
+                                      Expanded(child: _field(_think, '深度思考', mono: true)),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                ],
+                              )
+                            : const SizedBox(width: double.infinity),
+                      ),
+                    ],
                   ),
-                ),
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 200),
-                  child: _advanced
-                      ? Column(children: [
-                          Text('会作为 reasoning_effort 发给上游，例如 minimal、low、medium、high、none；留空表示不发送。', style: AdminText.desc(p)),
-                          const SizedBox(height: 12),
-                          Row(children: [
-                            Expanded(child: _field(_daily, '平时', mono: true)),
-                            const SizedBox(width: 10),
-                            Expanded(child: _field(_think, '深度思考', mono: true)),
-                          ]),
-                          const SizedBox(height: 10),
-                        ])
-                      : const SizedBox(width: double.infinity),
-                ),
-              ]),
-            ]),
+                ],
+              ),
+            ],
 
             // ---- test ----
             if (!_isNew) ...[
-              const SectionHeader('试一下', subtitle: '用现在的设置真的发一句话，确认能正常回答'),
-              GroupCard(padding: const EdgeInsets.all(14), children: [
-                Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Row(children: [
-                    Expanded(child: _testButton(false, '测试回答')),
-                    if (_think.text.trim().isNotEmpty) ...[const SizedBox(width: 10), Expanded(child: _testButton(true, '测试深度思考'))],
-                  ]),
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 220),
-                    child: _test == null
-                        ? const SizedBox(width: double.infinity)
-                        : Padding(
-                            padding: const EdgeInsets.only(top: 12),
-                            child: ResultBanner(
-                              ok: _test!.ok,
-                              title: _test!.ok ? '回答正常' : '出错了',
-                              lines: _test!.ok
-                                  ? [
-                                      '「${_test!.reply.isEmpty ? '（没有文字）' : _test!.reply}」',
-                                      '首字 ${(_test!.firstTokenMs / 1000).toStringAsFixed(1)} 秒，总共 ${(_test!.durationMs / 1000).toStringAsFixed(1)} 秒'
-                                          '${_test!.reasoning ? '，有思考过程' : ''}${_test!.cost > 0 ? '，花费 ${fmtUsd(_test!.cost)}' : ''}',
-                                    ]
-                                  : [
-                                      _test!.message,
-                                      if (_test!.effort.isNotEmpty) '如果提示参数不支持，试试把思考档位改成「不发送」或「稍想一下」。',
-                                    ],
-                            ),
-                          ),
+              SectionHeader('试一下', subtitle: _image ? '真的画一张小图，确认能正常出图（大约半分钟，会产生一点费用）' : '用现在的设置真的发一句话，确认能正常回答'),
+              GroupCard(
+                padding: const EdgeInsets.all(14),
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(child: _testButton(false, _image ? '画一张试试' : '测试回答')),
+                          if (!_image && _think.text.trim().isNotEmpty) ...[const SizedBox(width: 10), Expanded(child: _testButton(true, '测试深度思考'))],
+                        ],
+                      ),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 220),
+                        child: _test == null
+                            ? const SizedBox(width: double.infinity)
+                            : Padding(
+                                padding: const EdgeInsets.only(top: 12),
+                                child: _image
+                                    ? _imageResult(_test!)
+                                    : ResultBanner(
+                                        ok: _test!.ok,
+                                        title: _test!.ok ? '回答正常' : '出错了',
+                                        lines: _test!.ok
+                                            ? [
+                                                '「${_test!.reply.isEmpty ? '（没有文字）' : _test!.reply}」',
+                                                '首字 ${(_test!.firstTokenMs / 1000).toStringAsFixed(1)} 秒，总共 ${(_test!.durationMs / 1000).toStringAsFixed(1)} 秒'
+                                                    '${_test!.reasoning ? '，有思考过程' : ''}${_test!.cost > 0 ? '，花费 ${fmtUsd(_test!.cost)}' : ''}',
+                                              ]
+                                            : [_test!.message, if (_test!.effort.isNotEmpty) '如果提示参数不支持，试试把思考档位改成「不发送」或「稍想一下」。'],
+                                      ),
+                              ),
+                      ),
+                    ],
                   ),
-                ]),
-              ]),
+                ],
+              ),
             ],
 
             // ---- technical ----
             const SectionHeader('技术参数'),
             _field(_upstream, '上游模型 ID', hint: '例如 openai/gpt-5-mini', mono: true, helper: '必须和供应商那边的名字完全一致'),
-            const SizedBox(height: 16),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 4),
-              child: TitleDesc('上下文长度', desc: '每次最多带上多少聊天记录。越大越能记住长对话，但每次回答都更贵。'),
-            ),
-            const SizedBox(height: 12),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final n in _contextOptions)
-                ChoiceChip(
-                  label: Text(fmtContext(n)),
-                  selected: _context.text == '$n',
-                  showCheckmark: false,
-                  selectedColor: p.accentSoft,
-                  side: BorderSide(color: _context.text == '$n' ? p.accent : p.line),
-                  labelStyle: TextStyle(color: _context.text == '$n' ? p.accent : p.text, fontWeight: FontWeight.w600),
-                  onSelected: (_) => setState(() => _context.text = '$n'),
-                ),
-            ]),
-            const SizedBox(height: 10),
-            _field(_context, '自定义（token 数）', number: true),
-            const SizedBox(height: 12),
-            _field(_maxOut, '单次回答最长（token 数）', hint: '留空表示不限制', number: true),
+            if (!_image) ...[
+              const SizedBox(height: 16),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4),
+                child: TitleDesc('上下文长度', desc: '每次最多带上多少聊天记录。越大越能记住长对话，但每次回答都更贵。'),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final n in _contextOptions)
+                    ChoiceChip(
+                      label: Text(fmtContext(n)),
+                      selected: _context.text == '$n',
+                      showCheckmark: false,
+                      selectedColor: p.accentSoft,
+                      side: BorderSide(color: _context.text == '$n' ? p.accent : p.line),
+                      labelStyle: TextStyle(color: _context.text == '$n' ? p.accent : p.text, fontWeight: FontWeight.w600),
+                      onSelected: (_) => setState(() => _context.text = '$n'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              _field(_context, '自定义（token 数）', number: true),
+              const SizedBox(height: 12),
+              _field(_maxOut, '单次回答最长（token 数）', hint: '留空表示不限制', number: true),
+            ],
 
-            const SectionHeader('价格', subtitle: '美元 / 每百万 token。填了才能估算花费；OpenRouter 会直接返回实际花费'),
-            Row(children: [
-              Expanded(child: _field(_inPrice, '输入', hint: '0', decimal: true, prefix: '\$')),
-              const SizedBox(width: 10),
-              Expanded(child: _field(_outPrice, '输出', hint: '0', decimal: true, prefix: '\$')),
-            ]),
+            SectionHeader('价格', subtitle: _image ? '美元 / 每百万 token（画图接口会返回用了多少 token）。填了才能估算画图花费' : '美元 / 每百万 token。填了才能估算花费；OpenRouter 会直接返回实际花费'),
+            Row(
+              children: [
+                Expanded(
+                  child: _field(_inPrice, '输入', hint: '0', decimal: true, prefix: '\$'),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _field(_outPrice, '输出', hint: '0', decimal: true, prefix: '\$'),
+                ),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _testButton(bool think, String label) {
-    final running = _testingThink == think;
-    return OutlinedButton.icon(
-      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-      onPressed: _testingThink != null ? null : () => _runTest(think),
-      icon: running ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : Icon(think ? Icons.lightbulb_outline_rounded : Icons.play_arrow_rounded),
-      label: Text(running ? '等待回答…' : label),
+  Widget _imageResult(ModelTestResult t) {
+    if (!t.ok) return ResultBanner(ok: false, title: '没画出来', lines: [t.message]);
+    final api = ref.read(apiProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ResultBanner(
+          ok: true,
+          title: '画图正常',
+          lines: [
+            '用时 ${(t.durationMs / 1000).toStringAsFixed(0)} 秒${t.width > 0 ? '，${t.width}×${t.height}' : ''}${t.cost > 0 ? '，花费 ${fmtUsd(t.cost)}' : ''}',
+          ],
+        ),
+        if (t.fileId.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: AspectRatio(
+              aspectRatio: t.width > 0 && t.height > 0 ? t.width / t.height : 1,
+              child: Image.network(api.fileUrl(t.fileId), headers: api.authHeaders, fit: BoxFit.cover, cacheWidth: 800),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
-  Widget _field(TextEditingController c, String label,
-      {String? hint, String? helper, int? maxLength, bool mono = false, bool number = false, bool decimal = false, String? prefix}) {
+  Widget _testButton(bool think, String label) {
+    final running = _testingThink == think;
+    return OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      onPressed: _testingThink != null ? null : () => _runTest(think),
+      icon: running
+          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+          : Icon(think ? Icons.lightbulb_outline_rounded : Icons.play_arrow_rounded),
+      label: Text(running ? (_image ? '正在画…' : '等待回答…') : label),
+    );
+  }
+
+  Widget _field(
+    TextEditingController c,
+    String label, {
+    String? hint,
+    String? helper,
+    int? maxLength,
+    bool mono = false,
+    bool number = false,
+    bool decimal = false,
+    String? prefix,
+  }) {
     return TextField(
       controller: c,
       maxLength: maxLength,

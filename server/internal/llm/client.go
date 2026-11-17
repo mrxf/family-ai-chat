@@ -19,10 +19,43 @@ import (
 )
 
 // Message is a chat message. Exactly one of Content / Parts is used.
+// An assistant message may carry ToolCalls (Content may then be empty); a
+// "tool" message answers one call through ToolCallID.
 type Message struct {
-	Role    string
-	Content string
-	Parts   []Part
+	Role       string
+	Content    string
+	Parts      []Part
+	ToolCalls  []ToolCall
+	ToolCallID string
+}
+
+// Tool is a function the model may call.
+type Tool struct {
+	Name        string
+	Description string
+	Parameters  any // JSON schema
+}
+
+func (t Tool) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]any{
+		"type":     "function",
+		"function": map[string]any{"name": t.Name, "description": t.Description, "parameters": t.Parameters},
+	})
+}
+
+// ToolCall is one function call requested by the model.
+type ToolCall struct {
+	ID        string
+	Name      string
+	Arguments string // raw JSON
+}
+
+func (c ToolCall) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]any{
+		"id":       c.ID,
+		"type":     "function",
+		"function": map[string]string{"name": c.Name, "arguments": c.Arguments},
+	})
 }
 
 // Part is a multimodal content part.
@@ -38,6 +71,24 @@ type ImageURL struct {
 }
 
 func (m Message) MarshalJSON() ([]byte, error) {
+	if m.Role == "tool" {
+		return json.Marshal(struct {
+			Role       string `json:"role"`
+			ToolCallID string `json:"tool_call_id"`
+			Content    string `json:"content"`
+		}{m.Role, m.ToolCallID, m.Content})
+	}
+	if len(m.ToolCalls) > 0 {
+		var content *string // null when the model only called tools
+		if m.Content != "" {
+			content = &m.Content
+		}
+		return json.Marshal(struct {
+			Role      string     `json:"role"`
+			Content   *string    `json:"content"`
+			ToolCalls []ToolCall `json:"tool_calls"`
+		}{m.Role, content, m.ToolCalls})
+	}
 	if len(m.Parts) > 0 {
 		return json.Marshal(struct {
 			Role    string `json:"role"`
@@ -57,6 +108,7 @@ type Request struct {
 	Temperature     *float64
 	MaxTokens       int
 	ReasoningEffort string // "", "low", "medium", "high"
+	Tools           []Tool
 }
 
 type Usage struct {
@@ -77,6 +129,7 @@ type Event struct {
 type Result struct {
 	FinishReason string
 	Usage        *Usage
+	ToolCalls    []ToolCall // complete calls, in index order
 }
 
 // Client talks to one OpenAI-compatible endpoint.
@@ -85,6 +138,8 @@ type Client struct {
 	BaseURL string // e.g. https://host (/v1 is added when there is no path)
 	APIKey  string
 	HTTP    *http.Client
+	// ImageHTTP is used for image generation (much longer response timeout).
+	ImageHTTP *http.Client
 	// IdleTimeout aborts a stream when no bytes arrive for this long.
 	IdleTimeout time.Duration
 }
@@ -108,6 +163,7 @@ func NewClient(kind, baseURL, apiKey string) *Client {
 		BaseURL:     baseURL,
 		APIKey:      apiKey,
 		HTTP:        &http.Client{Transport: sharedTransport},
+		ImageHTTP:   imageHTTP,
 		IdleTimeout: 120 * time.Second,
 	}
 }
@@ -162,6 +218,9 @@ func (c *Client) body(r Request, stream bool) ([]byte, error) {
 	}
 	if r.MaxTokens > 0 {
 		payload["max_tokens"] = r.MaxTokens
+	}
+	if len(r.Tools) > 0 {
+		payload["tools"] = r.Tools
 	}
 	if c.Kind == KindOpenRouter {
 		// OpenRouter reports the real cost when usage accounting is requested and
@@ -230,6 +289,14 @@ type chunk struct {
 			Content          string `json:"content"`
 			Reasoning        string `json:"reasoning"`
 			ReasoningContent string `json:"reasoning_content"`
+			ToolCalls        []struct {
+				Index    int    `json:"index"`
+				ID       string `json:"id"`
+				Function struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
@@ -280,6 +347,17 @@ func (c *Client) Stream(ctx context.Context, r Request, onEvent func(Event)) (*R
 	}
 
 	res := &Result{}
+	calls := map[int]*ToolCall{} // by arrival order
+	slot := map[int]int{}        // upstream index -> key in calls
+	var order []int
+	finish := func() *Result {
+		for _, i := range order {
+			if c := calls[i]; c.Name != "" {
+				res.ToolCalls = append(res.ToolCalls, *c)
+			}
+		}
+		return res
+	}
 	// Report activity on every raw read (not per line) so a long line that is
 	// still arriving never trips the idle watchdog.
 	br := bufio.NewReaderSize(activityReader{resp.Body, activity}, 32<<10)
@@ -290,7 +368,7 @@ func (c *Client) Stream(ctx context.Context, r Request, onEvent func(Event)) (*R
 			if bytes.HasPrefix(line, []byte("data:")) {
 				data := bytes.TrimSpace(line[5:])
 				if bytes.Equal(data, []byte("[DONE]")) {
-					return res, nil
+					return finish(), nil
 				}
 				var ch chunk
 				if json.Unmarshal(data, &ch) != nil {
@@ -306,6 +384,25 @@ func (c *Client) Stream(ctx context.Context, r Request, onEvent func(Event)) (*R
 					}
 					if ev.Content != "" || ev.Reasoning != "" {
 						onEvent(ev)
+					}
+					for _, tc := range choice.Delta.ToolCalls {
+						key, ok := slot[tc.Index]
+						// Some upstreams send every complete call with index 0: a new id means a new call.
+						if ok && tc.ID != "" && calls[key].ID != "" && calls[key].ID != tc.ID {
+							ok = false
+						}
+						if !ok {
+							key = len(order)
+							slot[tc.Index] = key
+							calls[key] = &ToolCall{}
+							order = append(order, key)
+						}
+						c := calls[key]
+						if c.ID == "" {
+							c.ID = tc.ID
+						}
+						c.Name += tc.Function.Name
+						c.Arguments += tc.Function.Arguments
 					}
 					if choice.FinishReason != nil && *choice.FinishReason != "" {
 						res.FinishReason = *choice.FinishReason
@@ -329,7 +426,7 @@ func (c *Client) Stream(ctx context.Context, r Request, onEvent func(Event)) (*R
 				if res.FinishReason == "" && res.Usage == nil {
 					return res, io.ErrUnexpectedEOF
 				}
-				return res, nil
+				return finish(), nil
 			}
 			if cause := context.Cause(ctx); cause != nil {
 				return res, cause
