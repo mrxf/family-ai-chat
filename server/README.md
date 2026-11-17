@@ -290,8 +290,8 @@ chat.example.com {
 | `NUAN_DATA_DIR` | `./data` | 否 | 数据持久化目录（存放 `nuan.db`、`files/`、`app/`） |
 | `NUAN_LOG_FORMAT` | `text` | 否 | 标准输出日志格式：`text`（适合本地阅读）或 `json`（适合容器/采集） |
 | `NUAN_ADMIN_USERNAME` | `admin` | 否 | **仅首次启动**（`users` 表为空时）创建的管理员登录用户名 |
-| `NUAN_ADMIN_PASSWORD` | 无（空） | **首次必填** | **仅首次启动**（`users` 表为空时）创建的管理员密码；为空则拒绝启动 |
-| `NUAN_UPSTREAM_URL` | 无（空） | 否 | **仅首次启动**（`providers` 表为空且同时配置了 Key 时）创建的默认中转站地址，带不带 `/v1` 均可 |
+| `NUAN_ADMIN_PASSWORD` | 无（空） | 否 | **仅首次启动**（`users` 表为空时）创建的管理员密码；为空则进入首次设置模式：日志打印一次性设置码 `setup_code`，在 App 里初始化管理员 |
+| `NUAN_UPSTREAM_URL` | 无（空） | 否 | **只导入一次**（`providers` 表为空且同时配置了 Key 时）的默认供应商地址；只填域名自动加 `/v1`，带路径的原样使用。管理员删掉它后重启不会再导入 |
 | `NUAN_UPSTREAM_KEY` | 无（空） | 否 | **仅首次启动**默认中转站的 API Key；留空可启动后用管理员接口配置 |
 | `NUAN_MODELS` | `gpt-6.1-terra` | 否 | **仅首次启动**创建默认中转站时同步创建的模型列表（英文逗号分隔上游模型 ID，第 1 个自动设为全局 `default_model_id`） |
 | `NUAN_ASR_URL` | 无（空） | 否 | 语音输入转写服务地址（OpenAI 兼容，实际请求 `<URL>/v1/audio/transcriptions`）；须与 `NUAN_ASR_KEY` 同时非空才开启 |
@@ -305,11 +305,12 @@ chat.example.com {
 首次启动（详见 `cmd/server/seed.go`）按表独立检查，**绝不会修改或覆盖已有数据**：
 
 1. **管理员账号**（当 `users` 表行数为 `0` 时）：
-   - 校验 `NUAN_ADMIN_PASSWORD` 非空后，以 Argon2id 哈希创建角色为 `admin`、昵称为「管理员」的账号（用户名取 `NUAN_ADMIN_USERNAME`）。
+   - 配置了 `NUAN_ADMIN_PASSWORD` 时，以 Argon2id 哈希创建角色为 `admin`、昵称为「管理员」的账号（用户名取 `NUAN_ADMIN_USERNAME`）。
+   - 没配置时进入**首次设置模式**：日志打印 8 位一次性设置码（`setup_code`，每次启动重新生成）。在 App 登录页填入服务器地址，会出现「这台服务器还没有管理员」，按提示输入设置码创建管理员（`GET/POST /api/setup`）。
    - 账号建好后，后续重启即使删掉环境变量中的 `NUAN_ADMIN_PASSWORD` 也不受影响（安全起见建议首次启动成功后从 `.env` 移除明文密码）。
-2. **默认中转站与模型**（当 `providers` 表为空，且 `NUAN_UPSTREAM_URL` 与 `NUAN_UPSTREAM_KEY` 均非空时）：
+2. **默认中转站与模型**（只导入一次：`settings.providers_seeded` 未标记、`providers` 表为空，且 `NUAN_UPSTREAM_URL` 与 `NUAN_UPSTREAM_KEY` 均非空时）：
    - 创建 ID 为 `default`、名称为「默认中转站」的供应商记录。
-   - 按逗号拆分 `NUAN_MODELS`，生成 ID 形如 `m-<模型名>`（斜杠替换为 `-`）的模型记录，并根据前缀（`gpt-` / `gemini` / `claude`）自动推断友好显示名、简介、视觉能力（`vision`）、上下文窗口与深度思考档位（`default_effort` / `think_effort`）。
+   - 按逗号拆分 `NUAN_MODELS`，生成 ID 形如 `m-<模型名>`（斜杠替换为 `-`）的模型记录，并用 `internal/llm/catalog.go` 的规则推断友好显示名、简介、视觉能力（`vision`）与深度思考档位（`default_effort` / `think_effort`），上下文默认 128K。之后的供应商和模型都在 App「设置 → 模型与供应商」里管理。
    - 将列表中的第一个模型写入 `settings` 表的 `default_model_id`。
 3. **内置家庭助手**（当 `assistants` 表行数为 `0` 时）：
    - 自动创建 6 个全局共享助手（`owner_id = null`）：`🩺 健康顾问`、`🍳 家常菜师傅`、`✍️ 写作帮手`、`🌐 翻译官`、`🛡️ 防骗卫士`、`📚 学习辅导`。
@@ -498,8 +499,8 @@ cp -a /var/lib/nuan/app   "$BACKUP_DIR/" 2>/dev/null || true
 
 ## 常见问题 (FAQ)
 
-### 1. 首次启动报错 `fatal: first run: set NUAN_ADMIN_PASSWORD to create the admin account`？
-数据库刚初始化、`users` 表为空时，必须通过环境变量或工作目录下的 `.env` 提供 `NUAN_ADMIN_PASSWORD` 以创建第一个管理员账号。创建成功后该变量不再使用。
+### 1. 首次启动后怎么创建管理员？
+两种方式任选：在 `.env` 里配置 `NUAN_ADMIN_PASSWORD`，首次启动自动创建；或者留空，用 `docker logs nuan 2>&1 | grep setup_code` 查到设置码，在 App 登录页填入服务器地址后按提示初始化。
 
 ### 2. AI 回复不是逐字流式出现，而是等十几秒后一次性整段显示？
 几乎都是反向代理缓冲引起：

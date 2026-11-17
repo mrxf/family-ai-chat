@@ -11,18 +11,19 @@ import (
 	"nuan/internal/store"
 )
 
-func TestSeedRequiresPasswordAndPreservesExistingData(t *testing.T) {
+func TestSeedWithoutPasswordLeavesSetupModeAndPreservesExistingData(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "test.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer st.Close()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if err := seed(t.Context(), st, config.Config{}, log); err == nil {
-		t.Fatal("first startup without an admin password succeeded")
+	// No password: the server starts in first-run setup mode with no users.
+	if err := seed(t.Context(), st, config.Config{}, log); err != nil {
+		t.Fatal(err)
 	}
 	if n, err := st.CountUsers(t.Context()); err != nil || n != 0 {
-		t.Fatalf("failed seed left users: %d %v", n, err)
+		t.Fatalf("seed without password created users: %d %v", n, err)
 	}
 	cfg := config.Config{AdminUsername: "admin", AdminPassword: "test-password", UpstreamURL: "http://127.0.0.1:1", UpstreamKey: "local-test-key", Models: " gpt-example, ,claude-example"}
 	if err := seed(t.Context(), st, cfg, log); err != nil {
@@ -85,5 +86,32 @@ func TestSeedRequiresPasswordAndPreservesExistingData(t *testing.T) {
 	}
 	if v, err := st.GetSetting(t.Context(), "default_model_id"); err != nil || v != ms[1].ID {
 		t.Fatalf("default changed: %s %v", v, err)
+	}
+}
+
+func TestSeedImportsEnvProviderOnlyOnce(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := config.Config{AdminUsername: "admin", AdminPassword: "test-password", UpstreamURL: "http://127.0.0.1:1", UpstreamKey: "k", Models: "gpt-6.1-terra,gpt-6.1-sol"}
+	if err := seed(t.Context(), st, cfg, log); err != nil {
+		t.Fatal(err)
+	}
+	ms, _ := st.ListModels(t.Context(), false)
+	if len(ms) != 2 || ms[0].DefaultEffort != "none" || ms[1].DefaultEffort != "low" || !ms[0].Vision || ms[0].DisplayName != "GPT-6.1 Terra" {
+		t.Fatalf("suggested models: %+v %+v", ms[0], ms[1])
+	}
+	// The admin deletes the default provider: a restart must not bring it back.
+	if err := st.DeleteProvider(t.Context(), "default"); err != nil {
+		t.Fatal(err)
+	}
+	if err := seed(t.Context(), st, cfg, log); err != nil {
+		t.Fatal(err)
+	}
+	if ps, err := st.ListProviders(t.Context()); err != nil || len(ps) != 0 {
+		t.Fatalf("deleted provider came back: %+v %v", ps, err)
 	}
 }

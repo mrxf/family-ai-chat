@@ -68,7 +68,7 @@ func streamClient(t *testing.T, handler http.HandlerFunc) *Client {
 	t.Helper()
 	srv := newStreamServer(handler)
 	t.Cleanup(srv.Close)
-	c := NewClient(srv.URL, "test-key")
+	c := NewClient("", srv.URL, "test-key")
 	c.HTTP = srv.Client()
 	c.HTTP.Timeout = 3 * time.Second
 	return c
@@ -107,7 +107,7 @@ func TestStreamContentReasoningUsageAndDone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if content.String() != "你好🌞" || reasoning.String() != "想好了" || res.FinishReason != "stop" || res.Usage == nil || *res.Usage != (Usage{12, 8, 20, 5}) {
+	if content.String() != "你好🌞" || reasoning.String() != "想好了" || res.FinishReason != "stop" || res.Usage == nil || *res.Usage != (Usage{12, 8, 20, 5, 0}) {
 		t.Fatalf("content=%q reasoning=%q result=%+v usage=%+v", content.String(), reasoning.String(), res, res.Usage)
 	}
 }

@@ -119,7 +119,7 @@ func (s *Service) Send(ctx context.Context, user *store.User, in SendInput) (*Se
 		}
 	}
 
-	model, provider, err := s.resolveModel(ctx, conv, user.ID)
+	model, provider, err := s.resolveModel(ctx, conv, user.ID, len(in.Attachments) > 0)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +162,13 @@ func (s *Service) Regenerate(ctx context.Context, user *store.User, convID, mode
 			return nil, err
 		}
 	}
-	model, provider, err := s.resolveModel(ctx, conv, user.ID)
+	needVision := false
+	for _, m := range last {
+		if m.Role == "user" && len(m.Attachments) > 0 {
+			needVision = true
+		}
+	}
+	model, provider, err := s.resolveModel(ctx, conv, user.ID, needVision)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +193,41 @@ func (s *Service) Cancel(userID, messageID string) bool {
 func (s *Service) Shutdown(ctx context.Context) { s.Hub.Shutdown(ctx, errShutdown) }
 
 // resolveModel picks the model: conversation override → assistant → global default → first enabled.
-func (s *Service) resolveModel(ctx context.Context, conv *store.Conversation, userID string) (*store.Model, *store.Provider, error) {
+// When the new message carries images and the pick cannot see them, a vision model is used
+// for this reply instead (otherwise the images would silently be dropped).
+func (s *Service) resolveModel(ctx context.Context, conv *store.Conversation, userID string, needVision bool) (*store.Model, *store.Provider, error) {
+	m, p, err := s.pickModel(ctx, conv, userID)
+	if err != nil || !needVision || m.Vision {
+		return m, p, err
+	}
+	if vm, vp := s.firstVisionModel(ctx); vm != nil {
+		return vm, vp, nil
+	}
+	return m, p, nil
+}
+
+// firstVisionModel returns the first usable vision model: fallback → default → list order.
+func (s *Service) firstVisionModel(ctx context.Context) (*store.Model, *store.Provider) {
+	ids := []string{}
+	for _, k := range []string{"fallback_model_id", "default_model_id"} {
+		if v, _ := s.Store.GetSetting(ctx, k); v != "" {
+			ids = append(ids, v)
+		}
+	}
+	if ms, err := s.Store.ListModels(ctx, true); err == nil {
+		for _, m := range ms {
+			ids = append(ids, m.ID)
+		}
+	}
+	for _, id := range ids {
+		if m, p, ok := s.usableModel(ctx, id); ok && m.Vision {
+			return m, p
+		}
+	}
+	return nil, nil
+}
+
+func (s *Service) pickModel(ctx context.Context, conv *store.Conversation, userID string) (*store.Model, *store.Provider, error) {
 	candidates := []string{}
 	if conv.ModelID != nil {
 		candidates = append(candidates, *conv.ModelID)
@@ -229,13 +269,21 @@ func (s *Service) usableModel(ctx context.Context, id string) (*store.Model, *st
 	return m, p, true
 }
 
+// Client returns the (cached) upstream client of a provider.
+func (s *Service) Client(p *store.Provider) *llm.Client { return s.client(p) }
+
+// UsableModel returns an enabled model whose provider is enabled.
+func (s *Service) UsableModel(ctx context.Context, id string) (*store.Model, *store.Provider, bool) {
+	return s.usableModel(ctx, id)
+}
+
 func (s *Service) client(p *store.Provider) *llm.Client {
 	key := fmt.Sprintf("%s@%d", p.ID, p.UpdatedAt)
 	s.clientsMu.Lock()
 	defer s.clientsMu.Unlock()
 	c, ok := s.clients[key]
 	if !ok {
-		c = llm.NewClient(p.BaseURL, p.APIKey)
+		c = llm.NewClient(p.Kind, p.BaseURL, p.APIKey)
 		s.clients[key] = c
 	}
 	return c
@@ -260,12 +308,8 @@ func (s *Service) startRun(user *store.User, conv *store.Conversation, asst *sto
 
 		req, err := s.buildRequest(ctx, user, conv, asst.ID, model)
 		if err == nil {
-			req.ReasoningEffort = model.DefaultEffort
-			if think && model.ThinkEffort != "" {
-				req.ReasoningEffort = model.ThinkEffort
-			}
-			var res *llm.Result
-			res, err = s.streamWithRetry(ctx, s.client(provider), req, func(ev llm.Event) {
+			req.ReasoningEffort = effortFor(model, think)
+			onEvent := func(ev llm.Event) {
 				if firstToken == 0 {
 					firstToken = time.Since(started)
 				}
@@ -275,10 +319,29 @@ func (s *Service) startRun(user *store.User, conv *store.Conversation, asst *sto
 				if ev.Content != "" {
 					run.appendContent(ev.Content)
 				}
-			})
+			}
+			var res *llm.Result
+			res, err = s.streamWithRetry(ctx, s.client(provider), req, onEvent)
+			// Nothing reached the user yet: let the fallback model answer instead of showing an error.
+			if err != nil && firstToken == 0 && ctx.Err() == nil {
+				if fm, fp := s.fallbackModel(ctx, model.ID); fm != nil {
+					s.Log.Warn("primary model failed, using fallback", "message_id", asst.ID, "model", model.UpstreamModel, "fallback", fm.UpstreamModel, "err", err)
+					freq, ferr := s.buildRequest(ctx, user, conv, asst.ID, fm)
+					if ferr == nil {
+						model, provider = fm, fp
+						msg.ModelID = &fm.ID
+						freq.ReasoningEffort = effortFor(fm, think)
+						res, err = s.streamWithRetry(ctx, s.client(fp), freq, onEvent)
+					}
+				}
+			}
 			if res != nil && res.Usage != nil {
 				msg.PromptTokens = res.Usage.PromptTokens
 				msg.CompletionTokens = res.Usage.CompletionTokens
+				msg.Cost = res.Usage.Cost
+				if msg.Cost <= 0 {
+					msg.Cost = model.EstimateCost(msg.PromptTokens, msg.CompletionTokens)
+				}
 			}
 		}
 
@@ -308,6 +371,62 @@ func (s *Service) startRun(user *store.User, conv *store.Conversation, asst *sto
 			"first_token_ms", msg.FirstTokenMs, "duration_ms", msg.DurationMs, "tokens", msg.CompletionTokens)
 		run.finish(&FinalEvent{Message: &msg})
 	})
+}
+
+func effortFor(m *store.Model, think bool) string {
+	if think && m.ThinkEffort != "" {
+		return m.ThinkEffort
+	}
+	return m.DefaultEffort
+}
+
+// fallbackModel returns the configured fallback model when it is usable and differs from primaryID.
+func (s *Service) fallbackModel(ctx context.Context, primaryID string) (*store.Model, *store.Provider) {
+	id, _ := s.Store.GetSetting(ctx, "fallback_model_id")
+	if id == "" || id == primaryID {
+		return nil, nil
+	}
+	m, p, ok := s.usableModel(ctx, id)
+	if !ok {
+		return nil, nil
+	}
+	return m, p
+}
+
+// RepairSettings keeps the model settings pointing at usable models after the admin
+// deletes or disables providers and models: a broken default moves to the first usable
+// model (vision preferred), a broken fallback or title model is cleared.
+func (s *Service) RepairSettings(ctx context.Context) error {
+	def, err := s.Store.GetSetting(ctx, "default_model_id")
+	if err != nil {
+		return err
+	}
+	if _, _, ok := s.usableModel(ctx, def); !ok {
+		next := ""
+		if vm, _ := s.firstVisionModel(ctx); vm != nil {
+			next = vm.ID
+		} else if ms, err := s.Store.ListModels(ctx, true); err == nil && len(ms) > 0 {
+			next = ms[0].ID
+		}
+		if next != def {
+			s.Log.Info("default model changed", "from", def, "to", next)
+			if err := s.Store.SetSetting(ctx, "default_model_id", next); err != nil {
+				return err
+			}
+		}
+	}
+	for _, k := range []string{"fallback_model_id", "title_model_id"} {
+		v, err := s.Store.GetSetting(ctx, k)
+		if err != nil {
+			return err
+		}
+		if _, _, ok := s.usableModel(ctx, v); v != "" && !ok {
+			if err := s.Store.SetSetting(ctx, k, ""); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // streamWithRetry retries once if the upstream fails before producing any output.
@@ -343,6 +462,10 @@ func friendlyError(err error) string {
 			return "请求太频繁了，请稍等一会儿再试"
 		case ae.Status == 401 || ae.Status == 403:
 			return "模型服务认证失败，请联系管理员"
+		case ae.Status == 402:
+			return "模型服务的余额不足了，请联系管理员充值"
+		case ae.Status == 404:
+			return "这个模型暂时用不了（上游找不到它），请联系管理员"
 		case ae.Status == 400:
 			return "模型无法处理这条消息：" + ae.Message
 		case ae.Status >= 500:

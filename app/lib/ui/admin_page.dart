@@ -44,7 +44,7 @@ class AdminUsersPage extends ConsumerWidget {
             separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (_, i) {
               final u = list[i];
-              final disabled = u.settings['__disabled'] == true;
+              final disabled = u.disabled;
               return Pressable(
                 scale: 0.98,
                 onTap: () => _actions(context, ref, u, isMe: u.id == me.id),
@@ -62,7 +62,7 @@ class AdminUsersPage extends ConsumerWidget {
                           if (u.id == me.id) _badge(p, '我', p.muted),
                         ]),
                         const SizedBox(height: 3),
-                        Text('用户名：${u.username}', style: TextStyle(fontSize: 14, color: p.muted)),
+                        Text(disabled ? '已停用 · 不能登录' : '用户名：${u.username}', style: TextStyle(fontSize: 14, color: disabled ? p.bad : p.muted)),
                       ]),
                     ),
                     Icon(Icons.more_horiz_rounded, color: p.faint),
@@ -196,6 +196,11 @@ class AdminUsersPage extends ConsumerWidget {
         SheetAction(u.isAdmin ? Icons.remove_moderator_outlined : Icons.admin_panel_settings_outlined, u.isAdmin ? '取消管理员' : '设为管理员',
             () => run(() => api.adminUpdateUser(u.id, {'role': u.isAdmin ? 'member' : 'admin'}), '已更新')),
       if (!isMe)
+        SheetAction(u.disabled ? Icons.lock_open_rounded : Icons.block_rounded, u.disabled ? '恢复使用' : '停用账号（暂时不让登录）', () async {
+          if (!u.disabled && !await confirm(context, title: '停用 ${u.displayName} 的账号？', body: 'TA 会立刻退出登录，聊天记录会保留。之后可以随时恢复。', ok: '停用', danger: true)) return;
+          await run(() => api.adminUpdateUser(u.id, {'disabled': !u.disabled}), u.disabled ? '已恢复' : '已停用');
+        }),
+      if (!isMe)
         SheetAction(Icons.delete_outline_rounded, '删除账号', () async {
           if (!await confirm(context, title: '删除 ${u.displayName} 的账号？', body: 'TA 的所有聊天记录也会一起删除，无法恢复。', ok: '删除', danger: true)) return;
           await run(() => api.adminDeleteUser(u.id), '已删除');
@@ -208,66 +213,4 @@ class AdminUsersPage extends ConsumerWidget {
     final r = math.Random.secure();
     return List.generate(8, (_) => chars[r.nextInt(chars.length)]).join();
   }
-}
-
-final _usageProvider = FutureProvider.autoDispose<(List<Map<String, dynamic>>, List<User>)>((ref) async {
-  final api = ref.watch(apiProvider);
-  return (await api.adminUsage(30), await api.adminUsers());
-});
-
-class AdminUsagePage extends ConsumerWidget {
-  const AdminUsagePage({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final p = context.pal;
-    final data = ref.watch(_usageProvider);
-    return Scaffold(
-      appBar: AppBar(title: const Text('最近 30 天用量')),
-      body: data.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(ApiError.from(e).message)),
-        data: (d) {
-          final (rows, users) = d;
-          final byId = {for (final u in users) u.id: u};
-          rows.sort((a, b) => ((b['completion_tokens'] as num) + (b['prompt_tokens'] as num)).compareTo((a['completion_tokens'] as num) + (a['prompt_tokens'] as num)));
-          final maxTokens = rows.isEmpty ? 1 : rows.map((r) => (r['prompt_tokens'] as num) + (r['completion_tokens'] as num)).reduce((a, b) => a > b ? a : b);
-          if (rows.isEmpty) return Center(child: Text('还没有使用记录', style: TextStyle(color: p.muted)));
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              for (final r in rows)
-                Builder(builder: (_) {
-                  final u = byId[r['user_id']];
-                  final total = (r['prompt_tokens'] as num) + (r['completion_tokens'] as num);
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: p.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: p.line)),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Row(children: [
-                        Avatar(label: u?.displayName ?? '?', emoji: u?.avatar ?? '', size: 36),
-                        const SizedBox(width: 10),
-                        Expanded(child: Text(u?.displayName ?? '已删除用户', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
-                        Text('${r['messages']} 次回答', style: TextStyle(color: p.muted)),
-                      ]),
-                      const SizedBox(height: 12),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: LinearProgressIndicator(value: total / maxTokens, minHeight: 10, backgroundColor: p.surfaceAlt, color: p.accent),
-                      ),
-                      const SizedBox(height: 8),
-                      Text('${_fmt(total)} tokens（输入 ${_fmt(r['prompt_tokens'] as num)}，输出 ${_fmt(r['completion_tokens'] as num)}）',
-                          style: TextStyle(fontSize: 13, color: p.muted)),
-                    ]),
-                  );
-                }),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  static String _fmt(num n) => n >= 10000 ? '${(n / 10000).toStringAsFixed(1)} 万' : '$n';
 }

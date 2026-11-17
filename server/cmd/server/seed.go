@@ -2,23 +2,22 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"strings"
 
 	"nuan/internal/auth"
 	"nuan/internal/config"
+	"nuan/internal/llm"
 	"nuan/internal/store"
 )
 
 // seed fills empty tables on first run. It never touches existing data.
+// Without NUAN_ADMIN_PASSWORD an empty database stays without users and the
+// server enters first-run setup mode (the admin is created from the app).
 func seed(ctx context.Context, st *store.Store, cfg config.Config, log *slog.Logger) error {
 	if n, err := st.CountUsers(ctx); err != nil {
 		return err
-	} else if n == 0 {
-		if cfg.AdminPassword == "" {
-			return fmt.Errorf("first run: set NUAN_ADMIN_PASSWORD to create the admin account")
-		}
+	} else if n == 0 && cfg.AdminPassword != "" {
 		h, err := auth.HashPassword(cfg.AdminPassword)
 		if err != nil {
 			return err
@@ -30,32 +29,24 @@ func seed(ctx context.Context, st *store.Store, cfg config.Config, log *slog.Log
 		log.Info("created admin account", "username", u.Username)
 	}
 
-	if ps, err := st.ListProviders(ctx); err != nil {
+	// The .env upstream is imported once; after that the admin owns the provider
+	// list and may delete it for good.
+	if done, err := st.GetSetting(ctx, "providers_seeded"); err != nil {
 		return err
-	} else if len(ps) == 0 && cfg.UpstreamURL != "" && cfg.UpstreamKey != "" {
-		p := &store.Provider{ID: "default", Name: "默认中转站", BaseURL: cfg.UpstreamURL, APIKey: cfg.UpstreamKey, Enabled: true}
-		if err := st.UpsertProvider(ctx, p); err != nil {
+	} else if done == "" && cfg.UpstreamURL != "" && cfg.UpstreamKey != "" {
+		ps, err := st.ListProviders(ctx)
+		if err != nil {
 			return err
 		}
-		var first string
-		for i, id := range strings.Split(cfg.Models, ",") {
-			id = strings.TrimSpace(id)
-			if id == "" {
-				continue
-			}
-			m := guessModel(id)
-			m.ProviderID, m.Sort = p.ID, i
-			if err := st.UpsertModel(ctx, m); err != nil {
+		if len(ps) == 0 {
+			if err := seedProvider(ctx, st, cfg); err != nil {
 				return err
 			}
-			if first == "" {
-				first = m.ID
-			}
+			log.Info("created default provider", "url", cfg.UpstreamURL, "models", cfg.Models)
 		}
-		if first != "" {
-			_ = st.SetSetting(ctx, "default_model_id", first)
+		if err := st.SetSetting(ctx, "providers_seeded", "1"); err != nil {
+			return err
 		}
-		log.Info("created default provider", "url", cfg.UpstreamURL, "models", cfg.Models)
 	}
 
 	if n, err := st.CountAssistants(ctx); err != nil {
@@ -71,69 +62,40 @@ func seed(ctx context.Context, st *store.Store, cfg config.Config, log *slog.Log
 	return nil
 }
 
-// guessModel fills friendly defaults for well-known model families. Admins can edit later.
-func guessModel(id string) *store.Model {
-	m := &store.Model{ID: "m-" + strings.ReplaceAll(id, "/", "-"), UpstreamModel: id, DisplayName: id, Enabled: true, ContextWindow: 128000}
-	lower := strings.ToLower(id)
-	switch {
-	case strings.HasPrefix(lower, "gpt-"):
-		// Normal chats skip hidden reasoning for fast first tokens (~2s vs ~15s);
-		// "deep thinking" turns it on and streams the reasoning summary.
-		m.Vision, m.ContextWindow = true, 200000
-		m.DefaultEffort, m.ThinkEffort = "none", "high"
-		m.DisplayName, m.Description = prettyName(id), "聪明均衡，日常首选"
-		if strings.Contains(lower, "sol") {
-			m.DefaultEffort = "low" // sol does not accept "none"
-			m.Description = "最聪明，适合复杂问题，稍慢一些"
-		}
-	case strings.HasPrefix(lower, "gemini"):
-		m.Vision, m.ContextWindow = true, 500000
-		m.DisplayName, m.Description = prettyName(id), "反应快，知识面广"
-	case strings.HasPrefix(lower, "claude"):
-		m.Vision, m.ContextWindow = true, 200000
-		m.DisplayName, m.Description = prettyName(id), "写作细腻，擅长分析和长文"
+func seedProvider(ctx context.Context, st *store.Store, cfg config.Config) error {
+	p := &store.Provider{ID: "default", Kind: llm.KindCustom, Name: "默认中转站", BaseURL: cfg.UpstreamURL, APIKey: cfg.UpstreamKey, Enabled: true}
+	if err := st.UpsertProvider(ctx, p); err != nil {
+		return err
 	}
-	return m
+	var first string
+	for i, id := range strings.Split(cfg.Models, ",") {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		m := ModelFromSuggestion(llm.Suggest(p.Kind, llm.UpstreamModel{ID: id}))
+		m.ID = "m-" + strings.ReplaceAll(id, "/", "-")
+		m.ProviderID, m.Sort = p.ID, i
+		if err := st.UpsertModel(ctx, m); err != nil {
+			return err
+		}
+		if first == "" {
+			first = m.ID
+		}
+	}
+	if first != "" {
+		return st.SetSetting(ctx, "default_model_id", first)
+	}
+	return nil
 }
 
-func prettyName(id string) string {
-	parts := strings.Split(id, "-")
-	// Drop effort suffixes like -low / -medium / -high; they are an implementation detail.
-	if n := len(parts); n > 1 {
-		switch parts[n-1] {
-		case "low", "medium", "high", "xhigh":
-			parts = parts[:n-1]
-		}
+// ModelFromSuggestion converts an inferred configuration into an enabled model.
+func ModelFromSuggestion(sg llm.Suggestion) *store.Model {
+	return &store.Model{
+		UpstreamModel: sg.UpstreamModel, DisplayName: sg.DisplayName, Description: sg.Description, Vision: sg.Vision,
+		DefaultEffort: sg.DefaultEffort, ThinkEffort: sg.ThinkEffort, ContextWindow: sg.ContextWindow,
+		InputPrice: sg.InputPrice, OutputPrice: sg.OutputPrice, Enabled: true,
 	}
-	out := []string{}
-	for i := 0; i < len(parts); i++ {
-		p := parts[i]
-		// "5-5" -> "5.5"
-		if isDigits(p) && i+1 < len(parts) && isDigits(parts[i+1]) {
-			p = p + "." + parts[i+1]
-			i++
-		}
-		switch {
-		case strings.EqualFold(p, "gpt"):
-			p = "GPT"
-		case len(p) > 0 && p[0] >= 'a' && p[0] <= 'z':
-			p = strings.ToUpper(p[:1]) + p[1:]
-		}
-		out = append(out, p)
-	}
-	return strings.Replace(strings.Join(out, " "), "GPT ", "GPT-", 1)
-}
-
-func isDigits(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
 }
 
 func builtinAssistants() []*store.Assistant {

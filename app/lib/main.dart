@@ -52,7 +52,7 @@ class NuanApp extends ConsumerWidget {
         final mq = MediaQuery.of(context);
         final system = mq.textScaler.scale(1);
         return MediaQuery(
-          data: mq.copyWith(textScaler: TextScaler.linear((system * settings.fontScale).clamp(0.9, 2.0))),
+          data: mq.copyWith(textScaler: TextScaler.linear((system * settings.fontScale).clamp(0.8, 2.0))),
           child: child!,
         );
       },

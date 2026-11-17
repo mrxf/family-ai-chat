@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/models.dart';
 import '../state/chat.dart';
 import '../state/session.dart';
+import 'admin/models_page.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -86,6 +87,10 @@ class _WelcomeState extends ConsumerState<Welcome> {
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 16.5, color: p.muted, height: 1.5),
               ),
+              if (boot.models.isEmpty) ...[
+                const SizedBox(height: 22),
+                _NoModels(isAdmin: boot.user.isAdmin),
+              ],
               const SizedBox(height: 28),
               for (final (emoji, text) in suggestions)
                 Padding(
@@ -113,6 +118,38 @@ class _WelcomeState extends ConsumerState<Welcome> {
         ),
       );
     });
+  }
+}
+
+/// Shown when the server has no usable model yet (fresh install, or all disabled).
+class _NoModels extends StatelessWidget {
+  const _NoModels({required this.isAdmin});
+  final bool isAdmin;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Pressable(
+      scale: 0.98,
+      onTap: isAdmin ? () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ModelsPage())) : null,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(18), border: Border.all(color: p.accent.withValues(alpha: 0.4))),
+        child: Row(children: [
+          Icon(isAdmin ? Icons.hub_rounded : Icons.hourglass_empty_rounded, color: p.accent),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(isAdmin ? '还没有可用的模型' : '小暖还没准备好', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 2),
+              Text(isAdmin ? '点这里添加模型服务，家人就能开始聊天了' : '请联系家里的管理员配置一下模型',
+                  style: TextStyle(fontSize: 13.5, color: p.muted, height: 1.4)),
+            ]),
+          ),
+          if (isAdmin) Icon(Icons.chevron_right_rounded, color: p.accent),
+        ]),
+      ),
+    );
   }
 }
 

@@ -8,38 +8,47 @@ import (
 
 type Provider struct {
 	ID        string `json:"id"`
+	Kind      string `json:"kind"` // preset: openai, openrouter, gemini, ... or custom
 	Name      string `json:"name"`
 	BaseURL   string `json:"base_url"`
 	APIKey    string `json:"-"`
 	Enabled   bool   `json:"enabled"`
+	Sort      int    `json:"sort"`
 	CreatedAt int64  `json:"created_at"`
 	UpdatedAt int64  `json:"updated_at"`
 }
 
 type Model struct {
-	ID            string `json:"id"`
-	ProviderID    string `json:"provider_id"`
-	UpstreamModel string `json:"upstream_model"`
-	DisplayName   string `json:"display_name"`
-	Description   string `json:"description"`
-	Vision        bool   `json:"vision"`
-	DefaultEffort string `json:"default_effort"`
-	ThinkEffort   string `json:"think_effort"`
-	ContextWindow int    `json:"context_window"`
-	MaxOutput     int    `json:"max_output"`
-	Enabled       bool   `json:"enabled"`
-	Sort          int    `json:"sort"`
-	CreatedAt     int64  `json:"created_at"`
-	UpdatedAt     int64  `json:"updated_at"`
+	ID            string  `json:"id"`
+	ProviderID    string  `json:"provider_id"`
+	UpstreamModel string  `json:"upstream_model"`
+	DisplayName   string  `json:"display_name"`
+	Description   string  `json:"description"`
+	Vision        bool    `json:"vision"`
+	DefaultEffort string  `json:"default_effort"`
+	ThinkEffort   string  `json:"think_effort"`
+	ContextWindow int     `json:"context_window"`
+	MaxOutput     int     `json:"max_output"`
+	InputPrice    float64 `json:"input_price"`  // USD per million prompt tokens (0 = unknown)
+	OutputPrice   float64 `json:"output_price"` // USD per million completion tokens
+	Enabled       bool    `json:"enabled"`
+	Sort          int     `json:"sort"`
+	CreatedAt     int64   `json:"created_at"`
+	UpdatedAt     int64   `json:"updated_at"`
+}
+
+// EstimateCost returns the USD cost of a reply from the configured prices.
+func (m *Model) EstimateCost(promptTokens, completionTokens int) float64 {
+	return (float64(promptTokens)*m.InputPrice + float64(completionTokens)*m.OutputPrice) / 1e6
 }
 
 // ---- providers ----
 
-const providerCols = `id, name, base_url, api_key, enabled, created_at, updated_at`
+const providerCols = `id, kind, name, base_url, api_key, enabled, sort, created_at, updated_at`
 
 func scanProvider(row interface{ Scan(...any) error }) (*Provider, error) {
 	var p Provider
-	if err := row.Scan(&p.ID, &p.Name, &p.BaseURL, &p.APIKey, &p.Enabled, &p.CreatedAt, &p.UpdatedAt); err != nil {
+	if err := row.Scan(&p.ID, &p.Kind, &p.Name, &p.BaseURL, &p.APIKey, &p.Enabled, &p.Sort, &p.CreatedAt, &p.UpdatedAt); err != nil {
 		return nil, notFound(err)
 	}
 	return &p, nil
@@ -53,10 +62,14 @@ func (s *Store) UpsertProvider(ctx context.Context, p *Provider) error {
 	if p.CreatedAt == 0 {
 		p.CreatedAt = now
 	}
+	if p.Kind == "" {
+		p.Kind = "custom"
+	}
 	p.UpdatedAt = now
-	_, err := s.w.ExecContext(ctx, `INSERT INTO providers (`+providerCols+`) VALUES (?,?,?,?,?,?,?)
-		ON CONFLICT(id) DO UPDATE SET name=excluded.name, base_url=excluded.base_url, api_key=excluded.api_key, enabled=excluded.enabled, updated_at=excluded.updated_at`,
-		p.ID, p.Name, p.BaseURL, p.APIKey, p.Enabled, p.CreatedAt, p.UpdatedAt)
+	_, err := s.w.ExecContext(ctx, `INSERT INTO providers (`+providerCols+`) VALUES (?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, name=excluded.name, base_url=excluded.base_url, api_key=excluded.api_key,
+		enabled=excluded.enabled, sort=excluded.sort, updated_at=excluded.updated_at`,
+		p.ID, p.Kind, p.Name, p.BaseURL, p.APIKey, p.Enabled, p.Sort, p.CreatedAt, p.UpdatedAt)
 	return err
 }
 
@@ -65,7 +78,7 @@ func (s *Store) GetProvider(ctx context.Context, id string) (*Provider, error) {
 }
 
 func (s *Store) ListProviders(ctx context.Context) ([]*Provider, error) {
-	rows, err := s.r.QueryContext(ctx, `SELECT `+providerCols+` FROM providers ORDER BY created_at`)
+	rows, err := s.r.QueryContext(ctx, `SELECT `+providerCols+` FROM providers ORDER BY sort, created_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -87,18 +100,26 @@ func (s *Store) DeleteProvider(ctx context.Context, id string) error {
 
 // ---- models ----
 
-const modelCols = `id, provider_id, upstream_model, display_name, description, vision, default_effort, think_effort, context_window, max_output, enabled, sort, created_at, updated_at`
+const modelCols = `id, provider_id, upstream_model, display_name, description, vision, default_effort, think_effort, context_window, max_output, input_price, output_price, enabled, sort, created_at, updated_at`
 
 func scanModel(row interface{ Scan(...any) error }) (*Model, error) {
 	var m Model
 	if err := row.Scan(&m.ID, &m.ProviderID, &m.UpstreamModel, &m.DisplayName, &m.Description, &m.Vision, &m.DefaultEffort, &m.ThinkEffort,
-		&m.ContextWindow, &m.MaxOutput, &m.Enabled, &m.Sort, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		&m.ContextWindow, &m.MaxOutput, &m.InputPrice, &m.OutputPrice, &m.Enabled, &m.Sort, &m.CreatedAt, &m.UpdatedAt); err != nil {
 		return nil, notFound(err)
 	}
 	return &m, nil
 }
 
 func (s *Store) UpsertModel(ctx context.Context, m *Model) error {
+	return upsertModel(ctx, s.w, m)
+}
+
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func upsertModel(ctx context.Context, db execer, m *Model) error {
 	now := Now()
 	if m.ID == "" {
 		m.ID = NewID()
@@ -107,14 +128,70 @@ func (s *Store) UpsertModel(ctx context.Context, m *Model) error {
 		m.CreatedAt = now
 	}
 	m.UpdatedAt = now
-	_, err := s.w.ExecContext(ctx, `INSERT INTO models (`+modelCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+	_, err := db.ExecContext(ctx, `INSERT INTO models (`+modelCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET provider_id=excluded.provider_id, upstream_model=excluded.upstream_model,
 		display_name=excluded.display_name, description=excluded.description, vision=excluded.vision, default_effort=excluded.default_effort, think_effort=excluded.think_effort,
-		context_window=excluded.context_window, max_output=excluded.max_output, enabled=excluded.enabled, sort=excluded.sort,
-		updated_at=excluded.updated_at`,
+		context_window=excluded.context_window, max_output=excluded.max_output, input_price=excluded.input_price, output_price=excluded.output_price,
+		enabled=excluded.enabled, sort=excluded.sort, updated_at=excluded.updated_at`,
 		m.ID, m.ProviderID, m.UpstreamModel, m.DisplayName, m.Description, m.Vision, m.DefaultEffort, m.ThinkEffort,
-		m.ContextWindow, m.MaxOutput, m.Enabled, m.Sort, m.CreatedAt, m.UpdatedAt)
+		m.ContextWindow, m.MaxOutput, m.InputPrice, m.OutputPrice, m.Enabled, m.Sort, m.CreatedAt, m.UpdatedAt)
 	return err
+}
+
+// CreateModels inserts several models in one transaction, appended after the existing ones.
+func (s *Store) CreateModels(ctx context.Context, ms []*Model) error {
+	return s.tx(ctx, func(tx *sql.Tx) error {
+		var next int
+		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(sort), -1) + 1 FROM models`).Scan(&next); err != nil {
+			return err
+		}
+		for i, m := range ms {
+			m.Sort = next + i
+			if err := upsertModel(ctx, tx, m); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// SetModelOrder rewrites sort so models appear in the given order; unlisted models keep
+// their relative order after the listed ones.
+func (s *Store) SetModelOrder(ctx context.Context, ids []string) error {
+	return s.tx(ctx, func(tx *sql.Tx) error {
+		now := Now()
+		for i, id := range ids {
+			if _, err := tx.ExecContext(ctx, `UPDATE models SET sort = ?, updated_at = ? WHERE id = ?`, i, now, id); err != nil {
+				return err
+			}
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE models SET sort = sort + ? WHERE id NOT IN (SELECT value FROM json_each(?))`, len(ids), jsonStrings(ids))
+		return err
+	})
+}
+
+func jsonStrings(v []string) string {
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
+// ModelCounts returns, per provider id, the number of models and enabled models.
+func (s *Store) ModelCounts(ctx context.Context) (map[string][2]int, error) {
+	rows, err := s.r.QueryContext(ctx, `SELECT provider_id, COUNT(*), COALESCE(SUM(enabled), 0) FROM models GROUP BY provider_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][2]int{}
+	for rows.Next() {
+		var id string
+		var n, en int
+		if err := rows.Scan(&id, &n, &en); err != nil {
+			return nil, err
+		}
+		out[id] = [2]int{n, en}
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) GetModel(ctx context.Context, id string) (*Model, error) {

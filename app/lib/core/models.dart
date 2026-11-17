@@ -9,7 +9,8 @@ String? _strN(dynamic v) => v is String && v.isNotEmpty ? v : null;
 class User {
   final String id, username, displayName, avatar, role;
   final Map<String, dynamic> settings;
-  const User({required this.id, required this.username, required this.displayName, required this.avatar, required this.role, this.settings = const {}});
+  final bool disabled;
+  const User({required this.id, required this.username, required this.displayName, required this.avatar, required this.role, this.settings = const {}, this.disabled = false});
 
   bool get isAdmin => role == 'admin';
   String get initial => displayName.isEmpty ? '我' : displayName.characters.first;
@@ -21,8 +22,10 @@ class User {
         avatar: _str(j['avatar']),
         role: _str(j['role']),
         settings: (j['settings'] as Map?)?.cast<String, dynamic>() ?? const {},
+        disabled: j['disabled'] == true,
       );
-  Map<String, dynamic> toJson() => {'id': id, 'username': username, 'display_name': displayName, 'avatar': avatar, 'role': role, 'settings': settings};
+  Map<String, dynamic> toJson() =>
+      {'id': id, 'username': username, 'display_name': displayName, 'avatar': avatar, 'role': role, 'settings': settings, 'disabled': disabled};
 }
 
 class ChatModel {

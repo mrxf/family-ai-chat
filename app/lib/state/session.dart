@@ -66,9 +66,19 @@ class Session {
 }
 
 class SessionNotifier extends Notifier<Session> {
+  DateTime _lastRefresh = DateTime.now();
+
   @override
   Session build() {
     Future.microtask(_restore);
+    // Phones keep the app alive for days: refresh models & assistants when it comes back
+    // to the foreground, so admin changes reach the family without a restart.
+    final lifecycle = AppLifecycleListener(onResume: () {
+      if (state.status == SessionStatus.loggedIn && DateTime.now().difference(_lastRefresh) > const Duration(minutes: 3)) {
+        unawaited(refresh());
+      }
+    });
+    ref.onDispose(lifecycle.dispose);
     return const Session(status: SessionStatus.loading);
   }
 
@@ -121,6 +131,7 @@ class SessionNotifier extends Notifier<Session> {
   Future<void> refresh() async {
     final api = state.api;
     if (api == null) return;
+    _lastRefresh = DateTime.now();
     try {
       final boot = await api.bootstrap();
       await _st.writeCache('bootstrap', boot.toJson());
@@ -132,6 +143,12 @@ class SessionNotifier extends Notifier<Session> {
     final base = normalizeServer(server);
     final anon = Api(base);
     final (token, _) = await anon.login(username.trim(), password, 'Android');
+    await loginWithToken(base, username, token);
+  }
+
+  /// Finishes a login when the token was obtained elsewhere (first-run setup).
+  Future<void> loginWithToken(String server, String username, String token) async {
+    final base = normalizeServer(server);
     final api = _makeApi(base, token);
     final boot = await api.bootstrap();
     await _st.writeToken(token);

@@ -187,6 +187,7 @@ type Message struct {
 	CompletionTokens int          `json:"completion_tokens"`
 	FirstTokenMs     int64        `json:"first_token_ms"`
 	DurationMs       int64        `json:"duration_ms"`
+	Cost             float64      `json:"-"` // USD; only written by FinishMessage, read via usage queries
 	CreatedAt        int64        `json:"created_at"`
 	UpdatedAt        int64        `json:"updated_at"`
 }
@@ -303,8 +304,8 @@ func (s *Store) ListMessages(ctx context.Context, convID, before string, limit i
 func (s *Store) FinishMessage(ctx context.Context, m *Message) error {
 	m.UpdatedAt = Now()
 	_, err := s.w.ExecContext(ctx, `UPDATE messages SET content=?, reasoning=?, status=?, error=?, model_id=?, prompt_tokens=?, completion_tokens=?,
-		first_token_ms=?, duration_ms=?, updated_at=? WHERE id=?`,
-		m.Content, m.Reasoning, m.Status, m.Error, m.ModelID, m.PromptTokens, m.CompletionTokens, m.FirstTokenMs, m.DurationMs, m.UpdatedAt, m.ID)
+		first_token_ms=?, duration_ms=?, cost=?, updated_at=? WHERE id=?`,
+		m.Content, m.Reasoning, m.Status, m.Error, m.ModelID, m.PromptTokens, m.CompletionTokens, m.FirstTokenMs, m.DurationMs, m.Cost, m.UpdatedAt, m.ID)
 	return err
 }
 
@@ -354,17 +355,28 @@ func (s *Store) GetFile(ctx context.Context, id, userID string) (*File, error) {
 // ---- usage stats ----
 
 type UsageRow struct {
-	UserID           string `json:"user_id"`
-	Messages         int    `json:"messages"`
-	PromptTokens     int64  `json:"prompt_tokens"`
-	CompletionTokens int64  `json:"completion_tokens"`
+	UserID           string  `json:"user_id"`
+	Messages         int     `json:"messages"`
+	PromptTokens     int     `json:"prompt_tokens"`
+	CompletionTokens int     `json:"completion_tokens"`
+	Cost             float64 `json:"cost"`
+}
+
+// ModelUsageRow aggregates usage per model. ModelID is empty for replies whose model was deleted.
+type ModelUsageRow struct {
+	ModelID          string  `json:"model_id"`
+	DisplayName      string  `json:"display_name"`
+	Messages         int     `json:"messages"`
+	PromptTokens     int     `json:"prompt_tokens"`
+	CompletionTokens int     `json:"completion_tokens"`
+	Cost             float64 `json:"cost"`
 }
 
 // UsageSince aggregates assistant message usage per user since the given unix ms.
 func (s *Store) UsageSince(ctx context.Context, since int64) ([]UsageRow, error) {
-	rows, err := s.r.QueryContext(ctx, `SELECT c.user_id, COUNT(*), COALESCE(SUM(m.prompt_tokens),0), COALESCE(SUM(m.completion_tokens),0)
+	rows, err := s.r.QueryContext(ctx, `SELECT c.user_id, COUNT(*), COALESCE(SUM(m.prompt_tokens),0), COALESCE(SUM(m.completion_tokens),0), COALESCE(SUM(m.cost),0)
 		FROM messages m JOIN conversations c ON c.id = m.conversation_id
-		WHERE m.role = 'assistant' AND m.created_at >= ? GROUP BY c.user_id`, since)
+		WHERE m.role = 'assistant' AND m.created_at >= ? GROUP BY c.user_id ORDER BY 5 DESC, 4 DESC`, since)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +384,30 @@ func (s *Store) UsageSince(ctx context.Context, since int64) ([]UsageRow, error)
 	out := []UsageRow{}
 	for rows.Next() {
 		var r UsageRow
-		if err := rows.Scan(&r.UserID, &r.Messages, &r.PromptTokens, &r.CompletionTokens); err != nil {
+		if err := rows.Scan(&r.UserID, &r.Messages, &r.PromptTokens, &r.CompletionTokens, &r.Cost); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// ModelUsageSince aggregates assistant message usage per model since the given unix ms.
+// Conversations are not joined: deleted users' messages are gone with their conversations anyway.
+func (s *Store) ModelUsageSince(ctx context.Context, since int64) ([]ModelUsageRow, error) {
+	rows, err := s.r.QueryContext(ctx, `SELECT COALESCE(md.id, ''), COALESCE(md.display_name, ''), COUNT(*),
+		COALESCE(SUM(m.prompt_tokens),0), COALESCE(SUM(m.completion_tokens),0), COALESCE(SUM(m.cost),0)
+		FROM messages m LEFT JOIN models md ON md.id = m.model_id
+		WHERE m.role = 'assistant' AND m.created_at >= ?
+		GROUP BY COALESCE(md.id, '') ORDER BY 6 DESC, 5 DESC`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []ModelUsageRow{}
+	for rows.Next() {
+		var r ModelUsageRow
+		if err := rows.Scan(&r.ModelID, &r.DisplayName, &r.Messages, &r.PromptTokens, &r.CompletionTokens, &r.Cost); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

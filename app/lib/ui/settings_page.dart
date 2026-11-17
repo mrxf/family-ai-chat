@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../core/api.dart';
 import '../state/session.dart';
+import 'admin/models_page.dart';
+import 'admin/usage_page.dart';
 import 'admin_page.dart';
 import 'sheets.dart';
 import 'theme.dart';
@@ -52,18 +55,7 @@ class SettingsPage extends ConsumerWidget {
           ),
 
           _Section('字体大小', children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-              child: _Segmented<double>(
-                value: s.fontScale,
-                options: {1.0: '标准', 1.15: '大', 1.3: '特大'},
-                onChanged: (v) => settings.update(s.copyWith(fontScale: v)),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 8, 18, 16),
-              child: Text('小暖会用这个大小显示文字。', style: Theme.of(context).textTheme.bodyLarge),
-            ),
+            _FontScaleSlider(value: s.fontScale, onChanged: (v) => settings.update(s.copyWith(fontScale: v))),
           ]),
 
           _Section('外观', children: [
@@ -110,16 +102,16 @@ class SettingsPage extends ConsumerWidget {
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminUsersPage())),
               ),
               _Tile(
-                icon: Icons.tune_rounded,
-                title: '默认模型',
-                subtitle: session.boot?.defaultModel?.displayName ?? '',
-                onTap: () => _pickDefaultModel(context, ref),
+                icon: Icons.hub_rounded,
+                title: '模型与供应商',
+                subtitle: session.boot?.defaultModel == null ? '还没有可用的模型，点这里添加' : '默认：${session.boot!.defaultModel!.displayName} · 共 ${session.boot!.models.length} 个模型',
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ModelsPage())),
               ),
               _Tile(
                 icon: Icons.bar_chart_rounded,
-                title: '用量统计',
-                subtitle: '最近 30 天每个人用了多少',
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminUsagePage())),
+                title: '用量与花费',
+                subtitle: '每个人、每个模型用了多少钱',
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UsagePage())),
               ),
             ]),
 
@@ -238,17 +230,72 @@ class SettingsPage extends ConsumerWidget {
       if (context.mounted) showToast(context, e.message);
     }
   }
+}
 
-  Future<void> _pickDefaultModel(BuildContext context, WidgetRef ref) async {
-    final id = await showModelPicker(context, ref, title: '全家默认使用的模型');
-    if (id == null) return;
-    try {
-      await ref.read(apiProvider).adminPutSettings({'default_model_id': id});
-      await ref.read(sessionProvider.notifier).refresh();
-      if (context.mounted) showToast(context, '已设为默认模型');
-    } on ApiError catch (e) {
-      if (context.mounted) showToast(context, e.message);
+/// Five font sizes on a stepped slider, with a live preview.
+class _FontScaleSlider extends StatelessWidget {
+  const _FontScaleSlider({required this.value, required this.onChanged});
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  static const _steps = [(0.85, '小'), (0.92, '较小'), (1.0, '标准'), (1.15, '大'), (1.3, '特大')];
+
+  int get _index {
+    var best = 0;
+    for (var i = 1; i < _steps.length; i++) {
+      if ((_steps[i].$1 - value).abs() < (_steps[best].$1 - value).abs()) best = i;
     }
+    return best;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    final i = _index;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          Padding(padding: const EdgeInsets.only(left: 8), child: Text('A', textScaler: TextScaler.noScaling, style: TextStyle(fontSize: 14, color: p.muted, fontWeight: FontWeight.w600))),
+          Expanded(
+            child: Slider(
+              value: i.toDouble(),
+              min: 0,
+              max: (_steps.length - 1).toDouble(),
+              divisions: _steps.length - 1,
+              label: _steps[i].$2,
+              onChanged: (v) {
+                final n = v.round();
+                if (n != i) {
+                  HapticFeedback.selectionClick();
+                  onChanged(_steps[n].$1);
+                }
+              },
+            ),
+          ),
+          Padding(padding: const EdgeInsets.only(right: 8), child: Text('A', textScaler: TextScaler.noScaling, style: TextStyle(fontSize: 24, color: p.muted, fontWeight: FontWeight.w600))),
+        ]),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            for (final (j, (_, label)) in _steps.indexed)
+              SizedBox(
+                width: 40,
+                child: Text(label,
+                    textAlign: TextAlign.center,
+                    textScaler: TextScaler.noScaling,
+                    style: TextStyle(fontSize: 13, color: j == i ? p.accent : p.faint, fontWeight: j == i ? FontWeight.w700 : FontWeight.w500)),
+              ),
+          ]),
+        ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(color: p.surfaceAlt, borderRadius: BorderRadius.circular(14)),
+          child: Text('小暖会用这个大小显示文字。拖动上面的滑块，找一个看着最舒服的大小。', style: Theme.of(context).textTheme.bodyLarge),
+        ),
+      ]),
+    );
   }
 }
 

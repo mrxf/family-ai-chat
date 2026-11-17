@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api.dart';
 import '../state/session.dart';
+import 'setup_page.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -25,6 +26,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   bool _busy = false, _hide = true;
   String? _error;
   _Reach _reach = _Reach.unknown;
+  bool _needsSetup = false;
   Timer? _debounce;
 
   @override
@@ -50,10 +52,20 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       setState(() => _reach = _Reach.unknown);
       return;
     }
-    setState(() => _reach = _Reach.checking);
+    setState(() {
+      _reach = _Reach.checking;
+      _needsSetup = false;
+    });
     _debounce = Timer(const Duration(milliseconds: 500), () async {
-      final ok = await Api(s).ping();
-      if (mounted && normalizeServer(_server.text) == s) setState(() => _reach = ok ? _Reach.ok : _Reach.fail);
+      final api = Api(s);
+      final ok = await api.ping();
+      final setup = ok && await api.needsSetup();
+      if (mounted && normalizeServer(_server.text) == s) {
+        setState(() {
+          _reach = ok ? _Reach.ok : _Reach.fail;
+          _needsSetup = setup;
+        });
+      }
     });
   }
 
@@ -120,6 +132,34 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         helperText: _reach == _Reach.fail ? '连不上这个地址，请检查是否填写正确' : null,
                         helperStyle: TextStyle(color: p.bad),
                       ),
+                    ),
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 250),
+                      child: !_needsSetup
+                          ? const SizedBox(width: double.infinity)
+                          : Padding(
+                              padding: const EdgeInsets.only(top: 14),
+                              child: Pressable(
+                                scale: 0.98,
+                                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => SetupPage(server: normalizeServer(_server.text)))),
+                                child: Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(18), border: Border.all(color: p.accent.withValues(alpha: 0.4))),
+                                  child: Row(children: [
+                                    Icon(Icons.rocket_launch_rounded, color: p.accent),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                        const Text('这台服务器还没有管理员', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                                        const SizedBox(height: 2),
+                                        Text('你是部署它的人？点这里完成初始化', style: TextStyle(fontSize: 13.5, color: p.muted)),
+                                      ]),
+                                    ),
+                                    Icon(Icons.chevron_right_rounded, color: p.accent),
+                                  ]),
+                                ),
+                              ),
+                            ),
                     ),
                     const SizedBox(height: 16),
                     _label('用户名'),

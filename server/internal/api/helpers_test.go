@@ -136,6 +136,16 @@ func newFakeUpstream(t *testing.T) *fakeUpstream {
 	t.Helper()
 	u := &fakeUpstream{plans: map[string]upstreamPlan{}, requests: map[string][]upstreamRequest{}, cancelled: make(chan string, 32)}
 	u.server = newHTTPTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" && r.Method == "GET" {
+			if r.Header.Get("Authorization") != "Bearer local-test-key" {
+				w.WriteHeader(401)
+				fmt.Fprint(w, `{"error":{"message":"invalid key"}}`)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"data":[{"id":"fake","created":1},{"id":"gpt-6.1-terra","created":3},{"id":"text-embedding-3-small","created":2},{"id":"gpt-4o-2024-08-06","created":4}]}`)
+			return
+		}
 		if r.URL.Path != "/v1/chat/completions" || r.Method != "POST" || r.Header.Get("Authorization") != "Bearer local-test-key" {
 			t.Errorf("unexpected upstream request: %s %s", r.Method, r.URL)
 			http.Error(w, "bad request", 400)
@@ -278,7 +288,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	if l, ok := up.server.Listener.(*memoryListener); ok {
 		// NewClient exposes the shared transport through its public HTTP field.
 		// These fixtures are intentionally sequential; restore it after all work.
-		transport := llm.NewClient(up.server.URL, "").HTTP.Transport.(*http.Transport)
+		transport := llm.NewClient("", up.server.URL, "").HTTP.Transport.(*http.Transport)
 		oldDial, oldProxy := transport.DialContext, transport.Proxy
 		transport.CloseIdleConnections()
 		transport.DialContext, transport.Proxy = l.dial, nil

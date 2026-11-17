@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
+import 'admin_models.dart';
 import 'models.dart';
 
 class ApiError implements Exception {
@@ -108,6 +109,22 @@ class Api {
   }
 
   Future<void> logout() => _req('POST', '/api/auth/logout');
+
+  /// First-run setup: whether this server still has no accounts.
+  Future<bool> needsSetup() async {
+    try {
+      final d = await _req('GET', '/api/setup');
+      return d is Map && d['needs_setup'] == true;
+    } catch (_) {
+      return false; // older servers have no setup endpoint
+    }
+  }
+
+  Future<(String, User)> setup({required String code, required String username, required String password, required String displayName, required String device}) async {
+    final d = await _req('POST', '/api/setup',
+        body: {'code': code, 'username': username, 'password': password, 'display_name': displayName, 'device': device});
+    return (d['token'] as String, User.fromJson((d['user'] as Map).cast()));
+  }
 
   Future<Bootstrap> bootstrap() async => Bootstrap.fromJson((await _req('GET', '/api/bootstrap') as Map).cast());
 
@@ -237,8 +254,43 @@ class Api {
   Future<void> adminDeleteUser(String id) => _req('DELETE', '/api/admin/users/$id');
   Future<Map<String, dynamic>> adminSettings() async => ((await _req('GET', '/api/admin/settings')) as Map).cast();
   Future<Map<String, dynamic>> adminPutSettings(Map<String, dynamic> body) async => ((await _req('PUT', '/api/admin/settings', body: body)) as Map).cast();
-  Future<List<Map<String, dynamic>>> adminUsage(int days) async =>
-      (((await _req('GET', '/api/admin/usage', query: {'days': days})) as Map)['items'] as List).map((e) => (e as Map).cast<String, dynamic>()).toList();
+  Future<UsageReport> adminUsage(int days) async => UsageReport.fromJson(((await _req('GET', '/api/admin/usage', query: {'days': days})) as Map).cast());
+
+  // ---- admin: providers & models ----
+  static List<T> _list<T>(dynamic d, T Function(Map<String, dynamic>) f) => ((d as List?) ?? const []).map((e) => f((e as Map).cast<String, dynamic>())).toList();
+
+  Future<List<ProviderPreset>> adminPresets() async => _list(await _req('GET', '/api/admin/provider-presets'), ProviderPreset.fromJson);
+  Future<List<AdminProvider>> adminProviders() async => _list(await _req('GET', '/api/admin/providers'), AdminProvider.fromJson);
+  Future<AdminProvider> adminCreateProvider(Map<String, dynamic> body) async =>
+      AdminProvider.fromJson((await _req('POST', '/api/admin/providers', body: body) as Map).cast());
+  Future<AdminProvider> adminUpdateProvider(String id, Map<String, dynamic> body) async =>
+      AdminProvider.fromJson((await _req('PATCH', '/api/admin/providers/$id', body: body) as Map).cast());
+  Future<ModelSettings> adminDeleteProvider(String id) async => ModelSettings.fromJson((await _req('DELETE', '/api/admin/providers/$id') as Map).cast());
+  Future<ProviderTestResult> adminTestProvider(Map<String, dynamic> body) async =>
+      ProviderTestResult.fromJson((await _req('POST', '/api/admin/providers/test', body: body) as Map).cast());
+  Future<List<UpstreamItem>> adminUpstreamModels(String providerId) async =>
+      _list(((await _req('GET', '/api/admin/providers/$providerId/upstream-models')) as Map)['items'], UpstreamItem.fromJson);
+
+  Future<List<AdminModel>> adminModels() async => _list(await _req('GET', '/api/admin/models'), AdminModel.fromJson);
+  Future<AdminModel> adminCreateModel(Map<String, dynamic> body) async => AdminModel.fromJson((await _req('POST', '/api/admin/models', body: body) as Map).cast());
+  Future<AdminModel> adminUpdateModel(String id, Map<String, dynamic> body) async =>
+      AdminModel.fromJson((await _req('PATCH', '/api/admin/models/$id', body: body) as Map).cast());
+  Future<ModelSettings> adminDeleteModel(String id) async => ModelSettings.fromJson((await _req('DELETE', '/api/admin/models/$id') as Map).cast());
+  Future<List<AdminModel>> adminBatchModels(String providerId, List<Map<String, dynamic>> models) async =>
+      _list(((await _req('POST', '/api/admin/models/batch', body: {'provider_id': providerId, 'models': models})) as Map)['items'], AdminModel.fromJson);
+  Future<List<AdminModel>> adminReorderModels(List<String> ids) async => _list(await _req('PUT', '/api/admin/models/order', body: {'ids': ids}), AdminModel.fromJson);
+  Future<ModelTestResult> adminTestModel(String id, {bool think = false}) async {
+    try {
+      final r = await dio.post('/api/admin/models/$id/test', data: {'think': think}, options: Options(receiveTimeout: const Duration(seconds: 100)));
+      return ModelTestResult.fromJson((r.data as Map).cast());
+    } catch (e) {
+      throw ApiError.from(e);
+    }
+  }
+
+  Future<ModelSettings> adminModelSettings() async => ModelSettings.fromJson((await _req('GET', '/api/admin/settings') as Map).cast());
+  Future<ModelSettings> adminPutModelSettings(Map<String, String> body) async =>
+      ModelSettings.fromJson((await _req('PUT', '/api/admin/settings', body: body) as Map).cast());
 }
 
 class ConversationDetail {

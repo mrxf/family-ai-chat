@@ -66,9 +66,16 @@ func run() error {
 	if cfg.ASRURL != "" && cfg.ASRKey != "" {
 		apiCfg.ASR = &api.ASRConfig{BaseURL: cfg.ASRURL, APIKey: cfg.ASRKey, Model: cfg.ASRModel}
 	}
+	if err := svc.RepairSettings(ctx); err != nil {
+		return err
+	}
+	apiSrv := api.New(apiCfg, st, svc, log)
+	if err := apiSrv.InitSetup(ctx); err != nil {
+		return err
+	}
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           api.New(apiCfg, st, svc, log).Routes(),
+		Handler:           apiSrv.Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second, // uploads; no WriteTimeout because of SSE
 		IdleTimeout:       120 * time.Second,

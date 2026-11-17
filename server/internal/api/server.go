@@ -38,6 +38,8 @@ type Server struct {
 	Sessions *auth.Sessions
 	Limiter  *auth.Limiter
 	Log      *slog.Logger
+
+	setup setupState
 }
 
 func New(cfg Config, st *store.Store, svc *chat.Service, log *slog.Logger) *Server {
@@ -63,6 +65,8 @@ func (s *Server) Routes() http.Handler {
 
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/auth/login", s.login)
+		r.Get("/setup", s.setupStatus)
+		r.Post("/setup", s.runSetup)
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireAuth)
@@ -98,15 +102,20 @@ func (s *Server) Routes() http.Handler {
 				r.Post("/users", s.adminCreateUser)
 				r.Patch("/users/{id}", s.adminUpdateUser)
 				r.Delete("/users/{id}", s.adminDeleteUser)
+				r.Get("/provider-presets", s.adminProviderPresets)
 				r.Get("/providers", s.adminListProviders)
 				r.Post("/providers", s.adminSaveProvider)
+				r.Post("/providers/test", s.adminTestProvider)
 				r.Patch("/providers/{id}", s.adminSaveProvider)
 				r.Delete("/providers/{id}", s.adminDeleteProvider)
 				r.Get("/providers/{id}/upstream-models", s.adminUpstreamModels)
 				r.Get("/models", s.adminListModels)
 				r.Post("/models", s.adminSaveModel)
+				r.Post("/models/batch", s.adminBatchModels)
+				r.Put("/models/order", s.adminReorderModels)
 				r.Patch("/models/{id}", s.adminSaveModel)
 				r.Delete("/models/{id}", s.adminDeleteModel)
+				r.Post("/models/{id}/test", s.adminTestModel)
 				r.Get("/settings", s.adminGetSettings)
 				r.Put("/settings", s.adminPutSettings)
 				r.Get("/usage", s.adminUsage)

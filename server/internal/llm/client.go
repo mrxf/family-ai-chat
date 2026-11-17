@@ -13,6 +13,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -59,10 +60,11 @@ type Request struct {
 }
 
 type Usage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
-	ReasoningTokens  int `json:"reasoning_tokens,omitempty"`
+	PromptTokens     int     `json:"prompt_tokens"`
+	CompletionTokens int     `json:"completion_tokens"`
+	TotalTokens      int     `json:"total_tokens"`
+	ReasoningTokens  int     `json:"reasoning_tokens,omitempty"`
+	Cost             float64 `json:"cost,omitempty"` // USD, when the upstream reports it (OpenRouter)
 }
 
 // Event is a single streamed increment.
@@ -79,7 +81,8 @@ type Result struct {
 
 // Client talks to one OpenAI-compatible endpoint.
 type Client struct {
-	BaseURL string // e.g. https://host (with or without /v1)
+	Kind    string // provider preset; "openrouter" switches to its request dialect
+	BaseURL string // e.g. https://host (/v1 is added when there is no path)
 	APIKey  string
 	HTTP    *http.Client
 	// IdleTimeout aborts a stream when no bytes arrive for this long.
@@ -99,8 +102,9 @@ var sharedTransport = &http.Transport{
 	ResponseHeaderTimeout: 120 * time.Second,
 }
 
-func NewClient(baseURL, apiKey string) *Client {
+func NewClient(kind, baseURL, apiKey string) *Client {
 	return &Client{
+		Kind:        kind,
 		BaseURL:     baseURL,
 		APIKey:      apiKey,
 		HTTP:        &http.Client{Transport: sharedTransport},
@@ -121,12 +125,27 @@ func (e *APIError) Retryable() bool {
 	return e.Status == http.StatusTooManyRequests || e.Status >= 500
 }
 
-func (c *Client) endpoint(path string) string {
-	base := strings.TrimRight(c.BaseURL, "/")
-	if !strings.HasSuffix(base, "/v1") {
+// Endpoint joins an OpenAI-compatible base URL and an API path. A bare host
+// ("https://api.openai.com", "https://relay.example/") gets the conventional /v1;
+// a base that already has a path ("/v1", "/api/v1", "/v1beta/openai", "/api/v3")
+// is used as is.
+func Endpoint(baseURL, path string) string {
+	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if u, err := url.Parse(base); err == nil && u.Path == "" {
 		base += "/v1"
 	}
 	return base + path
+}
+
+func (c *Client) endpoint(path string) string { return Endpoint(c.BaseURL, path) }
+
+func (c *Client) setHeaders(req *http.Request) {
+	req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	if c.Kind == KindOpenRouter {
+		// App attribution on openrouter.ai; harmless elsewhere but only sent there.
+		req.Header.Set("HTTP-Referer", "https://github.com/mrxf/family-ai-chat")
+		req.Header.Set("X-Title", "XiaoNuan")
+	}
 }
 
 func (c *Client) body(r Request, stream bool) ([]byte, error) {
@@ -144,7 +163,14 @@ func (c *Client) body(r Request, stream bool) ([]byte, error) {
 	if r.MaxTokens > 0 {
 		payload["max_tokens"] = r.MaxTokens
 	}
-	if r.ReasoningEffort != "" {
+	if c.Kind == KindOpenRouter {
+		// OpenRouter reports the real cost when usage accounting is requested and
+		// takes reasoning settings in its own unified shape.
+		payload["usage"] = map[string]any{"include": true}
+		if r.ReasoningEffort != "" {
+			payload["reasoning"] = map[string]any{"effort": r.ReasoningEffort}
+		}
+	} else if r.ReasoningEffort != "" {
 		payload["reasoning_effort"] = r.ReasoningEffort
 	}
 	return json.Marshal(payload)
@@ -160,7 +186,7 @@ func (c *Client) do(ctx context.Context, r Request, stream bool) (*http.Response
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	c.setHeaders(req)
 	if stream {
 		req.Header.Set("Accept", "text/event-stream")
 	}
@@ -208,9 +234,10 @@ type chunk struct {
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
 	Usage *struct {
-		PromptTokens            int `json:"prompt_tokens"`
-		CompletionTokens        int `json:"completion_tokens"`
-		TotalTokens             int `json:"total_tokens"`
+		PromptTokens            int     `json:"prompt_tokens"`
+		CompletionTokens        int     `json:"completion_tokens"`
+		TotalTokens             int     `json:"total_tokens"`
+		Cost                    float64 `json:"cost"`
 		CompletionTokensDetails *struct {
 			ReasoningTokens int `json:"reasoning_tokens"`
 		} `json:"completion_tokens_details"`
@@ -289,6 +316,7 @@ func (c *Client) Stream(ctx context.Context, r Request, onEvent func(Event)) (*R
 						PromptTokens:     ch.Usage.PromptTokens,
 						CompletionTokens: ch.Usage.CompletionTokens,
 						TotalTokens:      ch.Usage.TotalTokens,
+						Cost:             ch.Usage.Cost,
 					}
 					if ch.Usage.CompletionTokensDetails != nil {
 						res.Usage.ReasoningTokens = ch.Usage.CompletionTokensDetails.ReasoningTokens

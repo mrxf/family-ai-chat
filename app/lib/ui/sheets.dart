@@ -166,11 +166,12 @@ Future<String?> showModelPicker(BuildContext context, WidgetRef ref, {String tit
     builder: (ctx) {
       final p = ctx.pal;
       return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: ConstrainedBox(
+          // Many models: scroll instead of overflowing the sheet.
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.8),
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             children: [
               Padding(padding: const EdgeInsets.fromLTRB(8, 0, 8, 12), child: Text(title, style: Theme.of(ctx).textTheme.titleMedium)),
               for (final m in boot.models)

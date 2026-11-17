@@ -21,6 +21,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	_ "golang.org/x/image/webp"
 
+	"nuan/internal/llm"
 	"nuan/internal/store"
 )
 
@@ -119,11 +120,7 @@ func (s *Server) transcribe(w http.ResponseWriter, r *http.Request) {
 	}
 	mw.Close()
 
-	url := strings.TrimRight(asr.BaseURL, "/")
-	if !strings.HasSuffix(url, "/v1") {
-		url += "/v1"
-	}
-	req, _ := http.NewRequestWithContext(r.Context(), http.MethodPost, url+"/audio/transcriptions", &body)
+	req, _ := http.NewRequestWithContext(r.Context(), http.MethodPost, llm.Endpoint(asr.BaseURL, "/audio/transcriptions"), &body)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+asr.APIKey)
 	client := &http.Client{Timeout: 60 * time.Second}
