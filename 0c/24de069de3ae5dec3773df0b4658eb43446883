@@ -1,0 +1,19 @@
+app/lib/ui/setup_page.dart
+  s_66c4d16a373824::t_cf28b8f477fddd 27,36,50,68,74-85,93-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "0c24de069de3ae5dec3773df0b4658eb43446883",
+  "prompts": {},
+  "sessions": {
+    "s_66c4d16a373824": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c31b29bd-b65d-455b-a4ef-8072ea51a77d",
+        "model": "unknown"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
