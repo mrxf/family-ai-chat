@@ -7,6 +7,7 @@ import 'core/storage.dart';
 import 'state/session.dart';
 import 'ui/home_page.dart';
 import 'ui/login_page.dart';
+import 'ui/mascot_anim.dart';
 import 'ui/theme.dart';
 import 'ui/widgets.dart';
 
@@ -14,6 +15,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   final storage = await Storage.open();
+  precacheMascot();
   runApp(ProviderScope(
     overrides: [storageProvider.overrideWithValue(storage)],
     child: const NuanApp(),

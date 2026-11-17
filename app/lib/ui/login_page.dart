@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api.dart';
 import '../state/session.dart';
 import 'setup_page.dart';
+import 'mascot_anim.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -111,7 +112,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Center(child: Floating(child: Mascot(size: 140))),
+                    const Center(child: Floating(child: AnimatedMascot(size: 140, greet: true))),
                     const SizedBox(height: 16),
                     const Text('你好，我是小暖', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
                     const SizedBox(height: 8),

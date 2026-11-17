@@ -7,6 +7,7 @@ import '../core/models.dart';
 import '../state/chat.dart';
 import '../state/session.dart';
 import 'admin/models_page.dart';
+import 'mascot_anim.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -72,7 +73,7 @@ class _WelcomeState extends ConsumerState<Welcome> {
               const SizedBox(height: 8),
               Center(
                 child: assistant == null
-                    ? const Floating(child: Mascot(size: 132))
+                    ? const Floating(child: AnimatedMascot(size: 132, greet: true))
                     : Floating(child: Avatar(label: assistant.name, emoji: assistant.avatar, size: 96)),
               ),
               const SizedBox(height: 18),

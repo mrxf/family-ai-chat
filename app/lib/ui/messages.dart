@@ -10,6 +10,7 @@ import '../state/chat.dart';
 import '../state/session.dart';
 import 'markdown.dart';
 import 'sheets.dart';
+import 'mascot_anim.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -327,7 +328,7 @@ class _ThinkingIndicatorState extends State<ThinkingIndicator> with SingleTicker
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Floating(amplitude: 3, period: Duration(milliseconds: 900), child: Mascot(size: 34, thinking: true)),
+          const AnimatedMascot(size: 34, motion: MascotMotion.thinking),
           const SizedBox(width: 8),
           AnimatedBuilder(
             animation: _c,
