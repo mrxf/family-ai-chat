@@ -22,7 +22,8 @@ class ModelEditPage extends ConsumerStatefulWidget {
 }
 
 // Everyday replies: what reasoning_effort to send.
-const _dailyOptions = [('none', '快速'), ('low', '稍想一下'), ('', '不发送')];
+// GPT-5 (5.0) has no 'none'; 'minimal' is its fastest setting.
+const _dailyOptions = [('none', '快速'), ('minimal', '少想'), ('low', '稍想一下'), ('', '不发送')];
 // Deep thinking button: '' = the model has no deep-thinking mode.
 const _thinkOptions = [('', '不支持'), ('low', '低'), ('medium', '中'), ('high', '高')];
 // Mainstream models start at 128K now; 1M for the long-context ones.
@@ -234,67 +235,67 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
             _field(_desc, '一句话介绍', hint: '例如：反应快，适合日常问答', maxLength: 60),
             const SizedBox(height: 12),
             GroupCard(children: [
-              SwitchListTile(
+              SwitchRow(
                 value: _enabled,
                 onChanged: (v) => setState(() {
                   _enabled = v;
                   _dirty = true;
                 }),
-                title: const Text('给家人使用', style: TextStyle(fontSize: 16.5)),
-                subtitle: Text('关掉后家人在模型列表里看不到它', style: TextStyle(fontSize: 13, color: p.muted)),
+                title: '给家人使用',
+                desc: '关掉后家人在模型列表里看不到它',
               ),
-              SwitchListTile(
+              SwitchRow(
                 value: _vision,
                 onChanged: (v) => setState(() {
                   _vision = v;
                   _dirty = true;
                 }),
-                title: const Text('能看图片', style: TextStyle(fontSize: 16.5)),
-                subtitle: Text('打开后才会把照片发给它；不支持看图的模型打开会报错', style: TextStyle(fontSize: 13, color: p.muted)),
+                title: '能看图片',
+                desc: '打开后才会把照片发给它；不支持看图的模型打开会报错',
               ),
             ]),
 
             // ---- thinking ----
             const SectionHeader('思考设置', subtitle: '模型先想一想再回答，更准但更慢、更贵'),
-            GroupCard(padding: const EdgeInsets.all(16), children: [
+            GroupCard(padding: const EdgeInsets.fromLTRB(18, 18, 18, 8), children: [
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('平时回答', style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 4),
-                Text('「快速」首字最快；有的模型不能完全关掉思考，要选「稍想一下」；老模型选「不发送」', style: TextStyle(fontSize: 13, color: p.muted, height: 1.4)),
-                const SizedBox(height: 10),
+                const TitleDesc('平时回答', desc: '「快速」首字最快；不能关掉思考的模型（如 GPT-5）选「少想」或「稍想一下」；老模型选「不发送」'),
+                const SizedBox(height: 12),
                 Choice<String>(
                   value: _dailyOptions.any((o) => o.$1 == _daily.text) ? _daily.text : '?',
                   options: _dailyOptions,
                   onChanged: (v) => setState(() => _daily.text = v),
                 ),
-                const SizedBox(height: 20),
-                const Text('「深度思考」按钮', style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 4),
-                Text('家人打开「深度思考」时用的强度；选「不支持」则不显示这个按钮', style: TextStyle(fontSize: 13, color: p.muted, height: 1.4)),
-                const SizedBox(height: 10),
+                Padding(padding: const EdgeInsets.symmetric(vertical: 18), child: Divider(height: 1, color: p.line)),
+                const TitleDesc('「深度思考」按钮', desc: '家人打开「深度思考」时用的强度；选「不支持」就不显示这个按钮'),
+                const SizedBox(height: 12),
                 Choice<String>(
                   value: _thinkOptions.any((o) => o.$1 == _think.text) ? _think.text : '?',
                   options: _thinkOptions,
                   onChanged: (v) => setState(() => _think.text = v),
                 ),
+                const SizedBox(height: 6),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: TextButton(
+                  child: TextButton.icon(
+                    style: TextButton.styleFrom(foregroundColor: p.muted, padding: const EdgeInsets.symmetric(horizontal: 4), textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     onPressed: () => setState(() => _advanced = !_advanced),
-                    child: Text(_advanced ? '收起高级设置' : '高级：直接填写参数值'),
+                    icon: Icon(_advanced ? Icons.expand_less_rounded : Icons.tune_rounded, size: 18),
+                    label: Text(_advanced ? '收起高级设置' : '高级：直接填写参数值'),
                   ),
                 ),
                 AnimatedSize(
                   duration: const Duration(milliseconds: 200),
                   child: _advanced
                       ? Column(children: [
-                          Text('会作为 reasoning_effort 发给上游，例如 minimal、low、medium、high、none；留空表示不发送。', style: TextStyle(fontSize: 13, color: p.muted, height: 1.4)),
-                          const SizedBox(height: 10),
+                          Text('会作为 reasoning_effort 发给上游，例如 minimal、low、medium、high、none；留空表示不发送。', style: AdminText.desc(p)),
+                          const SizedBox(height: 12),
                           Row(children: [
                             Expanded(child: _field(_daily, '平时', mono: true)),
                             const SizedBox(width: 10),
                             Expanded(child: _field(_think, '深度思考', mono: true)),
                           ]),
+                          const SizedBox(height: 10),
                         ])
                       : const SizedBox(width: double.infinity),
                 ),
@@ -340,10 +341,11 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
             const SectionHeader('技术参数'),
             _field(_upstream, '上游模型 ID', hint: '例如 openai/gpt-5-mini', mono: true, helper: '必须和供应商那边的名字完全一致'),
             const SizedBox(height: 16),
-            Text('上下文长度', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.muted)),
-            const SizedBox(height: 4),
-            Text('每次最多带上多少聊天记录。越大越能记住长对话，但每次回答都更贵。', style: TextStyle(fontSize: 13, color: p.muted, height: 1.4)),
-            const SizedBox(height: 10),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4),
+              child: TitleDesc('上下文长度', desc: '每次最多带上多少聊天记录。越大越能记住长对话，但每次回答都更贵。'),
+            ),
+            const SizedBox(height: 12),
             Wrap(spacing: 8, runSpacing: 8, children: [
               for (final n in _contextOptions)
                 ChoiceChip(

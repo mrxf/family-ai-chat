@@ -126,6 +126,58 @@ List<Widget> modelTags(BuildContext context, {required bool vision, required boo
   ];
 }
 
+/// Type scale for the admin screens: titles are clearly heavier than their
+/// descriptions, and descriptions get room to breathe.
+abstract final class AdminText {
+  static const titleGap = 5.0;
+  static TextStyle section(Palette p) => TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: p.text, height: 1.3);
+  static TextStyle title(Palette p) => TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: p.text, height: 1.3);
+  static TextStyle desc(Palette p) => TextStyle(fontSize: 13.5, color: p.muted, height: 1.5);
+}
+
+/// A setting's name with an optional one-line explanation underneath.
+class TitleDesc extends StatelessWidget {
+  const TitleDesc(this.title, {super.key, this.desc});
+  final String title;
+  final String? desc;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      Text(title, style: AdminText.title(p)),
+      if (desc != null && desc!.isNotEmpty) ...[
+        const SizedBox(height: AdminText.titleGap),
+        Text(desc!, style: AdminText.desc(p)),
+      ],
+    ]);
+  }
+}
+
+/// Switch row for a GroupCard, same spacing as [InfoRow].
+class SwitchRow extends StatelessWidget {
+  const SwitchRow({super.key, required this.title, this.desc, required this.value, required this.onChanged});
+  final String title;
+  final String? desc;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onChanged == null ? null : () => onChanged!(!value),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 14, 12, 14),
+        child: Row(children: [
+          Expanded(child: TitleDesc(title, desc: desc)),
+          const SizedBox(width: 12),
+          Switch(value: value, onChanged: onChanged),
+        ]),
+      ),
+    );
+  }
+}
+
 class SectionHeader extends StatelessWidget {
   const SectionHeader(this.title, {super.key, this.trailing, this.subtitle});
   final String title;
@@ -136,14 +188,14 @@ class SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.pal;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(6, 26, 4, 10),
+      padding: const EdgeInsets.fromLTRB(4, 30, 4, 12),
       child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: p.text)),
+            Text(title, style: AdminText.section(p)),
             if (subtitle != null) ...[
-              const SizedBox(height: 3),
-              Text(subtitle!, style: TextStyle(fontSize: 13, color: p.muted)),
+              const SizedBox(height: 4),
+              Text(subtitle!, style: AdminText.desc(p)),
             ],
           ]),
         ),
@@ -194,15 +246,15 @@ class InfoRow extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 60),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           child: Row(children: [
             if (icon != null) ...[Icon(icon, color: p.accent, size: 24), const SizedBox(width: 14)],
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Text(title, style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w500)),
+                Text(title, style: AdminText.title(p)),
                 if (subtitle != null && subtitle!.isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(subtitle!, style: TextStyle(fontSize: 13, color: p.muted, height: 1.35)),
+                  const SizedBox(height: AdminText.titleGap),
+                  Text(subtitle!, style: AdminText.desc(p)),
                 ],
               ]),
             ),
@@ -343,10 +395,14 @@ class Choice<T> extends StatelessWidget {
                   borderRadius: BorderRadius.circular(11),
                   boxShadow: v == value ? [BoxShadow(color: p.shadow, blurRadius: 8, offset: const Offset(0, 2))] : null,
                 ),
-                child: Text(label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 14.5, fontWeight: v == value ? FontWeight.w700 : FontWeight.w500, color: v == value ? p.accent : p.muted)),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                // Shrink rather than cut off long labels at large font sizes.
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(label,
+                      maxLines: 1,
+                      style: TextStyle(fontSize: 14.5, fontWeight: v == value ? FontWeight.w700 : FontWeight.w500, color: v == value ? p.accent : p.muted)),
+                ),
               ),
             ),
           ),

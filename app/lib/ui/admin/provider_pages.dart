@@ -293,7 +293,7 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
 
   Widget _label(String t) => Padding(
         padding: const EdgeInsets.only(left: 6, bottom: 8),
-        child: Text(t, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: context.pal.muted)),
+        child: Text(t, style: AdminText.title(context.pal)),
       );
 }
 

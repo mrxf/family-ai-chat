@@ -335,8 +335,10 @@ class _Tile extends StatelessWidget {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 2),
       leading: Icon(icon, color: p.accent),
-      title: Text(title, style: const TextStyle(fontSize: 17)),
-      subtitle: subtitle == null || subtitle!.isEmpty ? null : Text(subtitle!, style: TextStyle(fontSize: 13.5, color: p.muted)),
+      title: Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w500)),
+      subtitle: subtitle == null || subtitle!.isEmpty
+          ? null
+          : Padding(padding: const EdgeInsets.only(top: 4), child: Text(subtitle!, style: TextStyle(fontSize: 13.5, color: p.muted, height: 1.45))),
       trailing: trailing ?? (onTap != null ? Icon(Icons.chevron_right_rounded, color: p.faint) : null),
       onTap: onTap,
     );
