@@ -1,0 +1,97 @@
+README.md
+  s_72f7d838b00993::t_78ddaef66bf0d6 73-74,78-79
+app/android/app/src/main/AndroidManifest.xml
+  s_72f7d838b00993::t_db3a356c75e40f 5-6
+app/ios/Runner/Info.plist
+  s_72f7d838b00993::t_e9719e8461f35c 5-6
+app/lib/core/admin_models.dart
+  s_72f7d838b00993::t_692ed0d4f88aa4 56-57,63,70,81,88,98,104,116-117,133-134,146-147,192-194,196-198,217-219,225-235
+app/lib/core/api.dart
+  s_72f7d838b00993::t_3d241a3c9fceb9 87-95,291,293-295
+app/lib/state/catalog.dart
+  s_72f7d838b00993::t_5d6274218653cb 31-39,43-48
+app/lib/state/chat.dart
+  s_72f7d838b00993::t_7c4eeaac6b9b89 20-30,32,38-52,467-473,476-480,504-506,509,513,521-525
+app/lib/ui/admin/model_edit_page.dart
+  s_72f7d838b00993::t_30224e5dae5f6d 42-44,75-76,92-105,116,143,154-160,197-200,218-223,229-231,239-255,258-260,262-294,297-356,358-360,364-398,400-401,407-434,436-447,454-480,484-487,489-492,496-506
+app/lib/ui/admin/models_page.dart
+  s_72f7d838b00993::t_a6dd2be7728a20 10,65,75,103,107,111,113,126,138-159,170-200,227,257-259,329,367
+app/lib/ui/admin/provider_pages.dart
+  s_72f7d838b00993::t_1075987dc3a7d2 424
+app/lib/ui/admin/upstream_picker_page.dart
+  s_72f7d838b00993::t_40b05c50c31395 58,67-70,141-142,164,167,171,283-286
+app/lib/ui/messages.dart
+  s_72f7d838b00993::t_a6d92ee5e5c608 4-5,93,97-99,116-120,124-141,170-256,260-285,288,291-299,301-323,328-360,392-393,403,406-413,462,490
+app/lib/ui/settings_page.dart
+  s_72f7d838b00993::t_41a5761f719679 107
+app/lib/ui/welcome.dart
+  s_72f7d838b00993::t_11327abdf62ed6 29-36,57,70-74
+app/pubspec.lock
+  s_72f7d838b00993::t_6249cc3dd5c1ab 344-351
+server/cmd/server/main.go
+  s_72f7d838b00993::t_fc293b8d0920ea 92-109
+server/cmd/server/seed.go
+  s_72f7d838b00993::t_62943fbc9fc9a0 95
+server/internal/api/admin.go
+  s_72f7d838b00993::t_63437e30016744 131,153-166,172-173,177-180
+server/internal/api/admin_catalog.go
+  s_72f7d838b00993::t_53239a6fb8068a 302-310,313-314,340-341,356-364,380,404-406,427,454-456,488,505,538-553,573-576,616-646
+server/internal/api/chat.go
+  s_72f7d838b00993::t_19168a270b5d5a 81-83,502,510-511,515,552-559,572-578
+server/internal/api/images_test.go
+  s_72f7d838b00993::t_668900a660e093 1-587
+server/internal/chat/cleanup.go
+  s_72f7d838b00993::t_1d71682791223d 1-68
+server/internal/chat/hub.go
+  s_72f7d838b00993::t_649a41c385afb3 7-9,27-35,40-46,79-103,122-125
+server/internal/chat/service.go
+  s_72f7d838b00993::t_8ebbabbd1838f1 43-47,265,267-278,293,322-323,329-344,346-351,353-372,375-382,384,387-388,390,392-394,398-409,412-421,425-436,459,464-468,511,516-521,589,592,631,636,648-656,662-663,667-670,687-689,692-696,726-760
+server/internal/chat/service_test.go
+  s_72f7d838b00993::t_f796495be86146 64,83,101-102,114,130
+server/internal/chat/tools.go
+  s_72f7d838b00993::t_990b84ca8b2953 1-589
+server/internal/chat/tools_test.go
+  s_72f7d838b00993::t_59c13475419c52 1-86
+server/internal/llm/catalog.go
+  s_72f7d838b00993::t_d2564f4f19ac23 140-141,163-179,199-207
+server/internal/llm/client.go
+  s_72f7d838b00993::t_5cb7c8c88a8f6f 22-23,25-58,74-91,111,132,141-142,166,222-224,292-299,350-360,371,388-406,429
+server/internal/llm/images.go
+  s_72f7d838b00993::t_206789210c18bc 1-279
+server/internal/llm/tools_images_test.go
+  s_72f7d838b00993::t_083c14729b7d8e 1-166
+server/internal/store/catalog.go
+  s_72f7d838b00993::t_a12c7a8f97b9c1 21-26,30,35,111,115,139-144,147,212-214,216,218
+server/internal/store/images.go
+  s_72f7d838b00993::t_6df3a5bfe85649 1-62
+server/internal/store/migrations/003_tools_images.sql
+  s_72f7d838b00993::t_c4139e403bb449 1-9
+server/internal/store/migrations/004_image_log.sql
+  s_72f7d838b00993::t_18ea05ddad86e3 1-10
+app/lib/core/models.dart
+  s_72f7d838b00993::t_a7c4687e46ed8f 96-99,102,104-105,195-199,207-208,215,219
+app/pubspec.yaml
+  s_72f7d838b00993::t_909eabcd93673a 51
+docs/api.md
+  s_72f7d838b00993::t_513801fece29a7 173-177,197,202,227-245,431-433,438-439,1050,1055,1096-1098,1128-1131,1135,1137-1138,1143
+server/internal/store/conversations.go
+  s_72f7d838b00993::t_60cc510a0376e3 166-167,308-312,314-322
+server/internal/store/store_test.go
+  s_72f7d838b00993::t_36c6473a7b9f25 75,81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "9267e10b0abe120fc8358d1203ab095c11ffae15",
+  "prompts": {},
+  "sessions": {
+    "s_72f7d838b00993": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51a67ebf-2849-42a1-9ac7-a73be3efba45",
+        "model": "unknown"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
