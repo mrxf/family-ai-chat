@@ -1,0 +1,55 @@
+app/lib/core/api.dart
+  s_f95c59ceecf89f::t_6cd19e06d8c696 157-177
+app/lib/core/models.dart
+  s_f95c59ceecf89f::t_b417b3bc64ec9d 97-102,110-112,116-164
+app/lib/ui/memories_page.dart
+  s_f95c59ceecf89f::t_fe79df1ecdc20e 149-158,245
+app/lib/ui/memory_import_page.dart
+  s_f95c59ceecf89f::t_d7ac334a418ff5 1-2,14-29,40,43-52,56,61-129,134,136-137,145-155,166-172,175-181,183-184,193-209,212,237-268,272,277-350,352-363,365-391,393-529,531-535,537,541-546,551-554,556-558
+app/test/memory_pages_test.dart
+  s_f95c59ceecf89f::t_4a12ac0c8ee752 22-24,36,41,60-66,68-74,76,81,83,88-89,113-114,197-198,216,221-226,228-239,242-247,251,259,263-314,318-319,321,425
+app/test/memory_test.dart
+  s_f95c59ceecf89f::t_d67f494525c284 27,101,152-153,155-159,161,168,187-197,206-207,214,217,239,252-264
+docs/api.md
+  s_f95c59ceecf89f::t_13d1c24beda182 1193-1196,1199-1214
+docs/proposal-v3-memory.md
+  s_f95c59ceecf89f::t_10d4bffc18a6c6 198,215-216,265-294
+server/internal/api/memories.go
+  s_f95c59ceecf89f::t_2d14ce91bb0f65 4-5,8,92-95,102-103,110,112,115-133,142-143,146-147,154-164,166-167,171-180,182-184
+server/internal/api/memories_test.go
+  s_f95c59ceecf89f::t_d8db85afd1e96d 54-61,63-64,66-72,74,76-88,90-93,95
+server/internal/api/server.go
+  s_f95c59ceecf89f::t_7973278a7bde67 85-87
+server/internal/chat/service.go
+  s_f95c59ceecf89f::t_aeeb30ee775f5b 38-41
+server/internal/memory/extract.go
+  s_f95c59ceecf89f::t_5992a3d0082f13 48-50,68-80
+server/internal/memory/import.go
+  s_f95c59ceecf89f::t_42d9d37524195a 5-6,8-11,13-33,37-126,129-295,297-310,313,315,317-376,378-397,399-400,402-475,478-495,497-498
+server/internal/memory/import_test.go
+  s_f95c59ceecf89f::t_0c9d17b44b379e 1-251
+server/internal/memory/inject.go
+  s_f95c59ceecf89f::t_c7c900657bc961 24-26,30,90,92
+server/internal/memory/worker.go
+  s_f95c59ceecf89f::t_3e3f7d7c702060 236-259,264,268,276,280,283
+server/internal/store/memory_import.go
+  s_f95c59ceecf89f::t_56776e88221974 1-85
+server/internal/store/memory_import_test.go
+  s_f95c59ceecf89f::t_d4a1853ece4c3d 1-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "8cf6bfaf41a1db961036fba43058bac2f7ce897c",
+  "prompts": {},
+  "sessions": {
+    "s_f95c59ceecf89f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "10bc138e-891f-4cf7-8db3-1a7aad8a7a18",
+        "model": "unknown"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
