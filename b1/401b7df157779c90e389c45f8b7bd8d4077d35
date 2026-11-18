@@ -1,0 +1,78 @@
+README.md
+  h_8f297825d1fe21 57,77
+app/lib/core/api.dart
+  h_8f297825d1fe21 218,228,277,280-285
+app/lib/core/models.dart
+  h_8f297825d1fe21 195,204,215,219-228,237
+app/lib/state/chat.dart
+  h_8f297825d1fe21 2,70,88,106,120,137,162-163,165,180-214,216,227-235,287,346,377-378,381,390,393-402,418,547-551,587,597
+app/lib/state/conversations.dart
+  h_8f297825d1fe21 38,48,54,59
+app/lib/state/session.dart
+  h_8f297825d1fe21 70-74,170-172
+app/lib/ui/composer.dart
+  h_8f297825d1fe21 51-61,131-136,149,199-201,224-230,294-295,301-302,317,320
+app/lib/ui/drawer.dart
+  h_8f297825d1fe21 34,86-133,167
+app/lib/ui/home_page.dart
+  h_8f297825d1fe21 68-72,97-118,128-175,182,206-240
+app/lib/ui/messages.dart
+  h_8f297825d1fe21 197,200,245-248,386,416
+app/lib/ui/theme.dart
+  h_8f297825d1fe21 20-21,30,39-43,57-58,79-80,108-109
+app/lib/ui/welcome.dart
+  h_8f297825d1fe21 67,71-80,209-381,383,385,390,392,402,404,412-414
+app/test/private_chat_test.dart
+  h_8f297825d1fe21 1-294
+docs/api.md
+  h_8f297825d1fe21 130,136-137,180-182,558,594-595,599,671,716-717,727,847,849,870
+docs/proposal-v4-private-chat.md
+  h_8f297825d1fe21 1-124
+server/cmd/server/main.go
+  h_8f297825d1fe21 111-128
+server/internal/api/chat.go
+  h_8f297825d1fe21 4,312,317,410-413,431,446
+server/internal/api/files.go
+  h_8f297825d1fe21 60-62,88-92
+server/internal/api/helpers_test.go
+  h_8f297825d1fe21 409-415
+server/internal/api/private_test.go
+  h_8f297825d1fe21 1-174
+server/internal/api/server.go
+  h_8f297825d1fe21 209-210
+server/internal/chat/cleanup.go
+  h_8f297825d1fe21 5,15-87
+server/internal/chat/memory_test.go
+  h_8f297825d1fe21 100-191
+server/internal/chat/service.go
+  h_8f297825d1fe21 22-29,79,108,127-129,376,382,515,655-659,671-679,736
+server/internal/chat/tools.go
+  h_8f297825d1fe21 157-163,258,308,340,518-521,537
+server/internal/memory/worker.go
+  h_8f297825d1fe21 169-171
+server/internal/store/conversations.go
+  h_8f297825d1fe21 5,18,24,28,39-41,43-44,78,108,194,230-239,242-243,246-277,281-298,300-318,521,531-532,538-539
+server/internal/store/copy_test.go
+  h_8f297825d1fe21 108-115
+server/internal/store/images.go
+  h_8f297825d1fe21 18-24,29-39
+server/internal/store/memories.go
+  h_8f297825d1fe21 208,237-238,241-243
+server/internal/store/migrations/postgres/007_private_chat.sql
+  h_8f297825d1fe21 1-4
+server/internal/store/migrations/sqlite/007_private_chat.sql
+  h_8f297825d1fe21 1-4
+server/internal/store/store_test.go
+  h_8f297825d1fe21 82,293-368
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "b1401b7df157779c90e389c45f8b7bd8d4077d35",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
