@@ -56,7 +56,7 @@ if [[ "$(grep -E '^version:' "$PUBSPEC")" != "$LINE" ]]; then
   sed -i.bak -E "s/^version:.*/$LINE/" "$PUBSPEC" && rm -f "$PUBSPEC.bak"
   git add "$PUBSPEC"
   git commit -q -m "release: $TAG"
-  echo "版本号：$CUR → $NEXT（versionCode $CODE）"
+  echo "版本号：${CUR} → ${NEXT}（versionCode ${CODE}）"
 fi
 
 git tag -a "$TAG" -m "${NOTES:-$TAG}"
