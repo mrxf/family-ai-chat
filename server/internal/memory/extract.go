@@ -45,6 +45,9 @@ category 只能是：
 - 和已有记忆说的是同一件事：内容没变就什么都不做，变了就 update，不要重复 add。
 - 用户说「忘掉」「别记」某事：对相关编号 remove，并且不要把这件事再写进任何记忆或 episode。
 
+` + privateTopics + `
+整段对话都是这类内容时，输出 {"actions":[],"episode":""}；只有一部分是时，只记其余部分，episode 里也不要提到这些内容。
+
 episode：用一两句话（不超过 80 字）概括这次对话聊了什么、有什么结论，方便以后想起「上次聊过」。只写聊的内容和结论，不要写「已记录」「未记录」「此前已记下」这类关于记忆整理本身的话。如果下面给了这个对话已有的概括，在它的基础上增补成一段新的，不要丢掉原来的要点。闲聊寒暄、没有实质内容，或者只是问小暖记不记得某事、复述已知信息时，输出空字符串。
 
 没有要改的就输出 {"actions":[],"episode":"…"}。`
@@ -61,6 +64,19 @@ type Extraction struct {
 	Actions []Action
 	Episode string
 }
+
+// privateTopics are never remembered automatically, whatever the user says.
+// Memories are injected into every chat and listed on a phone the family
+// shares, so these would surface at the wrong moment or to the wrong person;
+// much of it is also idle curiosity or bragging rather than fact. Someone who
+// really wants one kept can still add it by hand.
+const privateTopics = `下面这些内容一律不记（用户说「记住」也不记）：
+- 性和亲密关系：性行为、性偏好和性幻想、约炮、炮友、暧昧、婚外情、前任之间的私密往事、色情内容。
+- 性病、避孕、流产等性与生殖方面的隐私。正常的怀孕、生育等家庭喜讯可以记。
+- 用户说了不想让家人知道的任何事（隐瞒的行踪、私房钱、秘密）。
+- 家庭矛盾：对家人的抱怨和负面评价、婚姻危机、离婚打算。
+- 债务和网贷、赌博、违法行为、官司纠纷。
+- 吹牛、口嗨、夸张或猎奇的说法：像在说大话、找刺激或满足好奇心的，一律当成没说过。`
 
 var ErrParse = errors.New("invalid extraction JSON")
 

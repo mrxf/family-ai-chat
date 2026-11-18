@@ -1,8 +1,11 @@
 package api
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
@@ -86,28 +89,48 @@ func (s *Server) clearMemories(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(204)
 }
-func (s *Server) previewMemories(w http.ResponseWriter, r *http.Request) {
+
+// startMemoryImport begins organizing pasted text in the background; the App
+// polls getMemoryImport. Each user has at most one job.
+func (s *Server) startMemoryImport(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Text string `json:"text"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	if utf8.RuneCountInString(in.Text) > 8000 {
-		writeErr(w, 400, "bad_memory", "导入文本最多 8000 字")
+	if utf8.RuneCountInString(in.Text) > memory.MaxImportRunes {
+		writeErr(w, 400, "bad_memory", fmt.Sprintf("导入文本最多 %d 字", memory.MaxImportRunes))
 		return
 	}
 	if s.Chat.Memory == nil {
 		writeErr(w, 503, "memory_preview_failed", "暂时无法整理，请稍后再试")
 		return
 	}
-	items, err := s.Chat.Memory.Preview(r.Context(), in.Text)
+	job, err := s.Chat.Memory.StartImport(currentUser(r), in.Text)
 	if err != nil {
-		s.Log.Warn("memory import preview", "err", err)
-		writeErr(w, 502, "memory_preview_failed", "暂时无法整理，请稍后再试")
+		writeErr(w, 400, "bad_memory", "没有可以整理的内容")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"items": items})
+	writeJSON(w, 202, job)
+}
+func (s *Server) getMemoryImport(w http.ResponseWriter, r *http.Request) {
+	if s.Chat.Memory == nil {
+		writeErr(w, 404, "not_found", "没有正在整理的内容")
+		return
+	}
+	job, ok := s.Chat.Memory.ImportStatus(currentUser(r).ID)
+	if !ok {
+		writeErr(w, 404, "not_found", "没有正在整理的内容")
+		return
+	}
+	writeJSON(w, 200, job)
+}
+func (s *Server) cancelMemoryImport(w http.ResponseWriter, r *http.Request) {
+	if s.Chat.Memory != nil {
+		s.Chat.Memory.CancelImport(currentUser(r).ID)
+	}
+	w.WriteHeader(204)
 }
 func (s *Server) importMemories(w http.ResponseWriter, r *http.Request) {
 	var in struct {
@@ -116,22 +139,46 @@ func (s *Server) importMemories(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if len(in.Items) > 200 {
-		writeErr(w, 400, "bad_memory", "一次最多导入 200 条")
+	if len(in.Items) > memory.MaxImportItems {
+		writeErr(w, 400, "bad_memory", fmt.Sprintf("一次最多导入 %d 条", memory.MaxImportItems))
 		return
 	}
-	ms := []*store.Memory{}
+	u := currentUser(r)
+	items := []store.MemoryImport{}
 	for _, item := range in.Items {
 		item.Content = strings.TrimSpace(item.Content)
 		if !validMemoryInput(item.Category, item.Content) || item.Category == "episode" {
 			writeErr(w, 400, "bad_memory", "分类不正确，或内容不是 1–200 字")
 			return
 		}
-		ms = append(ms, &store.Memory{UserID: currentUser(r).ID, Category: item.Category, Content: item.Content, Source: "import", Pinned: true})
+		m := &store.Memory{Category: item.Category, Content: item.Content, Keywords: strings.TrimSpace(item.Keywords), Source: "import", Pinned: true}
+		if item.ValidUntil != "" && item.Category == "ongoing" {
+			d, err := time.ParseInLocation("2006-01-02", item.ValidUntil, cst)
+			if err != nil {
+				writeErr(w, 400, "bad_memory", "日期格式不正确")
+				return
+			}
+			v := d.AddDate(0, 0, 1).UnixMilli() - 1
+			m.ValidUntil = &v
+		}
+		items = append(items, store.MemoryImport{Memory: m, ReplacesID: item.ReplacesID})
 	}
-	if err := s.Store.CreateMemories(r.Context(), ms); err != nil {
+	saved, skipped, err := s.Store.ImportMemories(r.Context(), u.ID, items)
+	if err != nil {
 		s.writeStoreErr(w, r, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"memories": ms})
+	if s.Chat.Memory != nil {
+		s.Chat.Memory.CancelImport(u.ID)
+		if len(saved) > 0 {
+			go s.Chat.Memory.DrainEmbeddings(context.WithoutCancel(r.Context()))
+		}
+	}
+	if saved == nil {
+		saved = []*store.Memory{}
+	}
+	writeJSON(w, 200, map[string]any{"memories": saved, "skipped": skipped})
 }
+
+// Memory dates are calendar days in China.
+var cst = time.FixedZone("CST", 8*3600)

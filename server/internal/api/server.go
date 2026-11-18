@@ -82,7 +82,9 @@ func (s *Server) Routes() http.Handler {
 			r.Patch("/memories/{id}", s.updateMemory)
 			r.Delete("/memories/{id}", s.deleteMemory)
 			r.Delete("/memories", s.clearMemories)
-			r.Post("/memories/import/preview", s.previewMemories)
+			r.Post("/memories/import/preview", s.startMemoryImport)
+			r.Get("/memories/import/preview", s.getMemoryImport)
+			r.Delete("/memories/import/preview", s.cancelMemoryImport)
 			r.Post("/memories/import", s.importMemories)
 
 			r.Get("/models", s.listModels)

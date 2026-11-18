@@ -233,15 +233,39 @@ func (s *Service) FillEmbeddings(ctx context.Context) error {
 		return nil
 	}
 	defer s.embedMu.Unlock()
+	_, err := s.fillEmbeddings(ctx)
+	return err
+}
+
+// DrainEmbeddings embeds a large batch (an import) right away instead of 32
+// memories per minute. It gives up after a bounded number of rounds.
+func (s *Service) DrainEmbeddings(ctx context.Context) {
+	s.embedMu.Lock()
+	defer s.embedMu.Unlock()
+	for range 20 {
+		n, err := s.fillEmbeddings(ctx)
+		if err != nil {
+			s.Log.Warn("memory embedding drain", "err", err)
+			return
+		}
+		if n < embedBatch {
+			return
+		}
+	}
+}
+
+const embedBatch = 32 // matches the store's PendingEmbeddings limit
+
+func (s *Service) fillEmbeddings(ctx context.Context) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	m, c, err := s.Resolve(ctx, "embedding")
 	if err != nil || m == nil {
-		return err
+		return 0, err
 	}
 	ms, err := s.Store.PendingEmbeddings(ctx, m.ID)
 	if err != nil || len(ms) == 0 {
-		return err
+		return 0, err
 	}
 	inputs := make([]string, len(ms))
 	for i, m := range ms {
@@ -249,12 +273,12 @@ func (s *Service) FillEmbeddings(ctx context.Context) error {
 	}
 	vectors, _, err := c.Embed(ctx, m.UpstreamModel, inputs)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	for i, item := range ms {
 		if err := s.Store.SetMemoryEmbedding(ctx, item, vectors[i], m.ID); err != nil {
-			return err
+			return 0, err
 		}
 	}
-	return nil
+	return len(ms), nil
 }

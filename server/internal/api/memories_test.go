@@ -51,21 +51,48 @@ func TestMemoryAPIAndSettingsMerge(t *testing.T) {
 	}
 	f.json("PATCH", "/api/memories/"+bm.ID, map[string]any{"content": "越权"}, 404, nil)
 	f.json("DELETE", "/api/memories/"+bm.ID, nil, 404, nil)
-	f.json("POST", "/api/memories/import", map[string]any{"items": []map[string]string{{"category": "preference", "content": "用户不喜欢辣"}}}, 200, nil)
-	f.json("POST", "/api/memories/import", map[string]any{"items": []map[string]string{{"category": "episode", "content": "不允许"}}}, 400, nil)
-	many := make([]map[string]string, 201)
-	f.json("POST", "/api/memories/import", map[string]any{"items": many}, 400, nil)
-	f.up.mu.Lock()
-	f.up.extraction = `{"actions":[{"op":"add","category":"health","content":"用户有高血压"}],"episode":""}`
-	f.up.mu.Unlock()
-	var preview struct{ Items []memory.ImportItem }
-	f.json("POST", "/api/memories/import/preview", map[string]string{"text": "用户有高血压"}, 200, &preview)
-	if len(preview.Items) != 1 {
-		t.Fatal(preview)
+	var imported struct {
+		Memories []map[string]any
+		Skipped  int
 	}
-	f.json("POST", "/api/memories/import/preview", map[string]string{"text": strings.Repeat("字", 8001)}, 400, nil)
+	f.json("POST", "/api/memories/import", map[string]any{"items": []map[string]string{{"category": "preference", "content": "用户不喜欢辣"}, {"category": "preference", "content": "用户不喜欢辣。"}}}, 200, &imported)
+	if len(imported.Memories) != 1 || imported.Skipped != 1 {
+		t.Fatal(imported)
+	}
+	f.json("POST", "/api/memories/import", map[string]any{"items": []map[string]string{{"category": "episode", "content": "不允许"}}}, 400, nil)
+	f.json("POST", "/api/memories/import", map[string]any{"items": []map[string]string{{"category": "ongoing", "content": "用户在装修", "valid_until": "明年"}}}, 400, nil)
+	many := make([]map[string]string, memory.MaxImportItems+1)
+	f.json("POST", "/api/memories/import", map[string]any{"items": many}, 400, nil)
+	// Replacing someone else's memory only adds the new one.
+	f.json("POST", "/api/memories/import", map[string]any{"items": []map[string]string{{"category": "family", "content": "用户有儿子", "replaces_id": bm.ID}}}, 200, nil)
+	if got, err := f.st.GetMemory(t.Context(), bm.ID, b.ID); err != nil || got.Status != "active" {
+		t.Fatal(got, err)
+	}
+
+	f.json("GET", "/api/memories/import/preview", nil, 404, nil)
+	f.up.mu.Lock()
+	f.up.extraction = `{"items":[{"category":"health","content":"用户有高血压","keywords":"血压"},{"category":"preference","content":"用户不喜欢辣"}],"duplicates":[]}`
+	f.up.mu.Unlock()
+	var job memory.ImportJob
+	f.json("POST", "/api/memories/import/preview", map[string]string{"text": "I have high blood pressure.\nI don't like spicy food."}, 202, &job)
+	if job.Status != "running" || job.Total != 1 {
+		t.Fatal(job)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for job.Status == "running" && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+		f.json("GET", "/api/memories/import/preview", nil, 200, &job)
+	}
+	// "不喜欢辣" was imported above, so only the new fact is proposed.
+	if job.Status != "done" || len(job.Items) != 1 || job.Items[0].Keywords != "血压" || job.Skipped != 1 {
+		t.Fatalf("%+v", job)
+	}
+	f.json("DELETE", "/api/memories/import/preview", nil, 204, nil)
+	f.json("GET", "/api/memories/import/preview", nil, 404, nil)
+	f.json("POST", "/api/memories/import/preview", map[string]string{"text": strings.Repeat("字", memory.MaxImportRunes+1)}, 400, nil)
+	f.json("POST", "/api/memories/import/preview", map[string]string{"text": "  "}, 400, nil)
 	f.json("GET", "/api/memories", nil, 200, &list)
-	if list.Total != 2 {
+	if list.Total != 3 {
 		t.Fatal("preview wrote memories", list)
 	}
 	f.json("PATCH", "/api/me", map[string]any{"settings": map[string]any{"font_size": 20, "theme": "dark"}}, 200, nil)

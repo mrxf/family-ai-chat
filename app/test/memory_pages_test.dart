@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:family_chat/core/admin_models.dart';
 import 'package:family_chat/core/api.dart';
 import 'package:family_chat/core/models.dart';
@@ -21,7 +19,9 @@ class _FakeApi extends Api {
   _FakeApi() : super('http://localhost');
   List<Memory> items = [];
   List<MemoryDraft>? imported;
-  Completer<List<MemoryDraft>>? preview;
+  MemoryImportJob? job;
+  String? startedText;
+  int cancels = 0;
   bool enabled = true, failCreate = false;
   int deletes = 0, creates = 0;
   Map<String, dynamic>? mePatch, modelPatch;
@@ -33,20 +33,12 @@ class _FakeApi extends Api {
   }
 
   @override
-  Future<MemoriesResult> memories() async =>
-      MemoriesResult(memories: List.of(items), total: items.length, newCount: items.length, enabled: enabled);
+  Future<MemoriesResult> memories() async => MemoriesResult(memories: List.of(items), total: items.length, newCount: items.length, enabled: enabled);
   @override
   Future<User> updateMe(Map<String, dynamic> patch) async {
     mePatch = patch;
     enabled = (patch['settings'] as Map)['memory_enabled'] as bool;
-    return User(
-      id: 'u',
-      username: 'u',
-      displayName: '家人',
-      avatar: '',
-      role: 'member',
-      settings: {'memory_enabled': enabled, 'other_setting': 'kept'},
-    );
+    return User(id: 'u', username: 'u', displayName: '家人', avatar: '', role: 'member', settings: {'memory_enabled': enabled, 'other_setting': 'kept'});
   }
 
   @override
@@ -65,23 +57,36 @@ class _FakeApi extends Api {
   }
 
   @override
-  Future<List<MemoryDraft>> previewMemoryImport(String text) => preview!.future;
+  Future<MemoryImportJob> startMemoryImport(String text) async {
+    startedText = text;
+    return job = const MemoryImportJob(id: 'j1', status: 'running', total: 2);
+  }
+
   @override
-  Future<List<Memory>> importMemories(List<MemoryDraft> items) async {
+  Future<MemoryImportJob?> memoryImportJob() async => job;
+  @override
+  Future<void> cancelMemoryImport() async {
+    cancels++;
+    job = null;
+  }
+
+  @override
+  Future<(List<Memory>, int)> importMemories(List<MemoryDraft> items) async {
     imported = items;
-    return [for (var i = 0; i < items.length; i++) _memory('$i', items[i].content, category: items[i].category)];
+    return ([for (var i = 0; i < items.length; i++) _memory('$i', items[i].content, category: items[i].category)], 0);
   }
 }
 
 class _Session extends SessionNotifier {
-  _Session(this.api);
+  _Session(this.api, {this.memoryEnabled = true});
   final Api api;
+  final bool memoryEnabled;
   @override
   Session build() => Session(
     status: SessionStatus.loggedIn,
     api: api,
-    boot: const Bootstrap(
-      user: User(id: 'u', username: 'u', displayName: '家人', avatar: '', role: 'member'),
+    boot: Bootstrap(
+      user: User(id: 'u', username: 'u', displayName: '家人', avatar: '', role: 'member', settings: {if (!memoryEnabled) 'memory_enabled': false}),
       models: [],
       assistants: [],
       defaultModelId: '',
@@ -105,8 +110,8 @@ class _Catalog extends CatalogNotifier {
   Future<void> reload() async {}
 }
 
-Widget _app(_FakeApi api, Widget page, {double textScale = 1}) => ProviderScope(
-  overrides: [sessionProvider.overrideWith(() => _Session(api))],
+Widget _app(_FakeApi api, Widget page, {double textScale = 1, bool memoryEnabled = true}) => ProviderScope(
+  overrides: [sessionProvider.overrideWith(() => _Session(api, memoryEnabled: memoryEnabled))],
   child: MaterialApp(
     theme: buildTheme(Brightness.light),
     builder: (ctx, child) => MediaQuery(
@@ -189,8 +194,8 @@ void main() {
     expect(find.text('关于我 · 1'), findsOneWidget);
   });
 
-  testWidgets('import waits for preview, supports editing and deselection, then sends only selected items', (tester) async {
-    final api = _FakeApi()..preview = Completer<List<MemoryDraft>>();
+  testWidgets('import organizes in the background, supports editing and deselection, then sends only selected items', (tester) async {
+    final api = _FakeApi();
     await tester.pumpWidget(
       _app(
         api,
@@ -208,23 +213,42 @@ void main() {
     );
     await tester.tap(find.text('开始导入'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byType(TextField));
+    await tester.scrollUntilVisible(find.byType(TextField), 200, scrollable: find.byType(Scrollable).first);
     await tester.enterText(find.byType(TextField), '我住在杭州，喜欢散步');
     await tester.pump();
     await tester.tap(find.text('让小暖整理'));
     await tester.pump();
-    expect(find.text('正在整理…'), findsOneWidget);
+    await tester.pump();
+    expect(api.startedText, '我住在杭州，喜欢散步');
+    expect(find.text('正在整理，已完成 0 / 2 段'), findsOneWidget);
+    api.job = const MemoryImportJob(id: 'j1', status: 'running', done: 1, total: 2);
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text('正在整理，已完成 1 / 2 段'), findsOneWidget);
     expect(api.imported, isNull);
-    api.preview!.complete(const [
-      MemoryDraft(category: MemoryCategory.profile, content: '住在杭州'),
-      MemoryDraft(category: MemoryCategory.preference, content: '喜欢散步'),
-    ]);
+    api.job = MemoryImportJob(
+      id: 'j1',
+      status: 'done',
+      done: 2,
+      total: 2,
+      skipped: 3,
+      items: [
+        MemoryDraft.fromJson({'category': 'preference', 'content': '用户喜欢散步', 'keywords': '散步 锻炼'}),
+        MemoryDraft.fromJson({'category': 'profile', 'content': '用户住在杭州', 'replaces_id': 'm0', 'replaces': '用户住在上海'}),
+      ],
+    );
+    await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
     expect(find.text('导入 2 条'), findsOneWidget);
+    expect(find.textContaining('其中 1 条会更新原来记的'), findsOneWidget);
+    expect(find.textContaining('另有 3 条小暖已经记着了'), findsOneWidget);
+    expect(find.text('更新'), findsOneWidget);
+    expect(find.text('原来记的：你住在上海'), findsOneWidget);
+    // Grouped in the fixed category order: 关于我 before 喜好习惯.
+    expect(tester.getTopLeft(find.text('关于我 · 1')).dy, lessThan(tester.getTopLeft(find.text('喜好习惯 · 1')).dy));
     await tester.tap(find.byType(Checkbox).last);
     await tester.pumpAndSettle();
     expect(find.text('导入 1 条'), findsOneWidget);
-    await tester.tap(find.text('住在杭州'));
+    await tester.tap(find.text('你住在杭州'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField).first, '现在住在苏州');
     await tester.ensureVisible(find.text('保存'));
@@ -232,18 +256,69 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('导入 1 条'));
     await tester.pumpAndSettle();
-    expect(api.imported!.single.toJson(), {'category': 'profile', 'content': '现在住在苏州'});
+    expect(api.imported!.single.toJson(), {'category': 'profile', 'content': '现在住在苏州', 'replaces_id': 'm0'});
     expect(find.byType(MemoryImportPage), findsNothing);
   });
 
-  testWidgets('import rejects more than 8000 characters before making a request', (tester) async {
+  testWidgets('import picks up a finished job and can be cancelled while organizing', (tester) async {
+    final api = _FakeApi()
+      ..job = MemoryImportJob(
+        id: 'j1',
+        status: 'done',
+        items: [
+          MemoryDraft.fromJson({'category': 'health', 'content': '用户对花生过敏'}),
+        ],
+      );
+    await tester.pumpWidget(_app(api, const MemoryImportPage()));
+    await tester.pumpAndSettle();
+    expect(find.text('你对花生过敏'), findsOneWidget);
+    await tester.tap(find.text('重新粘贴'));
+    await tester.pumpAndSettle();
+    expect(api.cancels, 1);
+    expect(find.text('让小暖整理'), findsOneWidget);
+    await tester.scrollUntilVisible(find.byType(TextField), 200, scrollable: find.byType(Scrollable).first);
+    await tester.enterText(find.byType(TextField), 'I am allergic to peanuts.');
+    await tester.pump();
+    await tester.tap(find.text('让小暖整理'));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('取消整理'));
+    await tester.pump();
+    expect(api.cancels, 2);
+    expect(find.text('让小暖整理'), findsOneWidget);
+  });
+
+  testWidgets('importing with memory switched off offers to switch it on', (tester) async {
+    final api = _FakeApi()
+      ..enabled = false
+      ..job = MemoryImportJob(
+        id: 'j1',
+        status: 'done',
+        items: [
+          MemoryDraft.fromJson({'category': 'health', 'content': '用户对花生过敏'}),
+        ],
+      );
+    await tester.pumpWidget(_app(api, const MemoryImportPage(), memoryEnabled: false));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('导入 1 条'));
+    await tester.pumpAndSettle();
+    expect(find.text('记忆功能现在是关着的'), findsOneWidget);
+    await tester.tap(find.text('导入并打开'));
+    await tester.pumpAndSettle();
+    expect(api.imported, hasLength(1));
+    expect(api.mePatch, {
+      'settings': {'memory_enabled': true},
+    });
+  });
+
+  testWidgets('import rejects more than 30000 characters before making a request', (tester) async {
     final api = _FakeApi();
     await tester.pumpWidget(_app(api, const MemoryImportPage()));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byType(TextField));
-    await tester.enterText(find.byType(TextField), List.filled(8001, '字').join());
+    await tester.scrollUntilVisible(find.byType(TextField), 200, scrollable: find.byType(Scrollable).first);
+    await tester.enterText(find.byType(TextField), List.filled(30001, '字').join());
     await tester.pumpAndSettle();
-    expect(find.text('8001 / 8000 字'), findsOneWidget);
+    expect(find.text('30001 / 30000 字'), findsOneWidget);
     final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, '让小暖整理'));
     expect(button.onPressed, isNull);
   });
@@ -347,13 +422,7 @@ void main() {
     final api = _FakeApi();
     final c = catalog.copyWith(
       models: [
-        AdminModel.fromJson({
-          'id': 'embedding',
-          'provider_id': 'p',
-          'kind': 'embedding',
-          'upstream_model': 'embedding',
-          'context_window': 0,
-        }),
+        AdminModel.fromJson({'id': 'embedding', 'provider_id': 'p', 'kind': 'embedding', 'upstream_model': 'embedding', 'context_window': 0}),
       ],
     );
     await tester.pumpWidget(

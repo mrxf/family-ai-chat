@@ -154,10 +154,27 @@ class Api {
   }) as Map).cast());
   Future<void> deleteMemory(String id) => _req('DELETE', '/api/memories/${Uri.encodeComponent(id)}');
   Future<void> clearMemories() => _req('DELETE', '/api/memories');
-  Future<List<MemoryDraft>> previewMemoryImport(String text) async =>
-      _list((await _req('POST', '/api/memories/import/preview', body: {'text': text}))['items'], MemoryDraft.fromJson);
-  Future<List<Memory>> importMemories(List<MemoryDraft> items) async =>
-      _list((await _req('POST', '/api/memories/import', body: {'items': items.map((i) => i.toJson()).toList()}))['memories'], Memory.fromJson);
+  /// Starts organizing pasted text in the background (replacing any earlier job).
+  Future<MemoryImportJob> startMemoryImport(String text) async =>
+      MemoryImportJob.fromJson((await _req('POST', '/api/memories/import/preview', body: {'text': text}) as Map).cast());
+
+  /// The current user's import job, or null when there is none.
+  Future<MemoryImportJob?> memoryImportJob() async {
+    try {
+      return MemoryImportJob.fromJson((await _req('GET', '/api/memories/import/preview') as Map).cast());
+    } on ApiError catch (e) {
+      if (e.status == 404) return null;
+      rethrow;
+    }
+  }
+
+  Future<void> cancelMemoryImport() => _req('DELETE', '/api/memories/import/preview');
+
+  /// Saves confirmed candidates; returns the saved memories and how many were already remembered.
+  Future<(List<Memory>, int)> importMemories(List<MemoryDraft> items) async {
+    final d = await _req('POST', '/api/memories/import', body: {'items': items.map((i) => i.toJson()).toList()});
+    return (_list(d['memories'], Memory.fromJson), (d['skipped'] as num?)?.toInt() ?? 0);
+  }
 
   // ---- conversations ----
   Future<List<Conversation>> conversations({int? before, String? q, int limit = 50}) async {

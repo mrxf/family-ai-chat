@@ -146,6 +146,16 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
                             }, v ? '小暖会继续记住你' : '已关闭，已有的记忆仍可查看和管理'),
                     ),
                     if (!enabled) Text('已暂停记下和使用记忆，已有的内容会保留。', style: TextStyle(color: p.muted, fontSize: 15, height: 1.5)),
+                    if (data.value?.memories.isNotEmpty ?? false)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          style: TextButton.styleFrom(minimumSize: const Size(44, 48), padding: const EdgeInsets.symmetric(horizontal: 4)),
+                          onPressed: _busy ? null : _import,
+                          icon: const Icon(Icons.move_to_inbox_outlined),
+                          label: const Text('从 ChatGPT、Gemini 等导入'),
+                        ),
+                      ),
                     if (_busy) const LinearProgressIndicator(),
                   ],
                 ),
@@ -232,11 +242,7 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
                                           Align(
                                             alignment: Alignment.centerLeft,
                                             child: TextButton.icon(
-                                              style: TextButton.styleFrom(
-                                                minimumSize: const Size(44, 44),
-                                                foregroundColor: p.muted,
-                                                padding: EdgeInsets.zero,
-                                              ),
+                                              style: TextButton.styleFrom(minimumSize: const Size(44, 44), foregroundColor: p.muted, padding: EdgeInsets.zero),
                                               onPressed: _busy
                                                   ? null
                                                   : () {

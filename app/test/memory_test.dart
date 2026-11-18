@@ -24,8 +24,7 @@ class _Adapter implements HttpClientAdapter {
   _Adapter(this.respond);
   final ResponseBody Function(RequestOptions) respond;
   @override
-  Future<ResponseBody> fetch(RequestOptions options, Stream<Uint8List>? requestStream, Future<void>? cancelFuture) async =>
-      respond(options);
+  Future<ResponseBody> fetch(RequestOptions options, Stream<Uint8List>? requestStream, Future<void>? cancelFuture) async => respond(options);
   @override
   void close({bool force = false}) {}
 }
@@ -99,8 +98,7 @@ void main() {
         AdminProvider.fromJson({'id': 'p', 'enabled': true}),
       ],
       models: [
-        for (final kind in ['chat', 'image', 'embedding'])
-          AdminModel.fromJson({'id': kind, 'provider_id': 'p', 'kind': kind, 'enabled': true}),
+        for (final kind in ['chat', 'image', 'embedding']) AdminModel.fromJson({'id': kind, 'provider_id': 'p', 'kind': kind, 'enabled': true}),
       ],
       settings: ModelSettings.fromJson({'memory_model_id': 'chat', 'embedding_model_id': 'embedding'}),
     );
@@ -151,16 +149,23 @@ void main() {
           'enabled': true,
         };
       }
-      if (request.path.endsWith('/preview')) {
+      if (request.path.endsWith('/preview') && request.method != 'DELETE') {
+        status = request.method == 'POST' ? 202 : 200;
         body = {
+          'id': 'j1',
+          'status': request.method == 'POST' ? 'running' : 'done',
+          'done': 1,
+          'total': 1,
+          'skipped': 2,
           'items': [
-            {'category': 'health', 'content': '每天服药'},
+            {'category': 'health', 'content': '用户每天服药', 'keywords': '吃药', 'replaces_id': 'm0', 'replaces': '用户每天早上服药'},
           ],
         };
       }
       if (request.path.endsWith('/import')) {
         body = {
           'memories': [memoryJson()],
+          'skipped': 1,
         };
       }
       if (request.method == 'POST' && request.path == '/api/memories') status = 201;
@@ -179,8 +184,17 @@ void main() {
     await api.updateMemory('m1', category: MemoryCategory.family);
     await api.deleteMemory('m1');
     await api.clearMemories();
-    expect((await api.previewMemoryImport('从其他 AI 复制的内容')).single.category, MemoryCategory.health);
-    expect((await api.importMemories([draft])).single.id, 'm1');
+    expect((await api.startMemoryImport('从其他 AI 复制的内容')).running, isTrue);
+    final job = (await api.memoryImportJob())!;
+    expect(job.status, 'done');
+    expect(job.skipped, 2);
+    final candidate = job.items.single;
+    expect(candidate.content, '你每天服药');
+    expect(candidate.replaces, '你每天早上服药');
+    await api.cancelMemoryImport();
+    final (saved, skipped) = await api.importMemories([draft, candidate]);
+    expect(saved.single.id, 'm1');
+    expect(skipped, 1);
     expect(requests.map((r) => '${r.method} ${r.path}'), [
       'GET /api/memories',
       'POST /api/memories',
@@ -189,15 +203,18 @@ void main() {
       'DELETE /api/memories/m1',
       'DELETE /api/memories',
       'POST /api/memories/import/preview',
+      'GET /api/memories/import/preview',
+      'DELETE /api/memories/import/preview',
       'POST /api/memories/import',
     ]);
     expect(requests[1].data, {'category': 'health', 'content': '每天服药'});
     expect(requests[2].data, {'content': '改为晚上服药'});
     expect(requests[3].data, {'category': 'family'});
     expect(requests[6].data, {'text': '从其他 AI 复制的内容'});
-    expect(requests[7].data, {
+    expect(requests[9].data, {
       'items': [
         {'category': 'health', 'content': '每天服药'},
+        {'category': 'health', 'content': '用户每天服药', 'keywords': '吃药', 'replaces_id': 'm0'},
       ],
     });
     api.dio.close();
@@ -219,10 +236,7 @@ void main() {
     await expectLater(
       api.createMemory(const MemoryDraft(category: MemoryCategory.profile, content: '')),
       throwsA(
-        isA<ApiError>()
-            .having((e) => e.status, 'status', 400)
-            .having((e) => e.code, 'code', 'bad_content')
-            .having((e) => e.message, 'message', '请填写 1～200 字'),
+        isA<ApiError>().having((e) => e.status, 'status', 400).having((e) => e.code, 'code', 'bad_content').having((e) => e.message, 'message', '请填写 1～200 字'),
       ),
     );
     api.dio.close();
@@ -235,5 +249,18 @@ void main() {
     expect(memoryToStorage('  你在杭州工作 '), '用户在杭州工作');
     expect(memoryToStorage('你们全家都爱吃辣'), '你们全家都爱吃辣');
     expect(MemoryDraft(category: MemoryCategory.health, content: '你对花生过敏').toJson()['content'], '用户对花生过敏');
+    // Imported work facts often mention users in another sense.
+    const work = '用户是产品经理，负责用户体验和老年用户调研，用户的父亲退休了';
+    expect(memoryToDisplay(work), '你是产品经理，负责用户体验和老年用户调研，你的父亲退休了');
+    expect(memoryToStorage(memoryToDisplay(work)), work);
+    expect(memoryToDisplay('用户名叫李芳。'), '你名叫李芳。');
+  });
+
+  test('editing an import candidate keeps what still applies', () {
+    const draft = MemoryDraft(category: MemoryCategory.ongoing, content: '在装修', keywords: '装修 房子', validUntil: '2026-12-31', replacesId: 'm0', replaces: '在看房');
+    final same = draft.edited(const MemoryDraft(category: MemoryCategory.ongoing, content: '在装修'));
+    expect((same.keywords, same.validUntil, same.replacesId), ('装修 房子', '2026-12-31', 'm0'));
+    final changed = draft.edited(const MemoryDraft(category: MemoryCategory.profile, content: '装修好了'));
+    expect((changed.keywords, changed.validUntil, changed.replacesId), ('', null, 'm0'));
   });
 }

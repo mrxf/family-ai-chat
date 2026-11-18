@@ -35,7 +35,10 @@ const (
 
 type MemoryService interface {
 	Inject(context.Context, *store.User, *string, string) memory.Context
-	Preview(context.Context, string) ([]memory.ImportItem, error)
+	StartImport(*store.User, string) (memory.ImportJob, error)
+	ImportStatus(string) (memory.ImportJob, bool)
+	CancelImport(string)
+	DrainEmbeddings(context.Context)
 }
 type MemoryWorker interface {
 	Kick(string, time.Duration)

@@ -94,7 +94,12 @@ class Memory {
 
 /// Memories are stored in the third person ("用户…") so every model knows who
 /// they are about; the family reads and edits them addressed to themselves ("你…").
-String memoryToDisplay(String s) => s.replaceAll('用户', '你');
+/// Compounds like 用户体验 or 老年用户 are left alone.
+final _subject = RegExp(
+  r'(?<!老年|年轻|新|老|普通|目标|终端|企业|个人|付费|活跃|潜在|核心|海外|国内|广大|中国)用户'
+  r'(?!体验|研究|画像|增长|群|数|量|端|界面|反馈|需求|调研|协议|中心|侧|运营|留存|访谈|行为|价值|隐私|数据)',
+);
+String memoryToDisplay(String s) => s.replaceAll(_subject, '你');
 
 String memoryToStorage(String s) => s
     .trim()
@@ -102,13 +107,61 @@ String memoryToStorage(String s) => s
     .replaceAll(RegExp(r'[我你]的'), '用户的')
     .replaceAllMapped(RegExp(r'([，,；;。])[我你](?!们)'), (m) => '${m[1]}用户');
 
-/// Both manual edits and import candidates use exactly these two wire fields.
+/// A memory to create: typed by hand, or an import candidate. Import candidates
+/// also carry retrieval keywords, an end date for ongoing items, and the existing
+/// memory they would replace.
 class MemoryDraft {
   final MemoryCategory category;
   final String content;
-  const MemoryDraft({required this.category, required this.content});
-  factory MemoryDraft.fromJson(Map<String, dynamic> j) => MemoryDraft(category: MemoryCategory.parse(j['category']), content: memoryToDisplay(_str(j['content'])));
-  Map<String, dynamic> toJson() => {'category': category.name, 'content': memoryToStorage(content)};
+  final String keywords;
+  final String? validUntil; // YYYY-MM-DD
+  final String? replacesId;
+  final String? replaces; // the replaced text, shown in the preview
+  const MemoryDraft({required this.category, required this.content, this.keywords = '', this.validUntil, this.replacesId, this.replaces});
+  factory MemoryDraft.fromJson(Map<String, dynamic> j) => MemoryDraft(
+    category: MemoryCategory.parse(j['category']),
+    content: memoryToDisplay(_str(j['content'])),
+    keywords: _str(j['keywords']),
+    validUntil: _strN(j['valid_until']),
+    replacesId: _strN(j['replaces_id']),
+    replaces: _strN(j['replaces']) == null ? null : memoryToDisplay(_str(j['replaces'])),
+  );
+  Map<String, dynamic> toJson() => {
+    'category': category.name,
+    'content': memoryToStorage(content),
+    if (keywords.isNotEmpty) 'keywords': keywords,
+    if (validUntil != null) 'valid_until': validUntil,
+    if (replacesId != null) 'replaces_id': replacesId,
+  };
+
+  /// Applies a user's edit: rewritten text drops the model's keywords (the server
+  /// fills retrieval in later), and an end date only applies to ongoing items.
+  MemoryDraft edited(MemoryDraft e) => MemoryDraft(
+    category: e.category,
+    content: e.content,
+    keywords: e.content == content ? keywords : '',
+    validUntil: e.category == MemoryCategory.ongoing ? validUntil : null,
+    replacesId: replacesId,
+    replaces: replaces,
+  );
+}
+
+/// Organizing pasted text runs on the server; the App polls this.
+class MemoryImportJob {
+  final String id, status;
+  final int done, total, skipped, failed;
+  final List<MemoryDraft> items;
+  final bool truncated;
+  final String? error;
+  const MemoryImportJob({required this.id, required this.status, this.done = 0, this.total = 0, this.skipped = 0, this.failed = 0,
+    this.items = const [], this.truncated = false, this.error});
+  bool get running => status == 'running';
+  bool get failedAll => status == 'failed';
+  factory MemoryImportJob.fromJson(Map<String, dynamic> j) => MemoryImportJob(
+    id: _str(j['id']), status: _str(j['status']), done: _int(j['done']), total: _int(j['total']),
+    skipped: _int(j['skipped']), failed: _int(j['failed']), truncated: j['truncated'] == true, error: _strN(j['error']),
+    items: ((j['items'] as List?) ?? const []).map((e) => MemoryDraft.fromJson((e as Map).cast())).toList(),
+  );
 }
 
 class MemoriesResult {

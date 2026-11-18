@@ -21,10 +21,13 @@ type Service struct {
 	Resolve ModelResolver
 	Log     *slog.Logger
 	embedMu sync.Mutex
+
+	importMu sync.Mutex
+	imports  map[string]*ImportJob // by user id
 }
 
 func New(st *store.Store, resolve ModelResolver, log *slog.Logger) *Service {
-	return &Service{Store: st, Resolve: resolve, Log: log}
+	return &Service{Store: st, Resolve: resolve, Log: log, imports: map[string]*ImportJob{}}
 }
 
 type Context struct{ Core, Recall string }
@@ -84,7 +87,9 @@ func (s *Service) Inject(ctx context.Context, u *store.User, assistant *string, 
 			continue
 		}
 		if n >= CoreHardLimit {
+			// Still reachable through retrieval until the next demotion pass.
 			s.Log.Warn("memory core truncated", "user", u.ID)
+			recall = append(recall, m)
 			continue
 		}
 		if core.Len() == 0 {

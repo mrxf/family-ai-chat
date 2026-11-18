@@ -1190,12 +1190,28 @@ data: {"message":{"id":"01933c90-1210-7000-8000-000000000012","conversation_id":
 | PATCH | `/api/memories/{id}` | `{"category"?:"…","content"?:"…"}` | `200 Memory` |
 | DELETE | `/api/memories/{id}` | — | `204` |
 | DELETE | `/api/memories` | — | `204`，清空本人全部记忆 |
-| POST | `/api/memories/import/preview` | `{"text":"…"}` | `200 {"items":[{"category":"health","content":"…"}]}`，不入库 |
-| POST | `/api/memories/import` | `{"items":[{"category":"health","content":"…"}]}` | `200 {"memories":[Memory…]}`，source 为 import |
+| POST | `/api/memories/import/preview` | `{"text":"…"}` | `202 ImportJob`，后台开始整理，替换本人之前的整理任务 |
+| GET | `/api/memories/import/preview` | — | `200 ImportJob`；没有任务时 `404 not_found` |
+| DELETE | `/api/memories/import/preview` | — | `204`，取消整理 / 丢弃预览 |
+| POST | `/api/memories/import` | `{"items":[ImportItem…]}` | `200 {"memories":[Memory…],"skipped":N}`，source 为 import |
 
 列表按 health、family、profile、preference、ongoing、episode 排序，同分类按创建时间倒序。
-手工添加、修改、导入的 content 去首尾空白后须为 1–200 字；预览 text 最多 8000 字；导入最多 200 条，导入不接受 episode 分类。
-无效输入返回 `400 bad_memory`；别人的或已删除的记忆返回 `404 not_found`。预览上游失败返回 `502 memory_preview_failed`。
+手工添加、修改、导入的 content 去首尾空白后须为 1–200 字；预览 text 最多 30000 字；导入最多 300 条，导入不接受 episode 分类。
+无效输入返回 `400 bad_memory`；别人的或已删除的记忆返回 `404 not_found`。
+
+导入外部记忆（ChatGPT / Gemini 等导出的文字）分两步：先整理成候选条目给用户勾选，确认后才入库。整理要调用几次模型（长文本按行切成约 4000 字一段，最多 3 段并发，多段时再做一次跨段去重 / 合并），可能超过一分钟，所以是每个用户一个的后台任务，App 每 1.5 秒轮询。任务只存在内存里，结束后保留 1 小时；服务重启后丢失，App 提示重新整理。
+
+```json
+// ImportJob
+{"id":"…","status":"running","done":1,"total":3,"items":[ImportItem…],"skipped":2,"failed":0,"truncated":false,"error":""}
+// ImportItem
+{"category":"health","content":"用户的妻子 2025 年 2 月起改吃缬沙坦 80 毫克。","keywords":"降压药 高血压","valid_until":"2027-01-31","replaces_id":"…","replaces":"用户的妻子每天吃氨氯地平 5mg。"}
+```
+
+- `status`：`running | done | failed`；`failed` 时 `error` 是给用户看的中文提示。`done / total` 是已整理的段数，`done == total` 而仍在 running 表示在做跨段合并。
+- `skipped`：文本里和已有记忆重复、因此没列出来的已有记忆条数。`failed`：没整理好的段数（其余段照常给出）。`truncated`：候选超过 300 条被截断。
+- `keywords`、`valid_until`（仅 ongoing，`YYYY-MM-DD`）、`replaces_id` 都是可选的，导入时原样带回；`replaces` 只用于预览展示。
+- 导入时在一个事务里：和本人已有记忆（忽略标点、空白和开头的「用户」）重复的跳过并计入 `skipped`；`replaces_id` 指向本人的 active 记忆时把它标为 superseded，指向别人的或已删除的记忆时只新增；随后按常驻字数预算降级。导入后立即补算向量。
 编辑会清空旧向量，由后台重算；删除对话只连带删除该对话的 episode，已抽取的事实保留。
 
 `PATCH /api/me` 的 `settings` 现在按顶层键合并，值为 `null` 时删除对应键。例如：
