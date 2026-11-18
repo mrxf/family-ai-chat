@@ -1,0 +1,16 @@
+app/lib/ui/chat_view.dart
+  h_8f297825d1fe21 4,21-23,33,37,51-62,79,83-106,110-113,122,186,191
+app/test/chat_view_test.dart
+  h_8f297825d1fe21 1-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "931ffac7828cd2e2447eaa8d8b78a61e27438462",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
