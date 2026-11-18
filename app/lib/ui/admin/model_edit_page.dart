@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/admin_models.dart';
@@ -21,8 +20,8 @@ class ModelEditPage extends ConsumerStatefulWidget {
   ConsumerState<ModelEditPage> createState() => _ModelEditPageState();
 }
 
+const _kindOptions = [('chat', '聊天'), ('image', '画图'), ('embedding', '向量检索')];
 // Everyday replies: what reasoning_effort to send.
-// GPT-5 (5.0) has no 'none'; 'minimal' is its fastest setting.
 const _dailyOptions = [('none', '快速'), ('minimal', '少想'), ('low', '稍想一下'), ('', '不发送')];
 // Deep thinking button: '' = the model has no deep-thinking mode.
 const _thinkOptions = [('', '不支持'), ('low', '低'), ('medium', '中'), ('high', '高')];
@@ -91,20 +90,20 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
   }
 
   Map<String, dynamic> _body() => {
-    'display_name': _name.text.trim(),
-    'description': _desc.text.trim(),
-    'upstream_model': _upstream.text.trim(),
-    'default_effort': _chat ? _daily.text.trim() : '',
-    'think_effort': _chat ? _think.text.trim() : '',
-    'context_window': _embedding ? 0 : (int.tryParse(_context.text.trim()) ?? 128000),
-    'max_output': _chat ? (int.tryParse(_maxOut.text.trim()) ?? 0) : 0,
-    'input_price': double.tryParse(_inPrice.text.trim()) ?? 0,
-    'output_price': double.tryParse(_outPrice.text.trim()) ?? 0,
-    'vision': _chat && _vision,
-    'tools': _chat && _tools,
-    'enabled': _enabled,
-    'kind': _kind,
-  };
+        'display_name': _name.text.trim(),
+        'description': _desc.text.trim(),
+        'upstream_model': _upstream.text.trim(),
+        'default_effort': _chat ? _daily.text.trim() : '',
+        'think_effort': _chat ? _think.text.trim() : '',
+        'context_window': _embedding ? 0 : (int.tryParse(_context.text.trim()) ?? 128000),
+        'max_output': _chat ? (int.tryParse(_maxOut.text.trim()) ?? 0) : 0,
+        'input_price': double.tryParse(_inPrice.text.trim()) ?? 0,
+        'output_price': double.tryParse(_outPrice.text.trim()) ?? 0,
+        'vision': _chat && _vision,
+        'tools': _chat && _tools,
+        'enabled': _enabled,
+        'kind': _kind,
+      };
 
   /// Saves; returns the saved model id, or null on failure.
   Future<String?> _save({bool quiet = false}) async {
@@ -229,54 +228,86 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
           duration: const Duration(milliseconds: 200),
           child: _dirty || _isNew
               ? BottomBar(
-                  child: PrimaryButton(label: _isNew ? '添加' : '保存修改', busy: _saving, onTap: _save),
+                  child: PrimaryButton(label: _isNew ? '添加模型' : '保存修改', busy: _saving, onTap: _save),
                 )
               : const SizedBox(width: double.infinity),
         ),
         body: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 40),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 44),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           children: [
             if (provider != null)
-              Row(
-                children: [
-                  ProviderIcon(kind: provider.kind, size: 22),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text('来自「${provider.name}」', style: TextStyle(color: p.muted, fontSize: 14)),
-                  ),
-                  if (m != null && !isDefault && c.usable(m))
-                    TextButton.icon(onPressed: () => _makeDefault(m), icon: const Icon(Icons.star_outline_rounded, size: 18), label: const Text('设为全家默认')),
-                  if (isDefault) Tag('全家默认', icon: Icons.star_rounded, color: p.accent),
-                ],
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                decoration: BoxDecoration(
+                  color: p.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: p.line),
+                ),
+                child: Row(
+                  children: [
+                    ProviderIcon(kind: provider.kind, size: 26),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text('来自「${provider.name}」', style: TextStyle(color: p.muted, fontSize: 14)),
+                    ),
+                    if (m != null && !isDefault && c.usable(m))
+                      SectionAction(
+                        label: '设为全家默认',
+                        icon: Icons.star_outline_rounded,
+                        filled: true,
+                        onTap: () => _makeDefault(m),
+                      ),
+                    if (isDefault) Tag('全家默认', icon: Icons.star_rounded, color: p.accent),
+                  ],
+                ),
               ),
 
             const SectionHeader('模型类型'),
-            DropdownButtonFormField<String>(
-              initialValue: _kind,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: '类型'),
-              items: const [
-                DropdownMenuItem(value: 'chat', child: Text('聊天')),
-                DropdownMenuItem(value: 'image', child: Text('画图')),
-                DropdownMenuItem(value: 'embedding', child: Text('向量（记忆检索）')),
+            GroupCard(
+              padding: const EdgeInsets.all(14),
+              children: [
+                Choice<String>(
+                  value: _kind,
+                  options: _kindOptions,
+                  enabled: !_saving && _testingThink == null,
+                  onChanged: (v) => setState(() {
+                    _kind = v;
+                    if (!_embedding && (int.tryParse(_context.text) ?? 0) < 1024) _context.text = '128000';
+                    _dirty = true;
+                    _test = null;
+                  }),
+                ),
               ],
-              onChanged: _saving || _testingThink != null ? null : (v) => setState(() {
-                _kind = v!;
-                if (!_embedding && (int.tryParse(_context.text) ?? 0) < 1024) _context.text = '128000';
-                _dirty = true;
-                _test = null;
-              }),
             ),
 
             // ---- what the family sees ----
             SectionHeader(_chat ? '家人看到的' : '基本信息'),
-            _field(_name, '显示名称', hint: _embedding ? '例如：BGE M3' : (_image ? '例如：GPT Image' : '例如：GPT-5 Mini'), maxLength: 40),
-            if (_chat) ...[const SizedBox(height: 12), _field(_desc, '一句话介绍', hint: '例如：反应快，适合日常问答', maxLength: 60)],
-            const SizedBox(height: 12),
             GroupCard(
               children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    AdminField(
+                      controller: _name,
+                      label: '显示名称',
+                      hint: _embedding ? '例如：BGE M3' : (_image ? '例如：GPT Image' : '例如：GPT-5 Mini'),
+                      maxLength: 40,
+                    ),
+                    if (_chat) ...[
+                      const SizedBox(height: 14),
+                      AdminField(
+                        controller: _desc,
+                        label: '一句话介绍',
+                        statusText: '选填',
+                        hint: '例如：反应快，适合日常问答',
+                        maxLength: 60,
+                      ),
+                    ],
+                  ]),
+                ),
                 SwitchRow(
+                  icon: Icons.visibility_outlined,
                   value: _enabled,
                   onChanged: (v) => setState(() {
                     _enabled = v;
@@ -287,6 +318,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
                 ),
                 if (_chat) ...[
                   SwitchRow(
+                    icon: Icons.image_outlined,
                     value: _vision,
                     onChanged: (v) => setState(() {
                       _vision = v;
@@ -296,13 +328,14 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
                     desc: '打开后才会把照片发给它；不支持看图的模型打开会报错',
                   ),
                   SwitchRow(
+                    icon: Icons.auto_fix_high_outlined,
                     value: _tools,
                     onChanged: (v) => setState(() {
                       _tools = v;
                       _dirty = true;
                     }),
                     title: '会用工具',
-                    desc: '家人说「帮我画…」时由它自己调用画图模型。这个模型回答总出错时可以关掉试试',
+                    desc: '家人说「帮我画…」时由它自己调用画图模型。若回答常报错可关掉试试',
                   ),
                 ],
               ],
@@ -312,7 +345,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
             if (_chat) ...[
               const SectionHeader('思考设置', subtitle: '模型先想一想再回答，更准但更慢、更贵'),
               GroupCard(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
                 children: [
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -325,8 +358,8 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
                         onChanged: (v) => setState(() => _daily.text = v),
                       ),
                       Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        child: Divider(height: 1, color: p.line),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: Divider(height: 1, thickness: 0.7, color: p.line.withValues(alpha: 0.75)),
                       ),
                       const TitleDesc('「深度思考」按钮', desc: '家人打开「深度思考」时用的强度；选「不支持」就不显示这个按钮'),
                       const SizedBox(height: 12),
@@ -335,36 +368,34 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
                         options: _thinkOptions,
                         onChanged: (v) => setState(() => _think.text = v),
                       ),
-                      const SizedBox(height: 6),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          style: TextButton.styleFrom(
-                            foregroundColor: p.muted,
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                          ),
-                          onPressed: () => setState(() => _advanced = !_advanced),
-                          icon: Icon(_advanced ? Icons.expand_less_rounded : Icons.tune_rounded, size: 18),
-                          label: Text(_advanced ? '收起高级设置' : '高级：直接填写参数值'),
+                      const SizedBox(height: 10),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: SectionAction(
+                          label: _advanced ? '收起高级设置' : '高级：直接填写参数值',
+                          icon: _advanced ? Icons.expand_less_rounded : Icons.tune_rounded,
+                          onTap: () => setState(() => _advanced = !_advanced),
                         ),
                       ),
                       AnimatedSize(
                         duration: const Duration(milliseconds: 200),
                         child: _advanced
-                            ? Column(
-                                children: [
-                                  Text('会作为 reasoning_effort 发给上游，例如 minimal、low、medium、high、none；留空表示不发送。', style: AdminText.desc(p)),
-                                  const SizedBox(height: 12),
-                                  Row(
-                                    children: [
-                                      Expanded(child: _field(_daily, '平时', mono: true)),
-                                      const SizedBox(width: 10),
-                                      Expanded(child: _field(_think, '深度思考', mono: true)),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 10),
-                                ],
+                            ? Padding(
+                                padding: const EdgeInsets.only(top: 8, bottom: 6),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('会作为 reasoning_effort 发给上游，例如 minimal、low、medium、high、none；留空表示不发送。', style: AdminText.desc(p)),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      children: [
+                                        Expanded(child: AdminField(controller: _daily, label: '平时', mono: true)),
+                                        const SizedBox(width: 10),
+                                        Expanded(child: AdminField(controller: _think, label: '深度思考', mono: true)),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               )
                             : const SizedBox(width: double.infinity),
                       ),
@@ -376,7 +407,12 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
 
             // ---- test ----
             if (!_isNew) ...[
-              SectionHeader('试一下', subtitle: _embedding ? '发送一小段文字，确认能用于记忆检索' : (_image ? '真的画一张小图，确认能正常出图（大约半分钟，会产生一点费用）' : '用现在的设置真的发一句话，确认能正常回答')),
+              SectionHeader(
+                '试一下',
+                subtitle: _embedding
+                    ? '发送一小段文字，确认能用于记忆检索'
+                    : (_image ? '真的画一张小图，确认能正常出图（约半分钟，会产生少量费用）' : '用现在的设置发一句话，确认能正常回答'),
+              ),
               GroupCard(
                 padding: const EdgeInsets.all(14),
                 children: [
@@ -386,7 +422,10 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
                       Row(
                         children: [
                           Expanded(child: _testButton(false, _embedding ? '测试记忆检索' : (_image ? '画一张试试' : '测试回答'))),
-                          if (_chat && _think.text.trim().isNotEmpty) ...[const SizedBox(width: 10), Expanded(child: _testButton(true, '测试深度思考'))],
+                          if (_chat && _think.text.trim().isNotEmpty) ...[
+                            const SizedBox(width: 10),
+                            Expanded(child: _testButton(true, '测试深度思考')),
+                          ],
                         ],
                       ),
                       AnimatedSize(
@@ -403,8 +442,9 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
                                         lines: _test!.ok
                                             ? [
                                                 '「${_test!.reply.isEmpty ? '（没有文字）' : _test!.reply}」',
-                                                if (_chat) '首字 ${(_test!.firstTokenMs / 1000).toStringAsFixed(1)} 秒，总共 ${(_test!.durationMs / 1000).toStringAsFixed(1)} 秒'
-                                                    '${_test!.reasoning ? '，有思考过程' : ''}${_test!.cost > 0 ? '，花费 ${fmtUsd(_test!.cost)}' : ''}',
+                                                if (_chat)
+                                                  '首字 ${(_test!.firstTokenMs / 1000).toStringAsFixed(1)} 秒，总共 ${(_test!.durationMs / 1000).toStringAsFixed(1)} 秒'
+                                                      '${_test!.reasoning ? '，有思考过程' : ''}${_test!.cost > 0 ? '，花费 ${fmtUsd(_test!.cost)}' : ''}',
                                               ]
                                             : [_test!.message, if (_chat && _test!.effort.isNotEmpty) '如果提示参数不支持，试试把思考档位改成「不发送」或「稍想一下」。'],
                                       ),
@@ -418,45 +458,83 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
 
             // ---- technical ----
             const SectionHeader('技术参数'),
-            _field(_upstream, '上游模型 ID', hint: '例如 openai/gpt-5-mini', mono: true, helper: '必须和供应商那边的名字完全一致'),
-            if (_chat) ...[
-              const SizedBox(height: 16),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 4),
-                child: TitleDesc('上下文长度', desc: '每次最多带上多少聊天记录。越大越能记住长对话，但每次回答都更贵。'),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final n in _contextOptions)
-                    ChoiceChip(
-                      label: Text(fmtContext(n)),
-                      selected: _context.text == '$n',
-                      showCheckmark: false,
-                      selectedColor: p.accentSoft,
-                      side: BorderSide(color: _context.text == '$n' ? p.accent : p.line),
-                      labelStyle: TextStyle(color: _context.text == '$n' ? p.accent : p.text, fontWeight: FontWeight.w600),
-                      onSelected: (_) => setState(() => _context.text = '$n'),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              _field(_context, '自定义（token 数）', number: true),
-              const SizedBox(height: 12),
-              _field(_maxOut, '单次回答最长（token 数）', hint: '留空表示不限制', number: true),
-            ],
-
-            SectionHeader('价格', subtitle: _image ? '美元 / 每百万 token（画图接口会返回用了多少 token）。填了才能估算画图花费' : '美元 / 每百万 token。填了才能估算花费；OpenRouter 会直接返回实际花费'),
-            Row(
+            GroupCard(
+              padding: const EdgeInsets.all(16),
               children: [
-                Expanded(
-                  child: _field(_inPrice, '输入', hint: '0', decimal: true, prefix: '\$'),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _field(_outPrice, '输出', hint: '0', decimal: true, prefix: '\$'),
+                Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  AdminField(
+                    controller: _upstream,
+                    label: '上游模型 ID',
+                    hint: '例如 openai/gpt-5-mini',
+                    mono: true,
+                    helper: '必须和供应商那边的名字完全一致',
+                  ),
+                  if (_chat) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Divider(height: 1, thickness: 0.7, color: p.line.withValues(alpha: 0.75)),
+                    ),
+                    const TitleDesc('上下文长度', desc: '每次最多带上多少聊天记录。越大越能记住长对话，但每次回答更贵。'),
+                    const SizedBox(height: 12),
+                    ListenableBuilder(
+                      listenable: _context,
+                      builder: (_, _) => Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final n in _contextOptions)
+                            Pressable(
+                              scale: 0.96,
+                              onTap: () => setState(() => _context.text = '$n'),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 160),
+                                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+                                decoration: BoxDecoration(
+                                  color: _context.text == '$n' ? p.accentSoft : p.surfaceAlt,
+                                  borderRadius: BorderRadius.circular(11),
+                                  border: Border.all(
+                                    color: _context.text == '$n' ? p.accent.withValues(alpha: 0.55) : Colors.transparent,
+                                  ),
+                                ),
+                                child: Text(
+                                  fmtContext(n),
+                                  style: TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: _context.text == '$n' ? FontWeight.w600 : FontWeight.w500,
+                                    color: _context.text == '$n' ? p.accent : p.muted,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    AdminField(controller: _context, label: '自定义上下文（token 数）', number: true, mono: true),
+                    const SizedBox(height: 14),
+                    AdminField(controller: _maxOut, label: '单次回答最长（token 数）', statusText: '选填', hint: '留空表示不限制', number: true, mono: true),
+                  ],
+                ]),
+              ],
+            ),
+
+            SectionHeader(
+              '价格',
+              subtitle: _image ? '美元 / 每百万 token（画图接口会返回 token 数），用于估算花费' : '美元 / 每百万 token。填了才能估算花费；OpenRouter 会直接返回实际花费',
+            ),
+            GroupCard(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: AdminField(controller: _inPrice, label: '输入价格', hint: '0', decimal: true, mono: true, prefixText: '\$ '),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: AdminField(controller: _outPrice, label: '输出价格', hint: '0', decimal: true, mono: true, prefixText: '\$ '),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -495,38 +573,11 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
 
   Widget _testButton(bool think, String label) {
     final running = _testingThink == think;
-    return OutlinedButton.icon(
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size.fromHeight(48),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      ),
-      onPressed: _testingThink != null ? null : () => _runTest(think),
-      icon: running
-          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-          : Icon(think ? Icons.lightbulb_outline_rounded : Icons.play_arrow_rounded),
-      label: Text(running ? (_embedding ? '正在测试…' : (_image ? '正在画…' : '等待回答…')) : label),
-    );
-  }
-
-  Widget _field(
-    TextEditingController c,
-    String label, {
-    String? hint,
-    String? helper,
-    int? maxLength,
-    bool mono = false,
-    bool number = false,
-    bool decimal = false,
-    String? prefix,
-  }) {
-    return TextField(
-      controller: c,
-      maxLength: maxLength,
-      autocorrect: !mono,
-      keyboardType: number || decimal ? TextInputType.numberWithOptions(decimal: decimal) : null,
-      inputFormatters: number ? [FilteringTextInputFormatter.digitsOnly] : (decimal ? [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))] : null),
-      style: TextStyle(fontSize: 16, fontFamily: mono ? 'monospace' : null),
-      decoration: InputDecoration(labelText: label, hintText: hint, helperText: helper, counterText: '', prefixText: prefix),
+    return SecondaryButton(
+      label: running ? (_embedding ? '正在测试…' : (_image ? '正在画…' : '等待回答…')) : label,
+      icon: think ? Icons.lightbulb_outline_rounded : Icons.play_arrow_rounded,
+      busy: running,
+      onTap: _testingThink != null ? null : () => _runTest(think),
     );
   }
 }

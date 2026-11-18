@@ -78,7 +78,7 @@ class _UsagePageState extends ConsumerState<UsagePage> {
           Text('全家 $_days 天${hasCost ? '花费' : '用量'}', style: TextStyle(fontSize: 14, color: p.muted, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           Text(hasCost ? fmtUsd(r.total.cost) : '${fmtTokens(r.total.tokens)} tokens',
-              style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800, color: p.text, letterSpacing: -0.5)),
+              style: TextStyle(fontSize: 32, fontWeight: FontWeight.w700, color: p.text, letterSpacing: -0.4)),
           const SizedBox(height: 6),
           Text(
             '${r.total.messages} 次回答 · ${hasCost ? '${fmtTokens(r.total.tokens)} tokens · ' : ''}'
@@ -146,8 +146,8 @@ class _Bar extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           if (leading != null) ...[leading!, const SizedBox(width: 10)],
-          Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
-          Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: p.text)),
+          Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: p.text))),
+          Text(value, style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600, color: p.text)),
         ]),
         const SizedBox(height: 10),
         ClipRRect(

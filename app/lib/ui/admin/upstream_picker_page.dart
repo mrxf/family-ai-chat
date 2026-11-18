@@ -66,8 +66,10 @@ class _UpstreamPickerPageState extends ConsumerState<UpstreamPickerPage> {
       Navigator.of(context).pop();
       final img = c?.settings.imageModelId ?? '';
       final becameImage = imageBefore.isEmpty && img.isNotEmpty;
-      showToast(context,
-          '已添加 ${added.length} 个模型${becameDefault ? '，「${c?.model(def)?.displayName}」设为全家默认' : ''}${becameImage ? '，「${c?.model(img)?.displayName}」用来画图' : ''}');
+      showToast(
+        context,
+        '已添加 ${added.length} 个模型${becameDefault ? '，「${c?.model(def)?.displayName}」设为全家默认' : ''}${becameImage ? '，「${c?.model(img)?.displayName}」用来画图' : ''}',
+      );
     } on ApiError catch (e) {
       if (mounted) showToast(context, e.message);
     } finally {
@@ -89,19 +91,30 @@ class _UpstreamPickerPageState extends ConsumerState<UpstreamPickerPage> {
           if (provider != null) Text(provider.name, style: TextStyle(fontSize: 12.5, color: p.muted, fontWeight: FontWeight.w400)),
         ]),
         actions: [
-          if (widget.firstTime) TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('跳过')),
+          if (widget.firstTime)
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('跳过', style: TextStyle(color: p.muted)),
+            ),
         ],
       ),
       bottomNavigationBar: data.hasValue && all.isNotEmpty
           ? BottomBar(
               child: Row(children: [
                 Expanded(
-                  child: Text(_selected.isEmpty ? '建议选 2～4 个：快的日常用，聪明的处理难题，再有一个能看图' : '已选 ${_selected.length} 个',
-                      style: TextStyle(fontSize: _selected.isEmpty ? 13 : 16, color: _selected.isEmpty ? p.muted : p.text, fontWeight: FontWeight.w600, height: 1.4)),
+                  child: Text(
+                    _selected.isEmpty ? '建议选 2～4 个：快的日常用，聪明的解难题，再配一个能看图' : '已选 ${_selected.length} 个模型',
+                    style: TextStyle(
+                      fontSize: _selected.isEmpty ? 13 : 15.5,
+                      color: _selected.isEmpty ? p.muted : p.text,
+                      fontWeight: _selected.isEmpty ? FontWeight.w400 : FontWeight.w600,
+                      height: 1.4,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 SizedBox(
-                  width: 128,
+                  width: 124,
                   child: PrimaryButton(label: '添加', busy: _busy, onTap: _selected.isEmpty ? null : () => _add(all)),
                 ),
               ]),
@@ -170,7 +183,13 @@ class _UpstreamPickerPageState extends ConsumerState<UpstreamPickerPage> {
       } else {
         rows.add(Padding(
           padding: const EdgeInsets.only(top: 16),
-          child: TextButton(onPressed: () => setState(() => _showOthers = true), child: Text('显示其他 ${others.length} 个模型（语音、视频等）')),
+          child: Center(
+            child: SectionAction(
+              label: '显示其他 ${others.length} 个模型（语音、视频等）',
+              icon: Icons.expand_more_rounded,
+              onTap: () => setState(() => _showOthers = true),
+            ),
+          ),
         ));
       }
     }
@@ -188,29 +207,44 @@ class _UpstreamPickerPageState extends ConsumerState<UpstreamPickerPage> {
           controller: _search,
           onChanged: (_) => setState(() {}),
           autocorrect: false,
+          style: TextStyle(fontSize: 15.5, color: p.text),
           decoration: InputDecoration(
             hintText: '搜索模型，例如 gpt、claude、gemini',
-            prefixIcon: Icon(Icons.search_rounded, color: p.faint),
-            suffixIcon: _search.text.isEmpty ? null : IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => setState(_search.clear)),
+            prefixIcon: Icon(Icons.search_rounded, color: p.faint, size: 21),
+            suffixIcon: _search.text.isEmpty
+                ? null
+                : IconButton(icon: Icon(Icons.close_rounded, size: 19, color: p.muted), onPressed: () => setState(_search.clear)),
             contentPadding: const EdgeInsets.symmetric(vertical: 12),
           ),
         ),
       ),
       SizedBox(
-        height: 52,
-        child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(16, 10, 16, 2), children: [
+        height: 50,
+        child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(16, 10, 16, 4), children: [
           for (final (f, label) in [(_Filter.all, '全部 ${all.length}'), (_Filter.recommended, '推荐'), (_Filter.vision, '能看图'), (_Filter.think, '能深度思考')])
             Padding(
               padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: Text(label),
-                selected: _filter == f,
-                onSelected: (_) => setState(() => _filter = f),
-                showCheckmark: false,
-                selectedColor: p.accentSoft,
-                labelStyle: TextStyle(color: _filter == f ? p.accent : p.text, fontWeight: _filter == f ? FontWeight.w700 : FontWeight.w500),
-                side: BorderSide(color: _filter == f ? p.accent : p.line),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Pressable(
+                scale: 0.96,
+                onTap: () => setState(() => _filter = f),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: _filter == f ? p.accentSoft : p.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _filter == f ? p.accent.withValues(alpha: 0.55) : p.line),
+                  ),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      color: _filter == f ? p.accent : p.muted,
+                      fontWeight: _filter == f ? FontWeight.w600 : FontWeight.w500,
+                    ),
+                  ),
+                ),
               ),
             ),
         ]),
@@ -218,7 +252,7 @@ class _UpstreamPickerPageState extends ConsumerState<UpstreamPickerPage> {
       Expanded(
         child: ListView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
           children: rows,
         ),
       ),
@@ -236,6 +270,12 @@ class _ItemTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.pal;
     final it = item;
+    final tags = <Widget>[
+      if (it.isChat) ...modelTags(context, vision: it.vision, think: it.think, inPrice: it.inputPrice, outPrice: it.outputPrice),
+      if (it.isEmbedding) const Tag('向量（记忆检索）', icon: Icons.manage_search_rounded),
+      if (it.isImage) const Tag('画图', icon: Icons.palette_outlined),
+    ];
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Pressable(
@@ -251,44 +291,47 @@ class _ItemTile extends StatelessWidget {
           duration: const Duration(milliseconds: 160),
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
           decoration: BoxDecoration(
-            color: selected ? p.accentSoft : p.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: selected ? p.accent : p.line, width: selected ? 1.5 : 1),
+            color: selected ? Color.lerp(p.surface, p.accentSoft, 0.35) : p.surface,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: selected ? p.accent.withValues(alpha: 0.55) : p.line, width: selected ? 1.3 : 1),
           ),
           child: Row(children: [
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 160),
               child: Icon(
-                it.added ? Icons.check_circle_rounded : (selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded),
+                it.added ? Icons.check_circle_rounded : (selected ? Icons.check_circle_rounded : Icons.circle_outlined),
                 key: ValueKey('${it.added}$selected'),
-                color: it.added ? p.faint : (selected ? p.accent : p.faint),
-                size: 26,
+                color: it.added ? p.faint : (selected ? p.accent : p.line),
+                size: 23,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Opacity(
-                opacity: it.added ? 0.55 : 1,
+                opacity: it.added ? 0.52 : 1,
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
-                    Flexible(child: Text(it.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
-                    if (it.added) ...[const SizedBox(width: 6), Tag('已添加', color: p.muted)],
+                    Flexible(
+                      child: Text(
+                        it.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                          color: p.text,
+                        ),
+                      ),
+                    ),
+                    if (it.added) ...[const SizedBox(width: 7), const Tag('已添加')],
                   ]),
                   if (it.displayName != it.upstreamModel) ...[
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     Text(it.upstreamModel, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: p.muted, fontFamily: 'monospace')),
                   ],
-                  if (it.isChat) ...[
+                  if (tags.isNotEmpty) ...[
                     const SizedBox(height: 7),
-                    Wrap(spacing: 6, runSpacing: 6, children: modelTags(context, vision: it.vision, think: it.think, inPrice: it.inputPrice, outPrice: it.outputPrice)),
-                  ],
-                  if (it.isEmbedding) ...[
-                    const SizedBox(height: 7),
-                    Tag('向量（记忆检索）', icon: Icons.manage_search_rounded, color: p.accent),
-                  ],
-                  if (it.isImage) ...[
-                    const SizedBox(height: 7),
-                    const Tag('画图', icon: Icons.palette_outlined, color: Color(0xFFDB2777)),
+                    Wrap(spacing: 6, runSpacing: 6, children: tags),
                   ],
                 ]),
               ),

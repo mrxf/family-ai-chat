@@ -174,10 +174,40 @@ ThemeData buildTheme(Brightness b) {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size(64, 54),
+        minimumSize: const Size(64, 52),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w600),
       ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: p.text,
+        backgroundColor: p.surface,
+        side: BorderSide(color: p.line),
+        minimumSize: const Size(64, 48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        textStyle: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w500),
+      ),
+    ),
+    switchTheme: SwitchThemeData(
+      trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+      trackOutlineWidth: const WidgetStatePropertyAll(0),
+      thumbIcon: const WidgetStatePropertyAll(Icon(null)),
+      thumbColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) {
+          return Colors.white.withValues(alpha: b == Brightness.light ? 0.75 : 0.35);
+        }
+        if (states.contains(WidgetState.selected)) return Colors.white;
+        return b == Brightness.light ? Colors.white : p.muted;
+      }),
+      trackColor: WidgetStateProperty.resolveWith((states) {
+        final on = states.contains(WidgetState.selected);
+        if (states.contains(WidgetState.disabled)) {
+          return (on ? p.accent : p.line).withValues(alpha: 0.45);
+        }
+        if (on) return p.accent;
+        return b == Brightness.light ? const Color(0xFFE9DDD3) : const Color(0xFF352F2B);
+      }),
     ),
     listTileTheme: ListTileThemeData(iconColor: p.muted, textColor: p.text, minVerticalPadding: 12),
     popupMenuTheme: PopupMenuThemeData(

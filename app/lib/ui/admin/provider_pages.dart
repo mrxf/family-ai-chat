@@ -38,12 +38,14 @@ class PresetPickerPage extends ConsumerWidget {
         loading: () => const LoadingView(),
         error: (e, _) => ErrorView(message: ApiError.from(e).message, onRetry: () => ref.invalidate(presetsProvider)),
         data: (list) => ListView(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 36),
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(6, 0, 6, 14),
-              child: Text('选择你手上有 API Key 的服务。不知道选哪个？OpenRouter 一个 Key 就能用大多数模型，按用量付费。',
-                  style: TextStyle(fontSize: 14.5, color: p.muted, height: 1.55)),
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 14),
+              child: Text(
+                '选择你手上有 API Key 的服务。不知道选哪个？OpenRouter 一个 Key 就能用主流模型，按用量付费。',
+                style: TextStyle(fontSize: 13.5, color: p.muted, height: 1.55),
+              ),
             ),
             for (final (i, pr) in list.indexed)
               Padding(
@@ -56,22 +58,28 @@ class PresetPickerPage extends ConsumerWidget {
                     decoration: BoxDecoration(
                       color: p.surface,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: i == 0 ? p.accent.withValues(alpha: 0.45) : p.line),
+                      border: Border.all(color: i == 0 ? p.accent.withValues(alpha: 0.38) : p.line),
                     ),
                     child: Row(children: [
-                      ProviderIcon(kind: pr.kind, size: 48),
+                      ProviderIcon(kind: pr.kind, size: 46),
                       const SizedBox(width: 14),
                       Expanded(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Row(children: [
-                            Text(pr.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                            Flexible(
+                              child: Text(
+                                pr.name,
+                                style: TextStyle(fontSize: 16.5, fontWeight: i == 0 ? FontWeight.w600 : FontWeight.w500, color: p.text),
+                              ),
+                            ),
                             if (i == 0) ...[const SizedBox(width: 8), Tag('推荐', color: p.accent)],
                           ]),
                           const SizedBox(height: 4),
-                          Text(pr.description, style: TextStyle(fontSize: 13.5, color: p.muted, height: 1.45)),
+                          Text(pr.description, style: AdminText.desc(p)),
                         ]),
                       ),
-                      Icon(Icons.chevron_right_rounded, color: p.faint),
+                      const SizedBox(width: 6),
+                      Icon(Icons.chevron_right_rounded, color: p.faint, size: 22),
                     ]),
                   ),
                 ),
@@ -109,7 +117,16 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
     super.initState();
     _showUrl = pr.isCustom;
     for (final c in [_name, _url, _key]) {
-      c.addListener(() => setState(() => _result = null));
+      c.addListener(() {
+        if (_result != null || _error != null) {
+          setState(() {
+            _result = null;
+            _error = null;
+          });
+        } else if (c == _url) {
+          setState(() {});
+        }
+      });
     }
   }
 
@@ -148,7 +165,6 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
       await ref.read(catalogProvider.notifier).reload();
       if (!mounted) return;
       HapticFeedback.mediumImpact();
-      // Replace the add flow with the model picker; when it finishes, land on the provider page.
       final nav = Navigator.of(context);
       nav.popUntil((r) => r.settings.name == _addRoute || r.isFirst);
       if (nav.canPop()) nav.pop();
@@ -173,7 +189,7 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    ref.watch(catalogProvider); // keep the catalog alive so saving can refresh it
+    ref.watch(catalogProvider);
     final p = context.pal;
     final preview = endpointPreview(_url.text);
     final failed = _result != null && !_result!.ok;
@@ -183,105 +199,109 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           PrimaryButton(label: failed ? '重新测试' : '测试并保存', busy: _busy, onTap: _submit),
           if (failed)
-            TextButton(onPressed: _busy ? null : () => _submit(skipTest: true), child: Text('先保存，稍后再处理', style: TextStyle(color: p.muted))),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: TextButton(
+                onPressed: _busy ? null : () => _submit(skipTest: true),
+                child: Text('先保存，稍后再处理', style: TextStyle(color: p.muted, fontSize: 14)),
+              ),
+            ),
         ]),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: p.surfaceAlt, borderRadius: BorderRadius.circular(20)),
+            decoration: BoxDecoration(
+              color: p.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: p.line),
+            ),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               ProviderIcon(kind: pr.kind, size: 44),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(pr.description, style: TextStyle(fontSize: 14.5, height: 1.5, color: p.text)),
+                  Text(pr.description, style: TextStyle(fontSize: 14, height: 1.5, color: p.muted)),
                   if (pr.keyUrl.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    InkWell(
+                    const SizedBox(height: 10),
+                    SectionAction(
+                      label: '去官网创建 API Key',
+                      icon: Icons.open_in_new_rounded,
+                      filled: true,
                       onTap: () => openLink(context, pr.keyUrl),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.open_in_new_rounded, size: 16, color: p.accent),
-                        const SizedBox(width: 4),
-                        Text('去官网创建 API Key', style: TextStyle(color: p.accent, fontWeight: FontWeight.w600)),
-                      ]),
                     ),
                   ],
                 ]),
               ),
             ]),
           ),
-          const SizedBox(height: 22),
-          _label('API Key'),
-          TextField(
-            controller: _key,
-            obscureText: _hideKey,
-            autocorrect: false,
-            enableSuggestions: false,
-            style: const TextStyle(fontSize: 16, fontFamily: 'monospace'),
-            decoration: InputDecoration(
-              hintText: pr.keyPrefix.isEmpty ? '粘贴 API Key' : '${pr.keyPrefix}…',
-              prefixIcon: Icon(Icons.key_rounded, color: p.faint),
-              suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
-                IconButton(
-                  tooltip: _hideKey ? '显示' : '隐藏',
-                  icon: Icon(_hideKey ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: p.faint),
-                  onPressed: () => setState(() => _hideKey = !_hideKey),
+          const SectionHeader('连接信息'),
+          GroupCard(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                AdminField(
+                  controller: _key,
+                  label: 'API Key',
+                  statusText: '只保存在你的服务器上',
+                  hint: pr.keyPrefix.isEmpty ? '粘贴 API Key' : '${pr.keyPrefix}…',
+                  obscureText: _hideKey,
+                  mono: true,
+                  suffix: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Pressable(
+                      onTap: () => setState(() => _hideKey = !_hideKey),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                        child: Icon(_hideKey ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 19, color: p.muted),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    FieldActionPill(label: '粘贴', onTap: _paste),
+                  ]),
                 ),
-                TextButton(onPressed: _paste, child: const Text('粘贴')),
-                const SizedBox(width: 4),
+                const SizedBox(height: 14),
+                AdminField(
+                  controller: _name,
+                  label: '显示名称',
+                  hint: '例如：我的中转站',
+                  maxLength: 30,
+                ),
+                if (!pr.isCustom && !_showUrl) ...[
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: SectionAction(
+                      label: '修改接口地址（一般不需要）',
+                      icon: Icons.tune_rounded,
+                      onTap: () => setState(() => _showUrl = true),
+                    ),
+                  ),
+                ],
+                if (_showUrl) ...[
+                  const SizedBox(height: 14),
+                  AdminField(
+                    controller: _url,
+                    label: '接口地址',
+                    hint: 'https://example.com/v1',
+                    mono: true,
+                    keyboardType: TextInputType.url,
+                    helper: preview.isEmpty ? '填写服务商文档里的 Base URL。只填域名时会自动加上 /v1。' : '实际请求：$preview',
+                  ),
+                ],
               ]),
-            ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(6, 8, 6, 0),
-            child: Text('Key 只保存在你的服务器上，App 里之后只显示前后几位。', style: TextStyle(fontSize: 13, color: p.muted)),
-          ),
-          const SizedBox(height: 20),
-          _label('名称'),
-          TextField(
-            controller: _name,
-            maxLength: 30,
-            style: const TextStyle(fontSize: 16),
-            decoration: InputDecoration(hintText: '例如：我的中转站', counterText: '', prefixIcon: Icon(Icons.label_outline_rounded, color: p.faint)),
-          ),
-          const SizedBox(height: 20),
-          if (!pr.isCustom && !_showUrl)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () => setState(() => _showUrl = true),
-                icon: const Icon(Icons.tune_rounded, size: 18),
-                label: const Text('修改接口地址（一般不需要）'),
-              ),
-            ),
-          if (_showUrl) ...[
-            _label('接口地址'),
-            TextField(
-              controller: _url,
-              keyboardType: TextInputType.url,
-              autocorrect: false,
-              style: const TextStyle(fontSize: 16),
-              decoration: InputDecoration(hintText: 'https://example.com/v1', prefixIcon: Icon(Icons.link_rounded, color: p.faint)),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(6, 8, 6, 0),
-              child: Text(
-                preview.isEmpty ? '填写服务商文档里的 Base URL。只填域名时会自动加上 /v1。' : '实际请求：$preview',
-                style: TextStyle(fontSize: 13, color: p.muted, height: 1.45),
-              ),
-            ),
-          ],
           AnimatedSize(
             duration: const Duration(milliseconds: 220),
             alignment: Alignment.topCenter,
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              if (_error != null) Padding(padding: const EdgeInsets.only(top: 18), child: ResultBanner(ok: false, title: _error!)),
+              if (_error != null) Padding(padding: const EdgeInsets.only(top: 16), child: ResultBanner(ok: false, title: _error!)),
               if (_result != null)
                 Padding(
-                  padding: const EdgeInsets.only(top: 18),
+                  padding: const EdgeInsets.only(top: 16),
                   child: ResultBanner(ok: _result!.ok, title: _result!.ok ? '连接成功' : '连接失败', lines: providerTestLines(_result!)),
                 ),
             ]),
@@ -290,11 +310,6 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
       ),
     );
   }
-
-  Widget _label(String t) => Padding(
-        padding: const EdgeInsets.only(left: 6, bottom: 8),
-        child: Text(t, style: AdminText.title(context.pal)),
-      );
 }
 
 // ---------------------------------------------------------------------------
@@ -408,43 +423,53 @@ class _ProviderDetailPageState extends ConsumerState<ProviderDetailPage> {
       body: RefreshIndicator(
         onRefresh: () => ref.read(catalogProvider.notifier).reload(),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 40),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 44),
           children: [
             // ---- header ----
             Container(
-              padding: const EdgeInsets.all(18),
+              padding: const EdgeInsets.fromLTRB(18, 16, 14, 16),
               decoration: BoxDecoration(color: p.surface, borderRadius: BorderRadius.circular(22), border: Border.all(color: p.line)),
               child: Row(children: [
-                ProviderIcon(kind: pr.kind, size: 56),
-                const SizedBox(width: 16),
+                ProviderIcon(kind: pr.kind, size: 52, muted: !pr.enabled),
+                const SizedBox(width: 15),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(pr.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                    Text(pr.name, style: TextStyle(fontSize: 19, fontWeight: FontWeight.w600, color: p.text)),
                     const SizedBox(height: 4),
-                    Text(pr.enabled ? '已启用 · ${models.where((m) => m.enabled && m.isChat).length} 个模型给家人用' : '已停用 · 家人看不到它的模型',
-                        style: TextStyle(fontSize: 13.5, color: pr.enabled ? p.muted : p.bad)),
+                    Text(
+                      pr.enabled ? '已启用 · ${models.where((m) => m.enabled && m.isChat).length} 个对话模型给家人用' : '已停用 · 家人看不到它的模型',
+                      style: TextStyle(fontSize: 13.5, color: pr.enabled ? p.muted : p.bad),
+                    ),
                   ]),
                 ),
-                Switch(value: pr.enabled, onChanged: (v) => _update({'enabled': v}, done: v ? '已启用' : '已停用')),
+                Transform.scale(
+                  scale: 0.9,
+                  child: Switch(value: pr.enabled, onChanged: (v) => _update({'enabled': v}, done: v ? '已启用' : '已停用')),
+                ),
               ]),
             ),
 
             // ---- connection ----
             const SectionHeader('连接'),
             GroupCard(children: [
-              InfoRow(title: '名称', value: pr.name, onTap: () => _editName(pr)),
-              InfoRow(title: '接口地址', subtitle: pr.endpoint, onTap: () => _editUrl(pr)),
-              InfoRow(title: 'API Key', value: pr.apiKeyHint, onTap: () => _editKey(pr)),
+              InfoRow(icon: Icons.badge_outlined, title: '名称', value: pr.name, onTap: () => _editName(pr)),
+              InfoRow(icon: Icons.link_rounded, title: '接口地址', subtitle: pr.endpoint, onTap: () => _editUrl(pr)),
+              InfoRow(icon: Icons.key_rounded, title: 'API Key', value: pr.apiKeyHint, onTap: () => _editKey(pr)),
               if (pr.keyUrl.isNotEmpty)
-                InfoRow(title: '去官网查看余额、管理 Key', trailing: Icon(Icons.open_in_new_rounded, size: 18, color: p.faint), onTap: () => openLink(context, pr.keyUrl)),
+                InfoRow(
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: '去官网查看余额、管理 Key',
+                  trailing: Icon(Icons.open_in_new_rounded, size: 18, color: p.faint),
+                  onTap: () => openLink(context, pr.keyUrl),
+                ),
               Padding(
                 padding: const EdgeInsets.all(14),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-                    onPressed: _testing ? null : _runTest,
-                    icon: _testing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering_rounded),
-                    label: Text(_testing ? '正在测试…' : '测试连接'),
+                  SecondaryButton(
+                    label: _testing ? '正在测试…' : '测试连接',
+                    icon: Icons.wifi_tethering_rounded,
+                    busy: _testing,
+                    onTap: _runTest,
                   ),
                   if (_test != null) ...[
                     const SizedBox(height: 12),
@@ -455,36 +480,45 @@ class _ProviderDetailPageState extends ConsumerState<ProviderDetailPage> {
             ]),
 
             // ---- models ----
-            SectionHeader('模型（${models.length}）', subtitle: models.isEmpty ? '从列表里挑几个给家人用' : '点开可以改名字、思考设置和价格'),
+            SectionHeader(
+              '模型（${models.length}）',
+              subtitle: models.isEmpty ? '从列表里挑几个给家人用' : '点开可以改名字、思考设置和价格',
+            ),
             for (final m in models)
-              Padding(padding: const EdgeInsets.only(bottom: 8), child: ModelRow(model: m, catalog: c, showProvider: false)),
+              Padding(padding: const EdgeInsets.only(bottom: 10), child: ModelRow(model: m, catalog: c, showProvider: false)),
+            const SizedBox(height: 4),
             Row(children: [
               Expanded(
-                child: FilledButton.icon(
-                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => UpstreamPickerPage(providerId: pr.id))),
-                  icon: const Icon(Icons.playlist_add_rounded),
-                  label: const Text('从列表添加'),
+                child: PrimaryButton(
+                  label: '从列表添加',
+                  icon: Icons.playlist_add_rounded,
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => UpstreamPickerPage(providerId: pr.id))),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(minimumSize: const Size(64, 54), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ModelEditPage(providerId: pr.id))),
-                  icon: const Icon(Icons.edit_note_rounded),
-                  label: const Text('手动添加'),
+                child: SecondaryButton(
+                  label: '手动添加',
+                  icon: Icons.edit_note_rounded,
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ModelEditPage(providerId: pr.id))),
                 ),
               ),
             ]),
 
-            // ---- danger ----
-            const SizedBox(height: 36),
-            Center(
-              child: TextButton.icon(
-                onPressed: () => _delete(c, pr),
-                style: TextButton.styleFrom(foregroundColor: p.bad),
-                icon: const Icon(Icons.delete_outline_rounded),
-                label: const Text('删除这个供应商'),
+            // ---- danger (same calm style as SettingsPage logout) ----
+            const SizedBox(height: 28),
+            Pressable(
+              scale: 0.98,
+              onTap: () => _delete(c, pr),
+              child: Container(
+                height: 52,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: p.surface,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: p.line),
+                ),
+                child: Text('删除这个供应商', style: TextStyle(color: p.bad, fontSize: 16, fontWeight: FontWeight.w500)),
               ),
             ),
           ],
@@ -517,33 +551,49 @@ class _UrlEditorState extends State<_UrlEditor> {
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
-    final preview = endpointPreview(_url.text);
-    final hostChanged = hostOf(_url.text) != hostOf(widget.initial);
-    final valid = preview.isNotEmpty && (!hostChanged || _key.text.trim().isNotEmpty);
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, MediaQuery.viewInsetsOf(context).bottom + 20),
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('接口地址', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 14),
-        TextField(controller: _url, autofocus: true, keyboardType: TextInputType.url, autocorrect: false, onChanged: (_) => setState(() {})),
-        const SizedBox(height: 8),
-        Text(preview.isEmpty ? '地址需要以 http:// 或 https:// 开头' : '实际请求：$preview', style: TextStyle(fontSize: 13, color: preview.isEmpty ? p.bad : p.muted)),
-        AnimatedSize(
-          duration: const Duration(milliseconds: 200),
-          child: hostChanged
-              ? Padding(
-                  padding: const EdgeInsets.only(top: 16),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    Text('换了域名，为了安全需要重新填写 API Key', style: TextStyle(fontSize: 13.5, color: p.accent, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 8),
-                    TextField(controller: _key, obscureText: true, autocorrect: false, onChanged: (_) => setState(() {}), decoration: const InputDecoration(hintText: 'API Key')),
-                  ]),
-                )
-              : const SizedBox(width: double.infinity),
-        ),
-        const SizedBox(height: 18),
-        FilledButton(onPressed: valid ? () => Navigator.pop(context, (_url.text.trim(), _key.text.trim())) : null, child: const Text('保存')),
-      ]),
+    return ListenableBuilder(
+      listenable: Listenable.merge([_url, _key]),
+      builder: (_, _) {
+        final preview = endpointPreview(_url.text);
+        final hostChanged = hostOf(_url.text) != hostOf(widget.initial);
+        final valid = preview.isNotEmpty && (!hostChanged || _key.text.trim().isNotEmpty);
+        return Padding(
+          padding: EdgeInsets.fromLTRB(20, 0, 20, MediaQuery.viewInsetsOf(context).bottom + 20),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('接口地址', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 14),
+            AdminField(
+              controller: _url,
+              label: 'Base URL',
+              mono: true,
+              keyboardType: TextInputType.url,
+              helper: preview.isEmpty ? '地址需要以 http:// 或 https:// 开头' : '实际请求：$preview',
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              child: hostChanged
+                  ? Padding(
+                      padding: const EdgeInsets.only(top: 14),
+                      child: AdminField(
+                        controller: _key,
+                        label: 'API Key',
+                        statusText: '换域名需重新填写',
+                        statusColor: p.accent,
+                        hint: '粘贴 API Key',
+                        obscureText: true,
+                        mono: true,
+                      ),
+                    )
+                  : const SizedBox(width: double.infinity),
+            ),
+            const SizedBox(height: 18),
+            PrimaryButton(
+              label: '保存',
+              onTap: valid ? () => Navigator.pop(context, (_url.text.trim(), _key.text.trim())) : null,
+            ),
+          ]),
+        );
+      },
     );
   }
 }
@@ -558,22 +608,19 @@ Future<String?> _showSecretEditor(BuildContext context, {required String title, 
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text(title, style: Theme.of(ctx).textTheme.titleMedium),
         const SizedBox(height: 14),
-        TextField(
+        AdminField(
           controller: ctrl,
-          autofocus: true,
+          label: '新的密钥',
+          hint: hint,
           obscureText: true,
-          autocorrect: false,
-          enableSuggestions: false,
-          decoration: InputDecoration(
-            hintText: hint,
-            suffixIcon: TextButton(
-              onPressed: () async => ctrl.text = (await Clipboard.getData(Clipboard.kTextPlain))?.text?.trim() ?? '',
-              child: const Text('粘贴'),
-            ),
+          mono: true,
+          suffix: FieldActionPill(
+            label: '粘贴',
+            onTap: () async => ctrl.text = (await Clipboard.getData(Clipboard.kTextPlain))?.text?.trim() ?? '',
           ),
         ),
-        const SizedBox(height: 16),
-        FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('保存')),
+        const SizedBox(height: 18),
+        PrimaryButton(label: '保存', onTap: () => Navigator.pop(ctx, ctrl.text.trim())),
       ]),
     ),
   );

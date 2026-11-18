@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/admin_models.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
-// Shared building blocks for the admin "models & providers" screens.
+// Shared building blocks for the admin "models & providers" and "voice input" screens.
 
 String fmtUsd(double v) {
   if (v <= 0) return '\$0';
@@ -52,45 +53,51 @@ Future<void> openLink(BuildContext context, String url) async {
   if (!ok && context.mounted) showToast(context, '打不开链接：$url');
 }
 
-/// Colored badge standing in for a provider's logo.
+/// Soft warm-tinted squircle badge standing in for a provider's mark.
 class ProviderIcon extends StatelessWidget {
-  const ProviderIcon({super.key, required this.kind, this.size = 44});
+  const ProviderIcon({super.key, required this.kind, this.size = 44, this.accentOverride, this.muted = false});
   final String kind;
   final double size;
+  final Color? accentOverride;
+  final bool muted;
 
-  static const _styles = <String, (Color, String)>{
-    'openrouter': (Color(0xFF6467F2), 'OR'),
-    'openai': (Color(0xFF10A37F), 'AI'),
-    'gemini': (Color(0xFF4285F4), 'G'),
-    'deepseek': (Color(0xFF4D6BFE), 'DS'),
-    'dashscope': (Color(0xFFFF6A00), '百'),
-    'siliconflow': (Color(0xFF7C3AED), '硅'),
-    'tencent': (Color(0xFF0052D9), '腾'),
-    'xfyun': (Color(0xFF096DD9), '讯'),
+  static const _styles = <String, (Color, IconData)>{
+    'openrouter': (Color(0xFF6B66D6), Icons.alt_route_rounded),
+    'openai': (Color(0xFF2B8A73), Icons.cyclone_rounded),
+    'gemini': (Color(0xFF4A78D0), Icons.auto_awesome_rounded),
+    'deepseek': (Color(0xFF4768B5), Icons.waves_rounded),
+    'dashscope': (Color(0xFFE06D3B), Icons.cloud_queue_rounded),
+    'siliconflow': (Color(0xFF7B5CE6), Icons.memory_rounded),
+    'tencent': (Color(0xFF3D6EC9), Icons.graphic_eq_rounded),
+    'xfyun': (Color(0xFF4878B8), Icons.mic_none_rounded),
   };
 
   @override
   Widget build(BuildContext context) {
+    final p = context.pal;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final style = _styles[kind];
-    final c = style?.$1 ?? const Color(0xFF8A7B70);
+    final tone = muted ? p.muted : (accentOverride ?? style?.$1 ?? p.accent);
+    final bg = muted
+        ? p.surfaceAlt
+        : (tone == p.accent ? p.accentSoft : Color.lerp(p.surfaceAlt, tone, isDark ? 0.24 : 0.14)!);
     return Container(
       width: size,
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color.lerp(c, Colors.white, 0.12)!, c]),
-        borderRadius: BorderRadius.circular(size * 0.3),
+        color: bg,
+        borderRadius: BorderRadius.circular(size * 0.30),
+        border: size >= 32
+            ? Border.all(color: muted ? p.line : tone.withValues(alpha: isDark ? 0.26 : 0.16))
+            : null,
       ),
-      child: style == null
-          ? Icon(Icons.hub_rounded, color: Colors.white, size: size * 0.52)
-          : Text(style.$2,
-              textScaler: TextScaler.noScaling,
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: size * (style.$2.length > 1 ? 0.34 : 0.44), letterSpacing: -0.5)),
+      child: Icon(style?.$2 ?? Icons.hub_rounded, color: tone, size: size * 0.50),
     );
   }
 }
 
-/// Small rounded label: "能看图", "已停用", "128K" ...
+/// Small rounded label: warm neutral sand by default; semantic tint when [color] is given.
 class Tag extends StatelessWidget {
   const Tag(this.text, {super.key, this.color, this.icon, this.filled = true});
   final String text;
@@ -101,43 +108,59 @@ class Tag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
-    final c = color ?? p.muted;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isSemantic = color != null && color != p.muted;
+    final fg = color ?? p.muted;
+    final bg = !filled
+        ? Colors.transparent
+        : (!isSemantic
+            ? (isDark ? const Color(0xFF2B2522) : p.surfaceAlt)
+            : (fg == p.accent ? p.accentSoft : Color.lerp(p.surfaceAlt, fg, isDark ? 0.24 : 0.15)!));
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: filled ? c.withValues(alpha: 0.12) : Colors.transparent,
+        color: bg,
         borderRadius: BorderRadius.circular(8),
-        border: filled ? null : Border.all(color: c.withValues(alpha: 0.4)),
+        border: filled ? null : Border.all(color: fg.withValues(alpha: 0.35)),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (icon != null) ...[Icon(icon, size: 13, color: c), const SizedBox(width: 3)],
-        Text(text, style: TextStyle(fontSize: 12, color: c, fontWeight: FontWeight.w600, height: 1.2)),
+        if (icon != null) ...[
+          Icon(icon, size: 13, color: fg.withValues(alpha: isSemantic ? 0.95 : 0.85)),
+          const SizedBox(width: 3.5),
+        ],
+        Text(
+          text,
+          style: TextStyle(
+            fontSize: 12,
+            color: fg,
+            fontWeight: isSemantic ? FontWeight.w600 : FontWeight.w500,
+            height: 1.2,
+          ),
+        ),
       ]),
     );
   }
 }
 
-/// Capability tags shared by model rows.
+/// Capability tags shared by model rows — unified warm neutral style to avoid rainbow clutter.
 List<Widget> modelTags(BuildContext context, {required bool vision, required bool think, int contextWindow = 0, double inPrice = 0, double outPrice = 0}) {
-  final p = context.pal;
   return [
-    if (vision) Tag('能看图', icon: Icons.image_outlined, color: const Color(0xFF3B82F6)),
-    if (think) Tag('深度思考', icon: Icons.lightbulb_outline_rounded, color: const Color(0xFFD97706)),
-    if (contextWindow > 0) Tag(fmtContext(contextWindow), color: p.muted),
-    if (inPrice > 0 || outPrice > 0) Tag(fmtPrice(inPrice, outPrice), color: p.good),
+    if (vision) const Tag('能看图', icon: Icons.image_outlined),
+    if (think) const Tag('深度思考', icon: Icons.lightbulb_outline_rounded),
+    if (contextWindow > 0) Tag(fmtContext(contextWindow)),
+    if (inPrice > 0 || outPrice > 0) Tag(fmtPrice(inPrice, outPrice)),
   ];
 }
 
-/// Type scale for the admin screens: titles are clearly heavier than their
-/// descriptions, and descriptions get room to breathe.
+/// Type scale aligned with [SettingsPage]: calm muted section headers, gentle w500 row titles.
 abstract final class AdminText {
-  static const titleGap = 5.0;
-  static TextStyle section(Palette p) => TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: p.text, height: 1.3);
-  static TextStyle title(Palette p) => TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: p.text, height: 1.3);
-  static TextStyle desc(Palette p) => TextStyle(fontSize: 13.5, color: p.muted, height: 1.5);
+  static const titleGap = 4.0;
+  static TextStyle section(Palette p) => TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: p.muted, height: 1.35);
+  static TextStyle title(Palette p) => TextStyle(fontSize: 16.5, fontWeight: FontWeight.w500, color: p.text, height: 1.32);
+  static TextStyle desc(Palette p) => TextStyle(fontSize: 13.5, color: p.muted, height: 1.45);
 }
 
-/// A setting's name with an optional one-line explanation underneath.
+/// A setting's name with an optional explanation underneath.
 class TitleDesc extends StatelessWidget {
   const TitleDesc(this.title, {super.key, this.desc});
   final String title;
@@ -156,24 +179,33 @@ class TitleDesc extends StatelessWidget {
   }
 }
 
-/// Switch row for a GroupCard, same spacing as [InfoRow].
+/// Switch row for a GroupCard, same rhythm as [InfoRow].
 class SwitchRow extends StatelessWidget {
-  const SwitchRow({super.key, required this.title, this.desc, required this.value, required this.onChanged});
+  const SwitchRow({super.key, required this.title, this.desc, this.icon, required this.value, required this.onChanged});
   final String title;
   final String? desc;
+  final IconData? icon;
   final bool value;
   final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {
+    final p = context.pal;
     return InkWell(
       onTap: onChanged == null ? null : () => onChanged!(!value),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 14, 12, 14),
+        padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
         child: Row(children: [
+          if (icon != null) ...[
+            Icon(icon, color: p.accent, size: 22),
+            const SizedBox(width: 14),
+          ],
           Expanded(child: TitleDesc(title, desc: desc)),
           const SizedBox(width: 12),
-          Switch(value: value, onChanged: onChanged),
+          Transform.scale(
+            scale: 0.88,
+            child: Switch(value: value, onChanged: onChanged),
+          ),
         ]),
       ),
     );
@@ -190,35 +222,71 @@ class SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.pal;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 30, 4, 12),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: AdminText.section(p)),
-            if (subtitle != null) ...[
-              const SizedBox(height: 4),
-              Text(subtitle!, style: AdminText.desc(p)),
-            ],
-          ]),
-        ),
-        ?trailing,
+      padding: const EdgeInsets.fromLTRB(8, 24, 8, 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(title, style: AdminText.section(p))),
+          ?trailing,
+        ]),
+        if (subtitle != null && subtitle!.isNotEmpty) ...[
+          const SizedBox(height: 3),
+          Text(subtitle!, style: TextStyle(fontSize: 12.5, color: p.muted.withValues(alpha: 0.88), height: 1.45)),
+        ],
       ]),
     );
   }
 }
 
-/// White rounded card that groups rows.
+/// Compact action link or soft pill button for [SectionHeader.trailing].
+class SectionAction extends StatelessWidget {
+  const SectionAction({super.key, required this.label, this.icon, required this.onTap, this.filled = false});
+  final String label;
+  final IconData? icon;
+  final VoidCallback onTap;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Pressable(
+      scale: 0.96,
+      onTap: onTap,
+      child: Container(
+        padding: filled ? const EdgeInsets.symmetric(horizontal: 11, vertical: 5) : const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        decoration: filled
+            ? BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(999))
+            : null,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (icon != null) ...[
+            Icon(icon, size: 15, color: p.accent),
+            const SizedBox(width: 3.5),
+          ],
+          Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: p.accent)),
+        ]),
+      ),
+    );
+  }
+}
+
+/// White rounded card that groups rows, matching [SettingsPage] section cards.
 class GroupCard extends StatelessWidget {
-  const GroupCard({super.key, required this.children, this.padding});
+  const GroupCard({super.key, required this.children, this.padding, this.dividerIndent});
   final List<Widget> children;
   final EdgeInsetsGeometry? padding;
+  final double? dividerIndent;
+
+  static bool _hasLeadingIcon(Widget w) =>
+      (w is InfoRow && w.icon != null) || (w is SwitchRow && w.icon != null);
 
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
     final items = <Widget>[];
     for (var i = 0; i < children.length; i++) {
-      if (i > 0) items.add(Divider(height: 1, indent: 18, endIndent: 18, color: p.line));
+      if (i > 0) {
+        final indent = dividerIndent ?? (_hasLeadingIcon(children[i - 1]) ? 54.0 : 18.0);
+        items.add(Divider(height: 1, thickness: 0.7, indent: indent, endIndent: 18, color: p.line.withValues(alpha: 0.75)));
+      }
       items.add(children[i]);
     }
     return Container(
@@ -230,7 +298,7 @@ class GroupCard extends StatelessWidget {
   }
 }
 
-/// A tappable settings row: icon, title, optional subtitle and a value on the right.
+/// A tappable settings row: icon, title, optional subtitle and a soft muted value on the right.
 class InfoRow extends StatelessWidget {
   const InfoRow({super.key, required this.title, this.icon, this.subtitle, this.value, this.valueColor, this.onTap, this.trailing});
   final IconData? icon;
@@ -246,11 +314,11 @@ class InfoRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 60),
+        constraints: const BoxConstraints(minHeight: 58),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
           child: Row(children: [
-            if (icon != null) ...[Icon(icon, color: p.accent, size: 24), const SizedBox(width: 14)],
+            if (icon != null) ...[Icon(icon, color: p.accent, size: 22), const SizedBox(width: 14)],
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                 Text(title, style: AdminText.title(p)),
@@ -263,17 +331,143 @@ class InfoRow extends StatelessWidget {
             if (value != null) ...[
               const SizedBox(width: 12),
               ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 170),
-                child: Text(value!, textAlign: TextAlign.right, maxLines: 2, overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 15, color: valueColor ?? p.muted, fontWeight: FontWeight.w500)),
+                constraints: const BoxConstraints(maxWidth: 168),
+                child: Text(
+                  value!,
+                  textAlign: TextAlign.right,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 14.5, color: valueColor ?? p.muted, fontWeight: FontWeight.w400),
+                ),
               ),
             ],
-            if (trailing != null) ...[const SizedBox(width: 8), trailing!] else if (onTap != null) ...[
+            if (trailing != null) ...[
+              const SizedBox(width: 8),
+              trailing!,
+            ] else if (onTap != null) ...[
               const SizedBox(width: 4),
-              Icon(Icons.chevron_right_rounded, color: p.faint),
+              Icon(Icons.chevron_right_rounded, color: p.faint, size: 22),
             ],
           ]),
         ),
+      ),
+    );
+  }
+}
+
+/// Soft borderless form input used inside [GroupCard]s so inputs feel warm and integrated.
+class AdminField extends StatelessWidget {
+  const AdminField({
+    super.key,
+    required this.controller,
+    required this.label,
+    this.statusText,
+    this.statusColor,
+    this.hint,
+    this.helper,
+    this.prefixText,
+    this.prefixIcon,
+    this.suffix,
+    this.obscureText = false,
+    this.mono = false,
+    this.number = false,
+    this.decimal = false,
+    this.keyboardType,
+    this.maxLength,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final String? statusText;
+  final Color? statusColor;
+  final String? hint;
+  final String? helper;
+  final String? prefixText;
+  final IconData? prefixIcon;
+  final Widget? suffix;
+  final bool obscureText;
+  final bool mono;
+  final bool number;
+  final bool decimal;
+  final TextInputType? keyboardType;
+  final int? maxLength;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fill = isDark ? const Color(0xFF191614) : p.surfaceAlt;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+        padding: const EdgeInsets.only(left: 2, right: 2, bottom: 7),
+        child: Row(children: [
+          Expanded(child: Text(label, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500, color: p.muted))),
+          if (statusText != null && statusText!.isNotEmpty)
+            Text(statusText!, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: statusColor ?? p.faint)),
+        ]),
+      ),
+      TextField(
+        controller: controller,
+        maxLength: maxLength,
+        obscureText: obscureText,
+        autocorrect: !mono && !obscureText,
+        enableSuggestions: !mono && !obscureText,
+        keyboardType: keyboardType ?? (number || decimal ? TextInputType.numberWithOptions(decimal: decimal) : null),
+        inputFormatters: number
+            ? [FilteringTextInputFormatter.digitsOnly]
+            : (decimal ? [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))] : null),
+        style: TextStyle(fontSize: 15.5, color: p.text, fontFamily: mono ? 'monospace' : null),
+        decoration: InputDecoration(
+          filled: true,
+          fillColor: fill,
+          hintText: hint,
+          hintStyle: TextStyle(fontSize: 14.5, color: p.faint, fontFamily: mono ? 'monospace' : null),
+          counterText: '',
+          prefixText: prefixText,
+          prefixStyle: TextStyle(fontSize: 15.5, color: p.muted),
+          prefixIcon: prefixIcon == null ? null : Icon(prefixIcon, size: 19, color: p.faint),
+          suffixIcon: suffix == null
+              ? null
+              : Padding(padding: const EdgeInsets.only(right: 6), child: suffix),
+          suffixIconConstraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(13), borderSide: BorderSide.none),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(13), borderSide: BorderSide.none),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(13),
+            borderSide: BorderSide(color: p.accent.withValues(alpha: 0.65), width: 1.3),
+          ),
+        ),
+      ),
+      if (helper != null && helper!.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
+          child: Text(helper!, style: TextStyle(fontSize: 12.5, color: p.muted.withValues(alpha: 0.9), height: 1.45)),
+        ),
+    ]);
+  }
+}
+
+/// Compact pill button for inside [AdminField.suffix] (e.g. "粘贴").
+class FieldActionPill extends StatelessWidget {
+  const FieldActionPill({super.key, required this.label, required this.onTap});
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Pressable(
+      scale: 0.95,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: p.surface,
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(color: p.line),
+        ),
+        child: Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: p.accent)),
       ),
     );
   }
@@ -292,16 +486,20 @@ class ResultBanner extends StatelessWidget {
     final c = ok ? p.good : p.bad;
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: c.withValues(alpha: 0.09), borderRadius: BorderRadius.circular(16), border: Border.all(color: c.withValues(alpha: 0.25))),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: c.withValues(alpha: 0.22)),
+      ),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(ok ? Icons.check_circle_rounded : Icons.error_outline_rounded, color: c, size: 22),
+        Icon(ok ? Icons.check_circle_rounded : Icons.error_outline_rounded, color: c, size: 21),
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600, color: c)),
+            Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: c)),
             for (final l in lines) ...[
               const SizedBox(height: 4),
-              Text(l, style: TextStyle(fontSize: 14, color: p.text, height: 1.45)),
+              Text(l, style: TextStyle(fontSize: 13.5, color: p.text.withValues(alpha: 0.88), height: 1.45)),
             ],
           ]),
         ),
@@ -335,18 +533,59 @@ class PrimaryButton extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         opacity: enabled || busy ? 1 : 0.45,
         child: Container(
-          height: 54,
+          height: 50,
           decoration: BoxDecoration(
             gradient: Palette.brandGradient,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: enabled ? [BoxShadow(color: Palette.brand.withValues(alpha: 0.28), blurRadius: 16, offset: const Offset(0, 5))] : null,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: enabled
+                ? [BoxShadow(color: Palette.brand.withValues(alpha: 0.20), blurRadius: 14, offset: const Offset(0, 4))]
+                : null,
           ),
           alignment: Alignment.center,
           child: busy
-              ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.6, color: Colors.white))
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
               : Row(mainAxisSize: MainAxisSize.min, children: [
-                  if (icon != null) ...[Icon(icon, color: Colors.white, size: 20), const SizedBox(width: 6)],
-                  Text(label, style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
+                  if (icon != null) ...[Icon(icon, color: Colors.white, size: 19), const SizedBox(width: 6)],
+                  Text(label, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Soft warm secondary button paired with [PrimaryButton].
+class SecondaryButton extends StatelessWidget {
+  const SecondaryButton({super.key, required this.label, this.onTap, this.busy = false, this.icon});
+  final String label;
+  final VoidCallback? onTap;
+  final bool busy;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    final enabled = onTap != null && !busy;
+    return Pressable(
+      scale: 0.98,
+      onTap: enabled ? onTap : null,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 150),
+        opacity: enabled || busy ? 1 : 0.45,
+        child: Container(
+          height: 50,
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          decoration: BoxDecoration(
+            color: p.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: p.line),
+          ),
+          alignment: Alignment.center,
+          child: busy
+              ? SizedBox(width: 19, height: 19, child: CircularProgressIndicator(strokeWidth: 2.2, color: p.accent))
+              : Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (icon != null) ...[Icon(icon, color: p.accent, size: 18), const SizedBox(width: 6)],
+                  Text(label, style: TextStyle(color: p.text, fontSize: 15.5, fontWeight: FontWeight.w500)),
                 ]),
         ),
       ),
@@ -363,52 +602,64 @@ class BottomBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.pal;
     return Container(
-      decoration: BoxDecoration(color: p.bg, border: Border(top: BorderSide(color: p.line))),
-      padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.paddingOf(context).bottom),
+      decoration: BoxDecoration(
+        color: p.bg,
+        border: Border(top: BorderSide(color: p.line.withValues(alpha: 0.8))),
+      ),
+      padding: EdgeInsets.fromLTRB(16, 10, 16, 12 + MediaQuery.paddingOf(context).bottom),
       child: child,
     );
   }
 }
 
-/// Segmented control with an optional caption under each option.
+/// Segmented control matching [SettingsPage]'s appearance selector.
 class Choice<T> extends StatelessWidget {
-  const Choice({super.key, required this.value, required this.options, required this.onChanged});
+  const Choice({super.key, required this.value, required this.options, required this.onChanged, this.enabled = true});
   final T value;
   final List<(T, String)> options;
   final ValueChanged<T> onChanged;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: p.surfaceAlt, borderRadius: BorderRadius.circular(14)),
-      child: Row(children: [
-        for (final (v, label) in options)
-          Expanded(
-            child: Pressable(
-              onTap: () => onChanged(v),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                height: 42,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: v == value ? p.surface : Colors.transparent,
-                  borderRadius: BorderRadius.circular(11),
-                  boxShadow: v == value ? [BoxShadow(color: p.shadow, blurRadius: 8, offset: const Offset(0, 2))] : null,
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                // Shrink rather than cut off long labels at large font sizes.
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(label,
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(color: p.surfaceAlt, borderRadius: BorderRadius.circular(14)),
+        child: Row(children: [
+          for (final (v, label) in options)
+            Expanded(
+              child: Pressable(
+                onTap: enabled ? () => onChanged(v) : null,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: v == value ? p.surface : Colors.transparent,
+                    borderRadius: BorderRadius.circular(11),
+                    boxShadow: v == value ? [BoxShadow(color: p.shadow, blurRadius: 8, offset: const Offset(0, 2))] : null,
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      label,
                       maxLines: 1,
-                      style: TextStyle(fontSize: 14.5, fontWeight: v == value ? FontWeight.w700 : FontWeight.w500, color: v == value ? p.accent : p.muted)),
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: v == value ? FontWeight.w600 : FontWeight.w500,
+                        color: v == value ? p.accent : p.muted,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-      ]),
+        ]),
+      ),
     );
   }
 }
