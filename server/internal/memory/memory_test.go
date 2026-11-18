@@ -551,6 +551,13 @@ func TestCorgiColloquialAndMultiTurnRecallWithoutEmbeddings(t *testing.T) {
 	if !strings.Contains(recent, "聊过的事 24") || !strings.Contains(recent, "显示 24/24 条") || !strings.Contains(recent, "巴门蒂耶") {
 		t.Fatalf("recent browse missed 24 episodes: %s", recent)
 	}
+
+	// When the model guesses category="health" in search mode for a pet symptom stored as "episode",
+	// search mode boosts rather than hides episodes so the Corgi episode still surfaces.
+	healthSearch := s.Recall(t.Context(), u, nil, "new-conv", RecallRequest{Mode: "search", Category: "health", Queries: []string{"五岁柯基 雨后 反复瘙痒"}})
+	if !strings.Contains(healthSearch, "雨后反复瘙痒") {
+		t.Fatalf("search with guessed category dropped matching episode: %s", healthSearch)
+	}
 }
 
 func TestMultiEpisodeExtractionAndKeywordBackfill(t *testing.T) {

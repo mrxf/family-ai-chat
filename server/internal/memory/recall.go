@@ -66,19 +66,18 @@ func (s *Service) Recall(ctx context.Context, u *store.User, assistant *string, 
 	if cat == "all" {
 		cat = ""
 	}
-	candidates := visible
-	if cat != "" {
-		filtered := make([]*store.Memory, 0, len(visible))
-		for _, m := range visible {
-			if m.Category == cat {
-				filtered = append(filtered, m)
-			}
-		}
-		candidates = filtered
-	}
-
 	// Browse / meta-query mode: list chronologically when mode="recent" or no search query is given.
 	if strings.EqualFold(strings.TrimSpace(req.Mode), "recent") || len(cleanQueries) == 0 {
+		candidates := visible
+		if cat != "" {
+			filtered := make([]*store.Memory, 0, len(visible))
+			for _, m := range visible {
+				if m.Category == cat {
+					filtered = append(filtered, m)
+				}
+			}
+			candidates = filtered
+		}
 		limit := req.Limit
 		if limit <= 0 || limit > 50 {
 			limit = 30
@@ -121,7 +120,21 @@ func (s *Service) Recall(ctx context.Context, u *store.User, assistant *string, 
 		vector, embedModel = s.queryVector(ctx, joined, liveEmbedTimeout)
 	}
 
-	scored := rankScored(wQueries, vector, embedModel, candidates, limit, false)
+	// In search mode, search across all visible categories (models often guess "health"
+	// for a pet/episode item), prioritizing exact category matches first if specified.
+	scored := rankScored(wQueries, vector, embedModel, visible, limit, false)
+	if cat != "" {
+		sort.SliceStable(scored, func(i, j int) bool {
+			si, sj := scored[i].score, scored[j].score
+			if scored[i].m.Category == cat {
+				si *= 1.15
+			}
+			if scored[j].m.Category == cat {
+				sj *= 1.15
+			}
+			return si > sj
+		})
+	}
 	var strictHits, softHits []*store.Memory
 	for _, it := range scored {
 		if it.ok {
