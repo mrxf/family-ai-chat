@@ -1,0 +1,22 @@
+app/lib/state/chat.dart
+  h_8f297825d1fe21 160-163,175-178,212,236-242,258,286,345-348,489,496-499,512
+app/lib/ui/composer.dart
+  h_8f297825d1fe21 51-53
+app/lib/ui/drawer.dart
+  h_8f297825d1fe21 17,25
+app/lib/ui/home_page.dart
+  h_8f297825d1fe21 59-63,66,83-85,92
+app/test/chat_ux_fixes_test.dart
+  h_8f297825d1fe21 1-195
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "47f2eb42c1be3763ec6bd18b8b9623fd53a03fdf",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
