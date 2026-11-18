@@ -1,0 +1,19 @@
+app/pubspec.yaml
+  s_75acd132bbccd3::t_76a936559d57ed 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "b50596ba5e2b71d404746971d7c28288cb5a7983",
+  "prompts": {},
+  "sessions": {
+    "s_75acd132bbccd3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "da255d47-2198-4fb4-aec8-005e7fb2b7fa",
+        "model": "unknown"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
