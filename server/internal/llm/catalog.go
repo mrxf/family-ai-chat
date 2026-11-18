@@ -127,21 +127,23 @@ func (c *Client) CheckKey(ctx context.Context) (*KeyInfo, error) {
 
 // Suggestion is a ready-to-save model configuration inferred from an upstream model.
 type Suggestion struct {
-	Kind          string  `json:"kind"`
-	UpstreamModel string  `json:"upstream_model"`
-	DisplayName   string  `json:"display_name"`
-	Description   string  `json:"description"`
-	Vision        bool    `json:"vision"`
-	DefaultEffort string  `json:"default_effort"`
-	ThinkEffort   string  `json:"think_effort"`
-	ContextWindow int     `json:"context_window"`
-	InputPrice    float64 `json:"input_price"`  // USD per million tokens
-	OutputPrice   float64 `json:"output_price"` // USD per million tokens
-	Chat          bool    `json:"chat"`         // false for embeddings, TTS, image generation, ...
-	Image         bool    `json:"image"`        // draws pictures (can be added as an image model)
-	Tools         bool    `json:"tools"`        // likely supports tool calling
-	Recommended   bool    `json:"recommended"`  // a current mainstream chat model
-	Created       int64   `json:"created"`
+	Kind               string  `json:"kind"`
+	UpstreamModel      string  `json:"upstream_model"`
+	DisplayName        string  `json:"display_name"`
+	Description        string  `json:"description"`
+	BuiltinRoutingNote string  `json:"builtin_routing_note"`
+	AutoTier           int     `json:"auto_tier"`
+	Vision             bool    `json:"vision"`
+	DefaultEffort      string  `json:"default_effort"`
+	ThinkEffort        string  `json:"think_effort"`
+	ContextWindow      int     `json:"context_window"`
+	InputPrice         float64 `json:"input_price"`  // USD per million tokens
+	OutputPrice        float64 `json:"output_price"` // USD per million tokens
+	Chat               bool    `json:"chat"`         // false for embeddings, TTS, image generation, ...
+	Image              bool    `json:"image"`        // draws pictures (can be added as an image model)
+	Tools              bool    `json:"tools"`        // likely supports tool calling
+	Recommended        bool    `json:"recommended"`  // a current mainstream chat model
+	Created            int64   `json:"created"`
 }
 
 // MaxSuggestedContext caps how much history is sent per reply by default.
@@ -240,6 +242,11 @@ func Suggest(kind string, um UpstreamModel) Suggestion {
 		s.DisplayName = strings.TrimSpace(name)
 	}
 	s.Description = describe(base)
+	if s.Chat {
+		prof := ProfileModel(um.ID, s.DisplayName)
+		s.BuiltinRoutingNote = prof.Summary()
+		s.AutoTier = prof.Tier
+	}
 	s.Recommended = s.Chat && recommended(base)
 	return s
 }
@@ -248,7 +255,11 @@ func guessVision(base string) bool {
 	switch {
 	case strings.Contains(base, "vision"), strings.Contains(base, "-vl"), strings.Contains(base, "vl-"),
 		strings.HasPrefix(base, "qvq"), strings.Contains(base, "omni"), reGLMVision.MatchString(base),
-		strings.HasPrefix(base, "gemini"), strings.HasPrefix(base, "gemma-3"), strings.HasPrefix(base, "llama-4"),
+		strings.HasPrefix(base, "gemini"), strings.Contains(base, "carbon"), strings.Contains(base, "hydrogen"),
+		strings.HasPrefix(base, "fable"), strings.Contains(base, "astra"),
+		strings.HasPrefix(base, "opus-"), strings.HasPrefix(base, "sonnet-"), strings.HasPrefix(base, "haiku-"),
+		strings.HasPrefix(base, "kimi-k2.5"), strings.HasPrefix(base, "kimi-k3"),
+		strings.HasPrefix(base, "gemma-3"), strings.HasPrefix(base, "gemma-4"), strings.HasPrefix(base, "llama-4"),
 		strings.HasPrefix(base, "grok-4"), strings.HasPrefix(base, "pixtral"):
 		return true
 	case strings.HasPrefix(base, "claude"):
@@ -267,7 +278,16 @@ func guessVision(base string) bool {
 // guessEffort returns (reasoning effort for everyday replies, effort for "deep thinking").
 // "" means: do not send the parameter.
 func guessEffort(base string) (string, string) {
-	slow := strings.Contains(base, "pro") || strings.Contains(base, "sol")
+	slow := strings.Contains(base, "pro") || strings.Contains(base, "sol") || strings.Contains(base, "carbon") || strings.Contains(base, "astra")
+	if strings.HasPrefix(base, "fable") {
+		return "low", "high"
+	}
+	if strings.Contains(base, "carbon") {
+		return "low", "high"
+	}
+	if strings.Contains(base, "hydrogen") {
+		return "none", ""
+	}
 	if reOSeries.MatchString(base) {
 		return "low", "high" // o-series always reasons and rejects "none"
 	}
@@ -291,10 +311,14 @@ func guessEffort(base string) (string, string) {
 		switch {
 		case major < 2 || (major == 2 && minor < 5):
 			return "", ""
+		case strings.Contains(base, "hydrogen") || strings.Contains(base, "flash-lite"):
+			return "none", ""
 		case major == 2 && strings.Contains(base, "flash"):
 			return "none", "high"
+		case strings.Contains(base, "flash"):
+			return "none", "high"
 		default:
-			return "low", "high" // Pro and Gemini 3 cannot switch thinking off
+			return "low", "high" // Pro and Carbon cannot switch thinking off completely
 		}
 	}
 	return "", ""
@@ -310,17 +334,23 @@ func describe(base string) string {
 		return false
 	}
 	switch {
-	case has("sol", "opus", "reasoner", "-r1", "qwq", "-max", "-pro") || reOSeries.MatchString(base):
+	case has("carbon"):
+		return "深度研究与医疗健康解读极强，适合严肃复杂问题"
+	case has("fable"):
+		return "擅长物理、高阶数理与硬核推理，适合钻研难题"
+	case has("hydrogen"):
+		return "秒回极速轻量，适合日常闲聊与孩子基础作业"
+	case has("sol", "opus", "astra", "reasoner", "-r1", "-r2", "qwq", "-max", "-pro") || reOSeries.MatchString(base):
 		return "最聪明，适合复杂问题，稍慢一些"
 	case has("mini", "flash", "lite", "nano", "haiku", "turbo", "-air"):
 		return "反应快，适合日常问答"
-	case strings.HasPrefix(base, "claude"):
+	case strings.HasPrefix(base, "claude"), strings.HasPrefix(base, "sonnet"):
 		return "写作细腻，擅长分析和长文"
 	case strings.HasPrefix(base, "gemini"):
 		return "反应快，知识面广"
 	case strings.HasPrefix(base, "deepseek"):
 		return "中文好，性价比高"
-	case strings.HasPrefix(base, "qwen"), strings.HasPrefix(base, "glm"), strings.HasPrefix(base, "kimi"), strings.HasPrefix(base, "doubao"):
+	case strings.HasPrefix(base, "qwen"), strings.HasPrefix(base, "glm"), strings.HasPrefix(base, "kimi"), strings.HasPrefix(base, "doubao"), strings.HasPrefix(base, "bailu"):
 		return "中文好，国内模型"
 	case strings.Contains(base, "gpt"):
 		return "聪明均衡，日常首选"
@@ -349,10 +379,12 @@ func recommended(base string) bool {
 	switch {
 	case strings.HasPrefix(base, "claude"):
 		return !strings.HasPrefix(base, "claude-2") && !strings.HasPrefix(base, "claude-3") && !strings.Contains(base, "instant")
+	case strings.HasPrefix(base, "opus-"), strings.HasPrefix(base, "sonnet-"), strings.HasPrefix(base, "fable"), strings.Contains(base, "carbon"), strings.Contains(base, "hydrogen"):
+		return true
 	case strings.HasPrefix(base, "o3"), strings.HasPrefix(base, "o4"):
 		return true
 	}
-	for _, p := range []string{"deepseek", "qwen3", "qwen-max", "qwen-plus", "qwen-turbo", "qwen-vl-max", "glm-4.5", "glm-4.6", "glm-5", "kimi-k2", "grok-4", "doubao-seed"} {
+	for _, p := range []string{"deepseek", "qwen3", "qwen-max", "qwen-plus", "qwen-turbo", "qwen-vl-max", "glm-4.5", "glm-4.6", "glm-5", "kimi-k2", "kimi-k3", "bailu", "grok-4", "doubao-seed"} {
 		if strings.HasPrefix(base, p) {
 			return true
 		}

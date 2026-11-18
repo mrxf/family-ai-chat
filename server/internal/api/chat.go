@@ -73,6 +73,7 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	def, _ := s.Store.GetSetting(ctx, "default_model_id")
+	autoDyn, _ := s.Store.GetSetting(ctx, chat.SettingAutoDynamic)
 	voiceInput, voiceMode := s.voiceStatus(ctx)
 	writeJSON(w, 200, map[string]any{
 		"user":             u,
@@ -84,6 +85,8 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
 			"voice_mode":       voiceMode,
 			"image_generation": s.Chat.ImageAvailable(ctx),
 			"images_left":      s.Chat.ImagesLeftToday(ctx, u),
+			"auto_model":       s.Chat.AutoEnabled(ctx),
+			"auto_dynamic":     autoDyn == "1",
 		},
 		"server_version": s.Cfg.AppVersion,
 	})
@@ -322,8 +325,13 @@ func (s *Server) createConversation(w http.ResponseWriter, r *http.Request) {
 		}
 		c.AssistantID = &in.AssistantID
 	}
-	if in.ModelID != "" {
-		c.ModelID = &in.ModelID
+	switch {
+	case in.ModelID == chat.AutoModelID:
+		c.AutoMode = s.Chat.AutoEnabled(r.Context())
+	case in.ModelID != "":
+		if _, err := s.Store.GetModel(r.Context(), in.ModelID); err == nil {
+			c.ModelID = &in.ModelID
+		}
 	}
 	if err := s.Store.CreateConversation(r.Context(), c); err != nil {
 		s.writeStoreErr(w, r, err)
@@ -394,9 +402,29 @@ func (s *Server) updateConversation(w http.ResponseWriter, r *http.Request) {
 		t := truncate(strings.TrimSpace(*in.Title), 60)
 		in.Title = &t
 	}
-	c, err := s.Store.UpdateConversation(r.Context(), chi.URLParam(r, "id"), currentUser(r).ID, store.ConversationPatch{
-		Title: in.Title, Pinned: in.Pinned, ModelID: in.ModelID, AssistantID: in.AssistantID,
-	})
+	patch := store.ConversationPatch{
+		Title: in.Title, Pinned: in.Pinned, AssistantID: in.AssistantID,
+	}
+	if in.ModelID != nil {
+		switch *in.ModelID {
+		case chat.AutoModelID:
+			on := s.Chat.AutoEnabled(r.Context())
+			patch.AutoMode = &on
+		case "":
+			off := false
+			patch.AutoMode = &off
+			patch.ModelID = in.ModelID
+		default:
+			if _, err := s.Store.GetModel(r.Context(), *in.ModelID); err != nil {
+				writeErr(w, 400, "bad_model", "模型不存在")
+				return
+			}
+			off := false
+			patch.AutoMode = &off
+			patch.ModelID = in.ModelID
+		}
+	}
+	c, err := s.Store.UpdateConversation(r.Context(), chi.URLParam(r, "id"), currentUser(r).ID, patch)
 	if err != nil {
 		s.writeStoreErr(w, r, err)
 		return
@@ -516,8 +544,19 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 	wake, unsub := run.Subscribe()
 	defer unsub()
 	snap := run.Snapshot()
-	if !send("snapshot", map[string]any{"content": snap.Content, "reasoning": snap.Reasoning, "status": store.StatusStreaming, "title": snap.Title,
-		"activity": snap.Activity, "activity_at": snap.ActivityAt, "attachments": nonNil(snap.Attachments)}) {
+	curModel := ""
+	if msg.ModelID != nil {
+		curModel = *msg.ModelID
+	}
+	snapPayload := map[string]any{
+		"content": snap.Content, "reasoning": snap.Reasoning, "status": store.StatusStreaming, "title": snap.Title,
+		"activity": snap.Activity, "activity_at": snap.ActivityAt, "attachments": nonNil(snap.Attachments),
+	}
+	if snap.ModelID != "" {
+		snapPayload["model_id"] = snap.ModelID
+		curModel = snap.ModelID
+	}
+	if !send("snapshot", snapPayload) {
 		return
 	}
 	offC, offR, title := len(snap.Content), len(snap.Reasoning), snap.Title
@@ -546,6 +585,10 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 			}
 			last = time.Now()
 			snap := run.Snapshot()
+			if snap.ModelID != "" && snap.ModelID != curModel {
+				curModel = snap.ModelID
+				send("model", map[string]string{"conversation_id": run.ConversationID, "model_id": snap.ModelID})
+			}
 			delta := map[string]string{}
 			if len(snap.Reasoning) > offR {
 				delta["reasoning"] = snap.Reasoning[offR:]

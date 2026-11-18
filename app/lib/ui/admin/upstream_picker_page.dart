@@ -53,11 +53,21 @@ class _UpstreamPickerPageState extends ConsumerState<UpstreamPickerPage> {
   Future<void> _add(List<UpstreamItem> all) async {
     final picks = all.where((it) => _selected.contains(it.upstreamModel)).toList();
     if (picks.isEmpty) return;
+    final chatPicks = picks.where((it) => it.isChat).toList();
+    Map<String, String> routingNotes = const {};
+    if (chatPicks.isNotEmpty) {
+      final res = await _promptRoutingNotes(chatPicks);
+      if (res == null || !mounted) return;
+      routingNotes = res;
+    }
     setState(() => _busy = true);
     try {
       final before = ref.read(catalogProvider).value?.settings.defaultModelId ?? '';
       final imageBefore = ref.read(catalogProvider).value?.settings.imageModelId ?? '';
-      final added = await ref.read(apiProvider).adminBatchModels(widget.providerId, picks.map((e) => e.toModelJson()).toList());
+      final added = await ref.read(apiProvider).adminBatchModels(
+            widget.providerId,
+            picks.map((e) => e.toModelJson(routingNote: routingNotes[e.upstreamModel] ?? '')).toList(),
+          );
       await ref.read(catalogProvider.notifier).reload();
       if (!mounted) return;
       HapticFeedback.mediumImpact();
@@ -75,6 +85,101 @@ class _UpstreamPickerPageState extends ConsumerState<UpstreamPickerPage> {
       if (mounted) showToast(context, e.message);
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Optional step when adding chat models: lets the admin describe what scenarios
+  /// each model is best for (Auto mode guide), while previewing the server's built-in fallback.
+  Future<Map<String, String>?> _promptRoutingNotes(List<UpstreamItem> chatPicks) async {
+    final ctrls = {for (final it in chatPicks) it.upstreamModel: TextEditingController()};
+    try {
+      final confirmed = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        builder: (ctx) {
+          final p = ctx.pal;
+          final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: bottomInset),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.82),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 6),
+                      child: Text('介绍一下适用场景？（选填）', style: Theme.of(ctx).textTheme.titleMedium),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                      child: Text(
+                        '写一句它最擅长的场景（如「日常聊天」「医疗问题和研究」），Auto 模式会优先按你的介绍挑模型；留空则直接使用服务端内置兜底。',
+                        style: TextStyle(fontSize: 13.5, color: p.muted, height: 1.45),
+                      ),
+                    ),
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        itemCount: chatPicks.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        itemBuilder: (_, i) {
+                          final it = chatPicks[i];
+                          return Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: p.surface,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: p.line),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(it.displayName, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: p.text)),
+                                if (it.builtinRoutingNote.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text('内置兜底：${it.builtinRoutingNote}', style: TextStyle(fontSize: 12.5, color: p.muted, height: 1.4)),
+                                ],
+                                const SizedBox(height: 10),
+                                AdminField(
+                                  controller: ctrls[it.upstreamModel]!,
+                                  label: '管理员场景说明',
+                                  statusText: '选填',
+                                  hint: '例如：日常闲聊 / 医疗问题和研究',
+                                  maxLength: 300,
+                                  maxLines: 2,
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+                      child: PrimaryButton(
+                        label: '确认添加（未填项使用内置兜底）',
+                        onTap: () => Navigator.pop(ctx, true),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+      if (confirmed != true) return null;
+      return {
+        for (final entry in ctrls.entries)
+          if (entry.value.text.trim().isNotEmpty) entry.key: entry.value.text.trim(),
+      };
+    } finally {
+      for (final c in ctrls.values) {
+        c.dispose();
+      }
     }
   }
 

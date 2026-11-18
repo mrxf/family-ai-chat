@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/admin_models.dart';
 import '../../core/api.dart';
+import '../../core/models.dart';
 import '../../state/catalog.dart';
 import '../../state/session.dart';
 import '../icons.dart';
@@ -64,7 +65,11 @@ class _Body extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final p = context.pal;
     final s = c.settings;
-    String nameOf(String id, String empty) => id.isEmpty ? empty : (c.model(id)?.displayName ?? '已删除');
+    String nameOf(String id, String empty) {
+      if (id.isEmpty) return empty;
+      if (id == kAutoModelId) return '自动选模型';
+      return c.model(id)?.displayName ?? '已删除';
+    }
     final noUsable = c.usableModels.isEmpty;
     final chat = c.chatModels, images = c.imageModels, embeddings = c.embeddingModels;
 
@@ -86,8 +91,10 @@ class _Body extends ConsumerWidget {
               title: '默认模型',
               subtitle: '家人开新对话时默认用它',
               value: nameOf(s.defaultModelId, '未设置'),
-              valueColor: s.defaultModelId.isEmpty ? p.bad : p.muted,
-              onTap: noUsable ? null : () => _assign(context, ref, 'default_model_id', '全家默认模型', s.defaultModelId, allowNone: false),
+              valueColor: s.defaultModelId.isEmpty ? p.bad : (s.defaultModelId == kAutoModelId ? p.accent : p.muted),
+              onTap: noUsable
+                  ? null
+                  : () => _assign(context, ref, 'default_model_id', '全家默认模型', s.defaultModelId, allowNone: false, allowAuto: s.autoEnabled),
             ),
             InfoRow(
               icon: AppIcons.shield,
@@ -105,6 +112,45 @@ class _Body extends ConsumerWidget {
               valueColor: s.titleModelId.isEmpty ? p.faint : p.muted,
               onTap: noUsable ? null : () => _assign(context, ref, 'title_model_id', '起标题的模型', s.titleModelId, noneLabel: '跟随当前对话的模型'),
             ),
+          ]),
+          const SectionHeader(
+            'Auto 智能选模型',
+            subtitle: '家人不用懂各种模型代号，由服务端根据问题难度、模型介绍与内置知识库自动挑模型',
+          ),
+          GroupCard(children: [
+            SwitchRow(
+              icon: AppIcons.sparkles,
+              title: '开启 Auto 模式',
+              desc: '开启后家人在聊天顶部可选「自动选模型」，也可设为全家默认',
+              value: s.autoEnabled,
+              onChanged: noUsable ? null : (v) => _toggleAuto(context, ref, v, s),
+            ),
+            if (s.autoEnabled) ...[
+              InfoRow(
+                icon: AppIcons.cpu,
+                title: 'Auto 判断模型',
+                subtitle: '负责分析问题并挑模型，建议选反应快、便宜的大语言模型',
+                value: nameOf(s.autoModelId, '请选择'),
+                valueColor: s.autoModelId.isEmpty ? p.bad : p.muted,
+                onTap: () => _assign(context, ref, 'auto_model_id', 'Auto 判断模型（建议选快、便宜的模型）', s.autoModelId, allowNone: false),
+              ),
+              InfoRow(
+                icon: AppIcons.route,
+                title: '路由判断引擎',
+                subtitle: '结合管理员写的适用场景与服务端御三家/开源模型兜底库做判断；已预留未来接入 JEV 模型',
+                value: s.autoRouterKind == 'jev' ? 'JEV 模型' : '大语言模型',
+                onTap: () => _showRouterEngineSheet(context, s.autoRouterKind),
+              ),
+              SwitchRow(
+                icon: AppIcons.swap,
+                title: '对话中动态调整模型',
+                desc: s.autoDynamic
+                    ? '已开启：聊的过程中若话题或难度明显变化（如从探讨物理变成辅导孩子数学题），自动升降级模型'
+                    : '默认关闭：在第一个问题定下模型后保持不变，避免切换影响上下文缓存命中',
+                value: s.autoDynamic,
+                onChanged: (v) => _putSettings(context, ref, {'auto_dynamic': v ? '1' : '0'}),
+              ),
+            ],
           ]),
           const SectionHeader('记忆'),
           GroupCard(children: [
@@ -257,18 +303,71 @@ class _Body extends ConsumerWidget {
     ]);
   }
 
-  Future<void> _assign(BuildContext context, WidgetRef ref, String key, String title, String current,
-      {bool allowNone = true, String noneLabel = '不使用', String kind = 'chat'}) async {
-    final picked = await showAdminModelChooser(context, c, title: title, current: current, noneLabel: allowNone ? noneLabel : null, kind: kind);
-    if (picked == null || picked == current) return;
+  Future<void> _putSettings(BuildContext context, WidgetRef ref, Map<String, String> patch) async {
     try {
-      final s = await ref.read(apiProvider).adminPutModelSettings({key: picked});
+      final s = await ref.read(apiProvider).adminPutModelSettings(patch);
       ref.read(catalogProvider.notifier).setSettings(s);
       await ref.read(catalogProvider.notifier).reload();
       if (context.mounted) showToast(context, '已保存');
     } on ApiError catch (e) {
       if (context.mounted) showToast(context, e.message);
     }
+  }
+
+  Future<void> _toggleAuto(BuildContext context, WidgetRef ref, bool enable, ModelSettings s) async {
+    if (!enable) {
+      await _putSettings(context, ref, {'auto_enabled': '0'});
+      return;
+    }
+    var judgeId = s.autoModelId;
+    if (judgeId.isEmpty || c.model(judgeId) == null || !c.usable(c.model(judgeId)!)) {
+      final picked = await showAdminModelChooser(
+        context,
+        c,
+        title: '选择 Auto 的判断模型（建议选反应快、便宜的模型）',
+        current: '',
+      );
+      if (picked == null || picked.isEmpty) return;
+      judgeId = picked;
+    }
+    if (!context.mounted) return;
+    await _putSettings(context, ref, {'auto_enabled': '1', 'auto_model_id': judgeId});
+  }
+
+  void _showRouterEngineSheet(BuildContext context, String current) {
+    showActionSheet(
+      context,
+      title: '选择 Auto 路由判断方式',
+      actions: [
+        SheetAction(
+          current != 'jev' ? AppIcons.checkCircle : AppIcons.circle,
+          '大语言模型（当前使用）',
+          () {},
+          subtitle: '由所选判断模型结合管理员场景说明与服务端内置模型库挑选模型',
+        ),
+        SheetAction(
+          AppIcons.hourglass,
+          'JEV 专用路由模型（即将支持）',
+          () => showToast(context, '服务端已预留 JEV 路由接口，后续版本可直接接入'),
+          subtitle: '超低延迟专用判别模型接口，服务端架构已就绪',
+        ),
+      ],
+    );
+  }
+
+  Future<void> _assign(BuildContext context, WidgetRef ref, String key, String title, String current,
+      {bool allowNone = true, String noneLabel = '不使用', String kind = 'chat', bool allowAuto = false}) async {
+    final picked = await showAdminModelChooser(
+      context,
+      c,
+      title: title,
+      current: current,
+      noneLabel: allowNone ? noneLabel : null,
+      kind: kind,
+      allowAuto: allowAuto,
+    );
+    if (picked == null || picked == current || !context.mounted) return;
+    await _putSettings(context, ref, {key: picked});
   }
 }
 
@@ -289,6 +388,7 @@ class ModelRow extends ConsumerWidget {
     final visible = catalog.enabledNow(m);
     final isDefault = catalog.settings.defaultModelId == m.id;
     final isFallback = catalog.settings.fallbackModelId == m.id;
+    final isAutoJudge = catalog.settings.autoEnabled && catalog.settings.autoModelId == m.id;
 
     final tags = <Widget>[
       if (providerOff) Tag('供应商已停用', color: p.bad),
@@ -296,6 +396,7 @@ class ModelRow extends ConsumerWidget {
       if (m.isEmbedding) const Tag('向量', icon: AppIcons.manageSearch),
       if (m.isEmbedding && catalog.settings.embeddingModelId == m.id) Tag('正在使用', color: p.good),
       if (m.isImage && catalog.settings.imageModelId == m.id) Tag('正在使用', color: p.good),
+      if (isAutoJudge) Tag('Auto 判断', icon: AppIcons.sparkles, color: p.accent),
       if (m.isChat) ...modelTags(context, vision: m.vision, think: m.think),
     ];
 
@@ -334,6 +435,15 @@ class ModelRow extends ConsumerWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 13, color: p.muted),
                 ),
+                if (m.isChat && m.routingNote.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    '适用场景：${m.routingNote}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12.5, color: p.accent.withValues(alpha: 0.9)),
+                  ),
+                ],
                 if (tags.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Wrap(spacing: 6, runSpacing: 6, children: tags),
@@ -420,7 +530,15 @@ class ProviderCard extends StatelessWidget {
 
 /// Bottom sheet listing the family-visible models, grouped by provider.
 /// Returns the chosen id, '' for [noneLabel], or null when dismissed.
-Future<String?> showAdminModelChooser(BuildContext context, Catalog c, {required String title, required String current, String? noneLabel, String kind = 'chat'}) {
+Future<String?> showAdminModelChooser(
+  BuildContext context,
+  Catalog c, {
+  required String title,
+  required String current,
+  String? noneLabel,
+  String kind = 'chat',
+  bool allowAuto = false,
+}) {
   return showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
@@ -483,6 +601,13 @@ Future<String?> showAdminModelChooser(BuildContext context, Catalog c, {required
           children: [
             Padding(padding: const EdgeInsets.fromLTRB(6, 0, 6, 12), child: Text(title, style: Theme.of(ctx).textTheme.titleMedium)),
             if (noneLabel != null) option(id: '', name: noneLabel),
+            if (allowAuto)
+              option(
+                id: kAutoModelId,
+                name: '自动选模型（Auto）',
+                sub: '家人开新对话默认进入 Auto 模式，由服务端根据问题自动挑选模型',
+                tags: [Tag('省心推荐', icon: AppIcons.sparkles, color: p.accent)],
+              ),
             ...groups,
           ],
         ),

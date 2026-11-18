@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"nuan/internal/auth"
+	"nuan/internal/chat"
 	"nuan/internal/store"
 )
 
@@ -129,13 +130,31 @@ func (s *Server) adminDeleteUser(w http.ResponseWriter, r *http.Request) {
 
 // ---- settings & usage ----
 
-var settingKeys = []string{"default_model_id", "fallback_model_id", "title_model_id", "image_model_id", "image_daily_limit", "memory_model_id", "embedding_model_id"}
+var settingKeys = []string{
+	"auto_enabled", "auto_model_id", "auto_router_kind", "auto_dynamic",
+	"default_model_id", "fallback_model_id", "title_model_id",
+	"image_model_id", "image_daily_limit", "memory_model_id", "embedding_model_id",
+}
+
+func normalizeBoolSetting(v string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "", "0", "false":
+		return "", true
+	case "1", "true":
+		return "1", true
+	default:
+		return "", false
+	}
+}
 
 func (s *Server) adminGetSettings(w http.ResponseWriter, r *http.Request) {
 	out := map[string]string{}
 	for _, k := range settingKeys {
 		v, _ := s.Store.GetSetting(r.Context(), k)
 		out[k] = v
+	}
+	if out[chat.SettingAutoRouterKind] == "" {
+		out[chat.SettingAutoRouterKind] = chat.RouterKindLLM
 	}
 	if st, err := s.Store.MemoryStats(r.Context(), out["embedding_model_id"]); err == nil {
 		out["memory_active_count"] = strconv.Itoa(st.Active)
@@ -150,13 +169,39 @@ func (s *Server) adminPutSettings(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
+	ctx := r.Context()
+	merged := map[string]string{}
+	for _, k := range settingKeys {
+		merged[k], _ = s.Store.GetSetting(ctx, k)
+	}
+
+	updates := map[string]string{}
 	for _, k := range settingKeys {
 		v, ok := in[k]
 		if !ok {
 			continue
 		}
 		v = strings.TrimSpace(v)
-		if k == "image_daily_limit" {
+		switch k {
+		case chat.SettingAutoEnabled, chat.SettingAutoDynamic:
+			norm, valid := normalizeBoolSetting(v)
+			if !valid {
+				writeErr(w, 400, "bad_setting", "开关参数不正确")
+				return
+			}
+			v = norm
+		case chat.SettingAutoRouterKind:
+			switch strings.ToLower(v) {
+			case "", chat.RouterKindLLM:
+				v = chat.RouterKindLLM
+			case chat.RouterKindJEV:
+				writeErr(w, 400, "router_unavailable", "JEV 专用路由模型暂未接入，当前请使用大语言模型判断")
+				return
+			default:
+				writeErr(w, 400, "bad_setting", "不支持的路由判断类型")
+				return
+			}
+		case "image_daily_limit":
 			// Pictures per person per day; empty or 0 = no limit.
 			if n, err := strconv.Atoi(v); v != "" && (err != nil || n < 0 || n > 10000) {
 				writeErr(w, 400, "bad_limit", "每天的张数要填 0 到 10000 之间的整数（0 表示不限）")
@@ -164,42 +209,69 @@ func (s *Server) adminPutSettings(w http.ResponseWriter, r *http.Request) {
 			} else if n == 0 {
 				v = ""
 			}
-			if err := s.Store.SetSetting(r.Context(), k, v); err != nil {
-				s.writeStoreErr(w, r, err)
+		case "default_model_id":
+			if v == "" {
+				writeErr(w, 400, "bad_model", "全家默认模型不能为空")
 				return
 			}
+			if v != chat.AutoModelID {
+				m, err := s.Store.GetModel(ctx, v)
+				if err != nil {
+					writeErr(w, 400, "bad_model", "模型不存在")
+					return
+				}
+				if m.Kind != store.KindChat {
+					writeErr(w, 400, "bad_model", "这里不能选这种模型（画图模型和聊天模型不能混用）")
+					return
+				}
+			}
+		default:
+			if v != "" {
+				m, err := s.Store.GetModel(ctx, v)
+				if err != nil {
+					writeErr(w, 400, "bad_model", "模型不存在")
+					return
+				}
+				want := store.KindChat
+				if k == "image_model_id" {
+					want = store.KindImage
+				}
+				if k == "embedding_model_id" {
+					want = store.KindEmbedding
+				}
+				if m.Kind != want {
+					writeErr(w, 400, "bad_model", "这里不能选这种模型（画图模型和聊天模型不能混用）")
+					return
+				}
+			}
+		}
+		updates[k] = v
+		merged[k] = v
+	}
+
+	if merged[chat.SettingAutoEnabled] == "1" && merged[chat.SettingAutoModelID] == "" {
+		writeErr(w, 400, "bad_model", "开启 Auto 模式需要先选择一个判断模型")
+		return
+	}
+	if _, settingDefault := updates["default_model_id"]; settingDefault && merged["default_model_id"] == chat.AutoModelID && merged[chat.SettingAutoEnabled] != "1" {
+		writeErr(w, 400, "bad_model", "请先开启 Auto 模式，再将默认模型设为自动选择")
+		return
+	}
+
+	for _, k := range settingKeys {
+		v, ok := updates[k]
+		if !ok {
 			continue
 		}
-		if v == "" && k == "default_model_id" {
-			writeErr(w, 400, "bad_model", "全家默认模型不能为空")
-			return
-		}
-		if v != "" {
-			m, err := s.Store.GetModel(r.Context(), v)
-			if err != nil {
-				writeErr(w, 400, "bad_model", "模型不存在")
-				return
-			}
-			want := store.KindChat
-			if k == "image_model_id" {
-				want = store.KindImage
-			}
-			if k == "embedding_model_id" {
-				want = store.KindEmbedding
-			}
-			if m.Kind != want {
-				writeErr(w, 400, "bad_model", "这里不能选这种模型（画图模型和聊天模型不能混用）")
-				return
-			}
-		}
-		if err := s.Store.SetSetting(r.Context(), k, v); err != nil {
+		if err := s.Store.SetSetting(ctx, k, v); err != nil {
 			s.writeStoreErr(w, r, err)
 			return
 		}
 		if k == "embedding_model_id" && v != "" && s.Chat.Memory != nil {
-			go s.Chat.Memory.DrainEmbeddings(context.WithoutCancel(r.Context()))
+			go s.Chat.Memory.DrainEmbeddings(context.WithoutCancel(ctx))
 		}
 	}
+	s.repairSettings(r)
 	s.adminGetSettings(w, r)
 }
 

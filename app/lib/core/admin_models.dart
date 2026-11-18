@@ -53,9 +53,9 @@ class AdminProvider {
 }
 
 class AdminModel {
-  final String id, providerId, kind, upstreamModel, displayName, description, defaultEffort, thinkEffort;
+  final String id, providerId, kind, upstreamModel, displayName, description, routingNote, builtinRoutingNote, defaultEffort, thinkEffort;
   final bool vision, tools, enabled;
-  final int contextWindow, maxOutput, sort;
+  final int contextWindow, maxOutput, sort, autoTier;
   final double inputPrice, outputPrice;
   const AdminModel({
     required this.id,
@@ -64,6 +64,9 @@ class AdminModel {
     required this.upstreamModel,
     required this.displayName,
     required this.description,
+    this.routingNote = '',
+    this.builtinRoutingNote = '',
+    this.autoTier = 0,
     required this.defaultEffort,
     required this.thinkEffort,
     required this.vision,
@@ -82,6 +85,9 @@ class AdminModel {
         upstreamModel: _str(j['upstream_model']),
         displayName: _str(j['display_name']),
         description: _str(j['description']),
+        routingNote: _str(j['routing_note']),
+        builtinRoutingNote: _str(j['builtin_routing_note']),
+        autoTier: _int(j['auto_tier']),
         defaultEffort: _str(j['default_effort']),
         thinkEffort: _str(j['think_effort']),
         vision: j['vision'] == true,
@@ -103,15 +109,17 @@ class AdminModel {
 /// A model offered by the provider's /models, with suggested settings.
 class UpstreamItem {
   final String kind;
-  final String upstreamModel, displayName, description, defaultEffort, thinkEffort, existingModelId;
+  final String upstreamModel, displayName, description, builtinRoutingNote, defaultEffort, thinkEffort, existingModelId;
   final bool vision, chat, image, tools, recommended;
-  final int contextWindow, created;
+  final int contextWindow, created, autoTier;
   final double inputPrice, outputPrice;
   const UpstreamItem({
     this.kind = '',
     required this.upstreamModel,
     required this.displayName,
     required this.description,
+    this.builtinRoutingNote = '',
+    this.autoTier = 0,
     required this.defaultEffort,
     required this.thinkEffort,
     required this.existingModelId,
@@ -130,6 +138,8 @@ class UpstreamItem {
         upstreamModel: _str(j['upstream_model']),
         displayName: _str(j['display_name']),
         description: _str(j['description']),
+        builtinRoutingNote: _str(j['builtin_routing_note']),
+        autoTier: _int(j['auto_tier']),
         defaultEffort: _str(j['default_effort']),
         thinkEffort: _str(j['think_effort']),
         existingModelId: _str(j['existing_model_id']),
@@ -152,12 +162,13 @@ class UpstreamItem {
   bool get isChat => kind.isNotEmpty ? kind == 'chat' : chat && !image;
   bool get isImage => modelKind == 'image';
 
-  Map<String, dynamic> toModelJson() => {
+  Map<String, dynamic> toModelJson({String routingNote = ''}) => {
         'kind': modelKind,
         'tools': tools,
         'upstream_model': upstreamModel,
         'display_name': displayName,
         'description': description,
+        if (routingNote.trim().isNotEmpty) 'routing_note': routingNote.trim(),
         'vision': vision,
         'default_effort': defaultEffort,
         'think_effort': thinkEffort,
@@ -233,6 +244,8 @@ class ModelTestResult {
 /// Model choices the admin assigns for the whole family.
 class ModelSettings {
   final String defaultModelId, fallbackModelId, titleModelId, imageModelId, memoryModelId, embeddingModelId;
+  final bool autoEnabled, autoDynamic;
+  final String autoModelId, autoRouterKind;
   /// Pictures per family member per day; 0 = no limit.
   final int imageDailyLimit;
   final int memoryActiveCount, memoryEmbeddedCount, memoryKeywordsPending;
@@ -243,23 +256,34 @@ class ModelSettings {
     this.imageModelId = '',
     this.memoryModelId = '',
     this.embeddingModelId = '',
+    this.autoEnabled = false,
+    this.autoDynamic = false,
+    this.autoModelId = '',
+    this.autoRouterKind = 'llm',
     this.imageDailyLimit = 0,
     this.memoryActiveCount = 0,
     this.memoryEmbeddedCount = 0,
     this.memoryKeywordsPending = 0,
   });
-  factory ModelSettings.fromJson(Map<String, dynamic> j) => ModelSettings(
-        defaultModelId: _str(j['default_model_id']),
-        fallbackModelId: _str(j['fallback_model_id']),
-        titleModelId: _str(j['title_model_id']),
-        imageModelId: _str(j['image_model_id']),
-        memoryModelId: _str(j['memory_model_id']),
-        embeddingModelId: _str(j['embedding_model_id']),
-        imageDailyLimit: int.tryParse(_str(j['image_daily_limit'])) ?? 0,
-        memoryActiveCount: int.tryParse(_str(j['memory_active_count'])) ?? 0,
-        memoryEmbeddedCount: int.tryParse(_str(j['memory_embedded_count'])) ?? 0,
-        memoryKeywordsPending: int.tryParse(_str(j['memory_keywords_pending'])) ?? 0,
-      );
+  factory ModelSettings.fromJson(Map<String, dynamic> j) {
+    final rk = _str(j['auto_router_kind']);
+    return ModelSettings(
+      defaultModelId: _str(j['default_model_id']),
+      fallbackModelId: _str(j['fallback_model_id']),
+      titleModelId: _str(j['title_model_id']),
+      imageModelId: _str(j['image_model_id']),
+      memoryModelId: _str(j['memory_model_id']),
+      embeddingModelId: _str(j['embedding_model_id']),
+      autoEnabled: _str(j['auto_enabled']) == '1',
+      autoDynamic: _str(j['auto_dynamic']) == '1',
+      autoModelId: _str(j['auto_model_id']),
+      autoRouterKind: rk.isEmpty ? 'llm' : rk,
+      imageDailyLimit: int.tryParse(_str(j['image_daily_limit'])) ?? 0,
+      memoryActiveCount: int.tryParse(_str(j['memory_active_count'])) ?? 0,
+      memoryEmbeddedCount: int.tryParse(_str(j['memory_embedded_count'])) ?? 0,
+      memoryKeywordsPending: int.tryParse(_str(j['memory_keywords_pending'])) ?? 0,
+    );
+  }
 }
 
 class UsageRow {

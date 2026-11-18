@@ -375,6 +375,8 @@ class AdminField extends StatelessWidget {
     this.decimal = false,
     this.keyboardType,
     this.maxLength,
+    this.minLines = 1,
+    this.maxLines = 1,
   });
 
   final TextEditingController controller;
@@ -392,6 +394,8 @@ class AdminField extends StatelessWidget {
   final bool decimal;
   final TextInputType? keyboardType;
   final int? maxLength;
+  final int minLines;
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) {
@@ -410,6 +414,8 @@ class AdminField extends StatelessWidget {
       TextField(
         controller: controller,
         maxLength: maxLength,
+        minLines: obscureText ? 1 : minLines,
+        maxLines: obscureText ? 1 : maxLines,
         obscureText: obscureText,
         autocorrect: !mono && !obscureText,
         enableSuggestions: !mono && !obscureText,

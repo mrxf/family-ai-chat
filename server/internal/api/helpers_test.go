@@ -136,6 +136,7 @@ func withoutSystemNote(text string) string {
 
 type fakeUpstream struct {
 	extraction string
+	routerFunc func(upstreamRequest) string
 
 	server    *httptest.Server
 	mu        sync.Mutex
@@ -176,7 +177,12 @@ func newFakeUpstream(t *testing.T) *fakeUpstream {
 		if !req.Stream {
 			u.mu.Lock()
 			extraction := u.extraction
+			routerFn := u.routerFunc
 			u.mu.Unlock()
+			if routerFn != nil && len(req.Messages) > 0 && strings.Contains(string(req.Messages[0].Content), "模型路由器") {
+				_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": routerFn(req)}}}, "usage": map[string]int{"prompt_tokens": 20, "completion_tokens": 8}})
+				return
+			}
 			if extraction != "" && len(req.Messages) > 0 && strings.Contains(string(req.Messages[0].Content), "记忆整理员") {
 				_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": extraction}}}})
 				return
@@ -512,6 +518,7 @@ func (s *sseReader) finish() (streamText, *store.Message, []string) {
 			text.Reasoning += v.Reasoning
 		case "title":
 			text.Title = decodeEvent[streamText](s.t, e).Title
+		case "model", "activity", "attachments":
 		case "done":
 			v := decodeEvent[chat.FinalEvent](s.t, e)
 			if v.Message == nil {

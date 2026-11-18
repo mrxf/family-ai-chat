@@ -67,6 +67,9 @@ class ChatState {
   final String? conversationId;
   final String? assistantId;
   final String? modelId;
+
+  /// Concrete model ID currently chosen by Auto mode (or last answered turn) in this conversation.
+  final String? resolvedModelId;
   final bool think;
   final bool isPrivate;
   final List<Message> messages;
@@ -85,6 +88,7 @@ class ChatState {
     this.conversationId,
     this.assistantId,
     this.modelId,
+    this.resolvedModelId,
     this.think = false,
     this.isPrivate = false,
     this.messages = const [],
@@ -103,6 +107,7 @@ class ChatState {
     String? conversationId,
     String? assistantId,
     Object? modelId = _keep,
+    Object? resolvedModelId = _keep,
     bool? think,
     bool? isPrivate,
     List<Message>? messages,
@@ -117,6 +122,7 @@ class ChatState {
         conversationId: conversationId ?? this.conversationId,
         assistantId: assistantId ?? this.assistantId,
         modelId: modelId == _keep ? this.modelId : modelId as String?,
+        resolvedModelId: resolvedModelId == _keep ? this.resolvedModelId : resolvedModelId as String?,
         think: think ?? this.think,
         isPrivate: isPrivate ?? this.isPrivate,
         messages: messages ?? this.messages,
@@ -250,13 +256,20 @@ class ChatController extends Notifier<ChatState> {
     if (hadActivity) notices.add('隐私对话已清除');
   }
 
+  String? _convModeId(Conversation? c) {
+    if (c == null) return null;
+    if (c.autoMode && ref.read(sessionProvider).boot?.autoModel == true) return kAutoModelId;
+    return c.modelId;
+  }
+
   Future<void> open(String id) async {
     if (state.conversationId == id && state.messages.isNotEmpty) return;
     final conv = ref.read(conversationsProvider).items.where((c) => c.id == id).firstOrNull;
     _reset(ChatState(
       conversationId: id,
       assistantId: conv?.assistantId,
-      modelId: _sessionModelId ?? conv?.modelId,
+      modelId: _sessionModelId ?? _convModeId(conv),
+      resolvedModelId: conv?.modelId,
       think: state.think,
       loading: true,
       epoch: state.epoch + 1,
@@ -284,7 +297,8 @@ class ChatController extends Notifier<ChatState> {
         messages: merged,
         anchor: active != null ? _lastUserIndex(merged) : _keepAnchor(merged),
         assistantId: d.conversation.assistantId,
-        modelId: _sessionModelId ?? d.conversation.modelId,
+        modelId: _sessionModelId ?? _convModeId(d.conversation),
+        resolvedModelId: d.conversation.modelId,
         hasMore: merged.length > d.messages.length ? state.hasMore : d.hasMore,
         loading: false,
         activeId: active,
@@ -345,7 +359,10 @@ class ChatController extends Notifier<ChatState> {
 
   void setModel(String? modelId) {
     _sessionModelId = modelId;
-    state = state.copyWith(modelId: modelId);
+    state = state.copyWith(
+      modelId: modelId,
+      resolvedModelId: modelId == kAutoModelId ? state.resolvedModelId : modelId,
+    );
   }
   void setThink(bool v) => state = state.copyWith(think: v);
 
@@ -434,6 +451,7 @@ class ChatController extends Notifier<ChatState> {
       state = state.copyWith(
         conversationId: res.conversation.id,
         isPrivate: privConv,
+        resolvedModelId: res.assistant.modelId ?? res.conversation.modelId ?? state.resolvedModelId,
         messages: [
           for (final m in state.messages)
             if (m.id == localUser.id) mergedUser else if (m.id == localAsst.id) res.assistant else m,
@@ -552,6 +570,13 @@ class ChatController extends Notifier<ChatState> {
           backoff = const Duration(milliseconds: 600);
           switch (ev.event) {
             case 'snapshot':
+              final snapModel = '${ev.data['model_id'] ?? ''}';
+              if (snapModel.isNotEmpty && snapModel != state.resolvedModelId) {
+                state = state.copyWith(
+                  resolvedModelId: snapModel,
+                  messages: [for (final m in state.messages) m.id == id ? m.copyWith(modelId: snapModel) : m],
+                );
+              }
               live.value = live.value.copyWith(
                 content: '${ev.data['content'] ?? ''}',
                 reasoning: '${ev.data['reasoning'] ?? ''}',
@@ -559,6 +584,17 @@ class ChatController extends Notifier<ChatState> {
                 activityAt: (ev.data['activity_at'] as num?)?.toInt(),
                 attachments: _attachments(ev.data['attachments']),
               );
+            case 'model':
+              final mid = '${ev.data['model_id'] ?? ''}';
+              if (mid.isNotEmpty) {
+                state = state.copyWith(
+                  resolvedModelId: mid,
+                  messages: [for (final m in state.messages) m.id == id ? m.copyWith(modelId: mid) : m],
+                );
+                if (!state.isPrivate && ev.data['conversation_id'] != null) {
+                  _convs.patchLocal('${ev.data['conversation_id']}', (c) => c.copyWith(modelId: mid));
+                }
+              }
             case 'delta':
               final v = live.value;
               live.value = v.copyWith(content: '${v.content}${ev.data['content'] ?? ''}', reasoning: '${v.reasoning}${ev.data['reasoning'] ?? ''}');
@@ -604,7 +640,11 @@ class ChatController extends Notifier<ChatState> {
         else
           m,
     ];
-    state = state.copyWith(messages: msgs, activeId: null);
+    state = state.copyWith(
+      messages: msgs,
+      resolvedModelId: finalMsg?.modelId ?? state.resolvedModelId,
+      activeId: null,
+    );
     _streamCancel = null;
     final cid = state.conversationId;
     if (!state.isPrivate && cid != null) _convs.touch(cid);

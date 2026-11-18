@@ -2,6 +2,8 @@ import 'package:flutter/widgets.dart';
 
 // Plain data classes mirroring the server JSON.
 
+const kAutoModelId = 'auto';
+
 int _int(dynamic v) => v is int ? v : (v is num ? v.toInt() : 0);
 String _str(dynamic v) => v is String ? v : '';
 String? _strN(dynamic v) => v is String && v.isNotEmpty ? v : null;
@@ -192,7 +194,7 @@ Map<MemoryCategory, List<Memory>> groupMemories(Iterable<Memory> memories) {
 class Conversation {
   final String id, title, snippet;
   final String? assistantId, modelId;
-  final bool pinned, isPrivate;
+  final bool autoMode, pinned, isPrivate;
   final int createdAt, updatedAt;
   const Conversation({
     required this.id,
@@ -200,6 +202,7 @@ class Conversation {
     this.snippet = '',
     this.assistantId,
     this.modelId,
+    this.autoMode = false,
     required this.pinned,
     this.isPrivate = false,
     required this.createdAt,
@@ -211,6 +214,7 @@ class Conversation {
         snippet: _str(j['snippet']),
         assistantId: _strN(j['assistant_id']),
         modelId: _strN(j['model_id']),
+        autoMode: j['auto_mode'] == true,
         pinned: j['pinned'] == true,
         isPrivate: j['private'] == true,
         createdAt: _int(j['created_at']),
@@ -221,18 +225,20 @@ class Conversation {
         'title': title,
         'assistant_id': assistantId,
         'model_id': modelId,
+        if (autoMode) 'auto_mode': true,
         'pinned': pinned,
         if (isPrivate) 'private': true,
         'created_at': createdAt,
         'updated_at': updatedAt,
       };
 
-  Conversation copyWith({String? title, String? snippet, bool? pinned, int? updatedAt, String? modelId}) => Conversation(
+  Conversation copyWith({String? title, String? snippet, bool? pinned, int? updatedAt, String? modelId, bool? autoMode}) => Conversation(
         id: id,
         title: title ?? this.title,
         snippet: snippet ?? this.snippet,
         assistantId: assistantId,
         modelId: modelId ?? this.modelId,
+        autoMode: autoMode ?? this.autoMode,
         pinned: pinned ?? this.pinned,
         isPrivate: isPrivate,
         createdAt: createdAt,
@@ -321,7 +327,7 @@ class Message {
         'created_at': createdAt,
       };
 
-  Message copyWith({String? id, String? content, String? reasoning, MsgStatus? status, String? error, List<Attachment>? attachments}) => Message(
+  Message copyWith({String? id, String? content, String? reasoning, MsgStatus? status, String? error, List<Attachment>? attachments, String? modelId}) => Message(
         id: id ?? this.id,
         conversationId: conversationId,
         role: role,
@@ -330,7 +336,7 @@ class Message {
         error: error ?? this.error,
         attachments: attachments ?? this.attachments,
         status: status ?? this.status,
-        modelId: modelId,
+        modelId: modelId ?? this.modelId,
         durationMs: durationMs,
         completionTokens: completionTokens,
         createdAt: createdAt,
@@ -342,7 +348,7 @@ class Bootstrap {
   final List<ChatModel> models;
   final List<Assistant> assistants;
   final String defaultModelId;
-  final bool voiceInput, imageGeneration;
+  final bool voiceInput, imageGeneration, autoModel, autoDynamic;
   final String voiceMode; // 'stream' | 'upload' | ''
   /// Pictures the user may still draw today; -1 = no limit.
   final int imagesLeft;
@@ -355,6 +361,8 @@ class Bootstrap {
     this.voiceMode = '',
     this.imageGeneration = false,
     this.imagesLeft = -1,
+    this.autoModel = false,
+    this.autoDynamic = false,
   });
 
   factory Bootstrap.fromJson(Map<String, dynamic> j) {
@@ -370,6 +378,8 @@ class Bootstrap {
       voiceMode: rawMode.isNotEmpty ? rawMode : (voiceOn ? 'upload' : ''),
       imageGeneration: feat?['image_generation'] == true,
       imagesLeft: feat?['images_left'] is num ? (feat!['images_left'] as num).toInt() : -1,
+      autoModel: feat?['auto_model'] == true,
+      autoDynamic: feat?['auto_dynamic'] == true,
     );
   }
   Map<String, dynamic> toJson() => {
@@ -377,7 +387,14 @@ class Bootstrap {
         'models': models.map((m) => m.toJson()).toList(),
         'assistants': assistants.map((a) => a.toJson()).toList(),
         'default_model_id': defaultModelId,
-        'features': {'voice_input': voiceInput, 'voice_mode': voiceMode, 'image_generation': imageGeneration, 'images_left': imagesLeft},
+        'features': {
+          'voice_input': voiceInput,
+          'voice_mode': voiceMode,
+          'image_generation': imageGeneration,
+          'images_left': imagesLeft,
+          'auto_model': autoModel,
+          'auto_dynamic': autoDynamic,
+        },
       };
 
   Bootstrap copyWith({User? user}) => Bootstrap(
@@ -389,6 +406,8 @@ class Bootstrap {
         voiceMode: voiceMode,
         imageGeneration: imageGeneration,
         imagesLeft: imagesLeft,
+        autoModel: autoModel,
+        autoDynamic: autoDynamic,
       );
 
   ChatModel? model(String? id) {
@@ -398,11 +417,34 @@ class Bootstrap {
     return null;
   }
 
-  ChatModel? get defaultModel => model(defaultModelId) ?? (models.isEmpty ? null : models.first);
+  /// Virtual entry representing server-side Auto mode in the picker and composer.
+  ChatModel get autoChatModel => ChatModel(
+        id: kAutoModelId,
+        displayName: '自动选模型',
+        description: autoDynamic ? '不用纠结选哪个，根据问题自动挑模型，换话题也会自动调整' : '不用纠结选哪个，小暖根据你的问题自动挑最合适的模型',
+        vision: models.any((m) => m.vision),
+        think: models.any((m) => m.think),
+      );
+
+  bool isAutoSelection(String? modelId, String? assistantId) {
+    if (!autoModel || models.isEmpty) return false;
+    if (modelId == kAutoModelId) return true;
+    if (modelId != null && modelId.isNotEmpty && model(modelId) != null) return false;
+    final asstModel = assistant(assistantId)?.modelId;
+    if (asstModel != null && model(asstModel) != null) return false;
+    return defaultModelId == kAutoModelId;
+  }
+
+  ChatModel? get defaultModel {
+    if (autoModel && defaultModelId == kAutoModelId && models.isNotEmpty) return autoChatModel;
+    return model(defaultModelId) ?? (models.isEmpty ? null : models.first);
+  }
 
   /// Same order the server uses: conversation choice → assistant's model → global default.
-  ChatModel? effectiveModel(String? modelId, String? assistantId) =>
-      model(modelId) ?? model(assistant(assistantId)?.modelId) ?? defaultModel;
+  ChatModel? effectiveModel(String? modelId, String? assistantId) {
+    if (isAutoSelection(modelId, assistantId)) return autoChatModel;
+    return model(modelId) ?? model(assistant(assistantId)?.modelId) ?? (models.isEmpty ? null : (model(defaultModelId) ?? models.first));
+  }
 
   Assistant? assistant(String? id) {
     for (final a in assistants) {

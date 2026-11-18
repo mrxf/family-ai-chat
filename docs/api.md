@@ -1238,3 +1238,23 @@ data: {"message":{"id":"01933c90-1210-7000-8000-000000000012","conversation_id":
 `GET /api/models` 仍只提供可用 chat 模型；上游模型推荐新增 `kind`，向量模型为 embedding。
 `POST /api/admin/models/{id}/test` 对 embedding 调用 `/embeddings`，成功沿用测试响应格式，`reply` 为 `向量维度 1024` 等。
 不可用或类型不匹配的记忆设置会在设置修复时清空；切换向量模型后后台每批 32 条重算旧向量。
+
+---
+
+## 9. Auto 智能选模型（v5）
+
+面向家庭成员的「服务端自动选模」：默认关闭，仅在管理员开启并配置判断模型后生效。
+
+- **管理员配置（`GET/PUT /api/admin/settings`）**：
+  - `auto_enabled`：`"1"` 启用，`""` 关闭（启用时必须指定 `auto_model_id`）。
+  - `auto_model_id`：用作路由判断的大语言模型 ID（必须为 `chat` 模型）。
+  - `auto_router_kind`：路由引擎类型，当前默认 `"llm"`（大语言模型判断），服务端 `ModelRouter` 接口已预留 `"jev"` 供未来接入专用轻量路由模型。
+  - `auto_dynamic`：`"1"` 开启对话中动态能力升降级；`""`（默认）在首轮提问选定模型后锁定不变，以保护上下文前缀缓存命中。
+  - `default_model_id`：当 `auto_enabled == "1"` 时支持设为 `"auto"`（全家新对话默认进入 Auto 模式）；关闭 Auto 时自动回退修复为具体可用聊天模型。
+- **模型场景说明与服务端兜底（`/api/admin/models*`、`/api/admin/providers/{id}/upstream-models`）**：
+  - `Model` 新增 `routing_note`（最长 300 字，管理员填写的适用场景说明，选模时最高优先级）。
+  - 后台模型与上游推荐额外返回只读字段 `builtin_routing_note` 与 `auto_tier`（1～5 档），由服务端内置模型库生成（内置御三家 OpenAI / Anthropic / Google 与主流开源/国产模型家族、同系版本高低关系如 `Opus > Sonnet > Haiku`、同系高版本优于低版本等基础兜底认知）。
+- **客户端与流式协议**：
+  - `GET /api/bootstrap` 的 `features` 新增 `auto_model`（bool）与 `auto_dynamic`（bool）。
+  - `Conversation` 新增 `auto_mode`（bool）；`POST /api/chat`、`POST /api/conversations/{id}/regenerate`、`POST/PATCH /api/conversations` 的 `model_id` 支持传 `"auto"`。
+  - `GET /api/messages/{id}/stream`：Auto 选定或动态切换模型时，`snapshot` 包含最新 `model_id`，并在运行中推送 `event: model`（`{"conversation_id":"…","model_id":"…"}`）。

@@ -28,6 +28,7 @@ type Run struct {
 	content     strings.Builder
 	reasoning   strings.Builder
 	title       string
+	modelID     string             // resolved/updated model ID (e.g. Auto mode or fallback)
 	activity    string             // what a tool is doing right now ("正在画图…"), "" when idle
 	activityAt  int64              // unix ms when the activity started
 	attachments []store.Attachment // pictures drawn so far
@@ -40,6 +41,7 @@ type Snapshot struct {
 	Content     string
 	Reasoning   string
 	Title       string
+	ModelID     string
 	Activity    string
 	ActivityAt  int64
 	Attachments []store.Attachment
@@ -72,6 +74,13 @@ func (r *Run) appendReasoning(s string) {
 func (r *Run) setTitle(t string) {
 	r.mu.Lock()
 	r.title = t
+	r.notifyLocked()
+	r.mu.Unlock()
+}
+
+func (r *Run) setModelID(id string) {
+	r.mu.Lock()
+	r.modelID = id
 	r.notifyLocked()
 	r.mu.Unlock()
 }
@@ -120,7 +129,8 @@ func (r *Run) Snapshot() Snapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return Snapshot{
-		Content: r.content.String(), Reasoning: r.reasoning.String(), Title: r.title, Activity: r.activity, ActivityAt: r.activityAt,
+		Content: r.content.String(), Reasoning: r.reasoning.String(), Title: r.title, ModelID: r.modelID,
+		Activity: r.activity, ActivityAt: r.activityAt,
 		Attachments: append([]store.Attachment(nil), r.attachments...), Final: r.final,
 	}
 }

@@ -79,7 +79,7 @@ func TestMigrationsRepeatableAndPersistData(t *testing.T) {
 		}
 	}
 	var n int
-	if err := s.queryRow(t.Context(), "SELECT count(*) FROM schema_migrations").Scan(&n); err != nil || n != 8 {
+	if err := s.queryRow(t.Context(), "SELECT count(*) FROM schema_migrations").Scan(&n); err != nil || n != 9 {
 		t.Errorf("migration count=%d err=%v", n, err)
 	}
 	if err := s.Close(); err != nil {
@@ -364,5 +364,37 @@ func TestPrivateConversationStoreInvariants(t *testing.T) {
 	}
 	if _, err := s.GetFile(ctx, privFile.ID, u.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected private file row deleted, got err=%v", err)
+	}
+}
+
+func TestModelRoutingNoteAndConversationAutoMode(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	u := testUser(t, s, "autoroute")
+	p := &Provider{Name: "p", BaseURL: "https://example.com/v1", APIKey: "k", Enabled: true}
+	if err := s.UpsertProvider(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	m := &Model{ProviderID: p.ID, UpstreamModel: "gemini-4-carbon", DisplayName: "Carbon", RoutingNote: "医疗问题和深度研究", Enabled: true}
+	if err := s.UpsertModel(ctx, m); err != nil {
+		t.Fatal(err)
+	}
+	gotM, err := s.GetModel(ctx, m.ID)
+	if err != nil || gotM.RoutingNote != "医疗问题和深度研究" {
+		t.Fatalf("model=%+v err=%v", gotM, err)
+	}
+
+	conv := &Conversation{UserID: u.ID, AutoMode: true, Title: "自动测试"}
+	if err := s.CreateConversation(ctx, conv); err != nil {
+		t.Fatal(err)
+	}
+	gotC, err := s.GetConversation(ctx, conv.ID, u.ID)
+	if err != nil || !gotC.AutoMode || gotC.ModelID != nil {
+		t.Fatalf("conv=%+v err=%v", gotC, err)
+	}
+	off := false
+	updated, err := s.UpdateConversation(ctx, conv.ID, u.ID, ConversationPatch{AutoMode: &off, ModelID: &m.ID})
+	if err != nil || updated.AutoMode || updated.ModelID == nil || *updated.ModelID != m.ID {
+		t.Fatalf("updated=%+v err=%v", updated, err)
 	}
 }

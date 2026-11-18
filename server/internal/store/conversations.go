@@ -13,6 +13,7 @@ type Conversation struct {
 	UserID      string  `json:"-"`
 	AssistantID *string `json:"assistant_id"`
 	ModelID     *string `json:"model_id"`
+	AutoMode    bool    `json:"auto_mode"`
 	Title       string  `json:"title"`
 	Pinned      bool    `json:"pinned"`
 	Private     bool    `json:"private"`
@@ -21,11 +22,11 @@ type Conversation struct {
 	Snippet     string  `json:"snippet,omitempty"`
 }
 
-const convCols = `id, user_id, assistant_id, model_id, title, pinned, private, created_at, updated_at`
+const convCols = `id, user_id, assistant_id, model_id, auto_mode, title, pinned, private, created_at, updated_at`
 
 func scanConv(row interface{ Scan(...any) error }) (*Conversation, error) {
 	var c Conversation
-	if err := row.Scan(&c.ID, &c.UserID, &c.AssistantID, &c.ModelID, &c.Title, &c.Pinned, &c.Private, &c.CreatedAt, &c.UpdatedAt); err != nil {
+	if err := row.Scan(&c.ID, &c.UserID, &c.AssistantID, &c.ModelID, &c.AutoMode, &c.Title, &c.Pinned, &c.Private, &c.CreatedAt, &c.UpdatedAt); err != nil {
 		return nil, notFound(err)
 	}
 	return &c, nil
@@ -40,8 +41,8 @@ func (s *Store) CreateConversation(ctx context.Context, c *Conversation) error {
 		c.Pinned = false
 	}
 	c.CreatedAt, c.UpdatedAt = now, now
-	_, err := s.exec(ctx, `INSERT INTO conversations (`+convCols+`) VALUES (?,?,?,?,?,?,?,?,?)`,
-		c.ID, c.UserID, c.AssistantID, c.ModelID, c.Title, c.Pinned, c.Private, c.CreatedAt, c.UpdatedAt)
+	_, err := s.exec(ctx, `INSERT INTO conversations (`+convCols+`) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+		c.ID, c.UserID, c.AssistantID, c.ModelID, c.AutoMode, c.Title, c.Pinned, c.Private, c.CreatedAt, c.UpdatedAt)
 	if isUnique(err) {
 		return ErrConflict
 	}
@@ -105,7 +106,7 @@ func (s *Store) ListConversations(ctx context.Context, q ConversationQuery) ([]*
 		}
 		var c Conversation
 		var body string
-		if err := rows.Scan(&c.ID, &c.UserID, &c.AssistantID, &c.ModelID, &c.Title, &c.Pinned, &c.Private, &c.CreatedAt, &c.UpdatedAt, &body); err != nil {
+		if err := rows.Scan(&c.ID, &c.UserID, &c.AssistantID, &c.ModelID, &c.AutoMode, &c.Title, &c.Pinned, &c.Private, &c.CreatedAt, &c.UpdatedAt, &body); err != nil {
 			return nil, notFound(err)
 		}
 		c.Snippet = makeSnippet(body, search)
@@ -180,6 +181,7 @@ type ConversationPatch struct {
 	Title       *string
 	Pinned      *bool
 	ModelID     *string // "" clears
+	AutoMode    *bool
 	AssistantID *string // "" clears
 }
 
@@ -197,6 +199,10 @@ func (s *Store) UpdateConversation(ctx context.Context, id, userID string, p Con
 	if p.ModelID != nil {
 		sets = append(sets, "model_id = ?")
 		args = append(args, nullable(*p.ModelID))
+	}
+	if p.AutoMode != nil {
+		sets = append(sets, "auto_mode = ?")
+		args = append(args, *p.AutoMode)
 	}
 	if p.AssistantID != nil {
 		sets = append(sets, "assistant_id = ?")

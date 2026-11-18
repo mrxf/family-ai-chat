@@ -326,13 +326,37 @@ func (s *Server) adminUpstreamModels(w http.ResponseWriter, r *http.Request) {
 
 // ---- models ----
 
+type adminModelView struct {
+	*store.Model
+	BuiltinRoutingNote string `json:"builtin_routing_note"`
+	AutoTier           int    `json:"auto_tier"`
+}
+
+func toAdminModelView(m *store.Model) adminModelView {
+	v := adminModelView{Model: m}
+	if m.Kind == store.KindChat {
+		prof := llm.ProfileModel(m.UpstreamModel, m.DisplayName)
+		v.BuiltinRoutingNote = prof.Summary()
+		v.AutoTier = prof.Tier
+	}
+	return v
+}
+
+func toAdminModelViews(ms []*store.Model) []adminModelView {
+	out := make([]adminModelView, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, toAdminModelView(m))
+	}
+	return out
+}
+
 func (s *Server) adminListModels(w http.ResponseWriter, r *http.Request) {
 	ms, err := s.Store.ListModels(r.Context(), false)
 	if err != nil {
 		s.writeStoreErr(w, r, err)
 		return
 	}
-	writeJSON(w, 200, ms)
+	writeJSON(w, 200, toAdminModelViews(ms))
 }
 
 type modelInput struct {
@@ -342,6 +366,7 @@ type modelInput struct {
 	UpstreamModel *string  `json:"upstream_model"`
 	DisplayName   *string  `json:"display_name"`
 	Description   *string  `json:"description"`
+	RoutingNote   *string  `json:"routing_note"`
 	Vision        *bool    `json:"vision"`
 	DefaultEffort *string  `json:"default_effort"`
 	ThinkEffort   *string  `json:"think_effort"`
@@ -373,6 +398,7 @@ func (in *modelInput) apply(m *store.Model) (code, msg string) {
 	set(&m.UpstreamModel, in.UpstreamModel)
 	set(&m.DisplayName, in.DisplayName)
 	set(&m.Description, in.Description)
+	set(&m.RoutingNote, in.RoutingNote)
 	set(&m.DefaultEffort, in.DefaultEffort)
 	set(&m.ThinkEffort, in.ThinkEffort)
 	for _, b := range []struct {
@@ -410,6 +436,8 @@ func (in *modelInput) apply(m *store.Model) (code, msg string) {
 		return "bad_model", "请填写上游模型名"
 	case utf8.RuneCountInString(m.DisplayName) > 40 || utf8.RuneCountInString(m.Description) > 60:
 		return "bad_model", "名称最多 40 个字，简介最多 60 个字"
+	case utf8.RuneCountInString(m.RoutingNote) > 300:
+		return "bad_model", "适用场景介绍最多 300 个字"
 	case m.Kind != store.KindEmbedding && m.ContextWindow < 1024:
 		return "bad_model", "上下文长度至少 1024"
 	case m.MaxOutput < 0 || m.InputPrice < 0 || m.OutputPrice < 0:
@@ -456,7 +484,7 @@ func (s *Server) adminSaveModel(w http.ResponseWriter, r *http.Request) {
 		s.adoptSpecialModels(r, []*store.Model{m})
 	}
 	s.repairSettings(r)
-	writeJSON(w, 200, m)
+	writeJSON(w, 200, toAdminModelView(m))
 }
 
 // adminBatchModels adds several upstream models at once (from the picker).
@@ -507,10 +535,7 @@ func (s *Server) adminBatchModels(w http.ResponseWriter, r *http.Request) {
 	}
 	s.repairSettings(r)
 	def, _ := s.Store.GetSetting(r.Context(), "default_model_id")
-	if add == nil {
-		add = []*store.Model{}
-	}
-	writeJSON(w, 200, map[string]any{"items": add, "default_model_id": def})
+	writeJSON(w, 200, map[string]any{"items": toAdminModelViews(add), "default_model_id": def})
 }
 
 func (s *Server) adminDeleteModel(w http.ResponseWriter, r *http.Request) {

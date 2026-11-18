@@ -169,6 +169,10 @@ Future<String?> showModelPicker(BuildContext context, WidgetRef ref, {String tit
   if (boot == null) return Future.value(null);
   final chat = ref.read(chatProvider);
   final current = boot.effectiveModel(chat.modelId, chat.assistantId)?.id;
+  final items = [
+    if (boot.autoModel && boot.models.isNotEmpty) boot.autoChatModel,
+    ...boot.models,
+  ];
   return showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
@@ -183,7 +187,7 @@ Future<String?> showModelPicker(BuildContext context, WidgetRef ref, {String tit
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             children: [
               Padding(padding: const EdgeInsets.fromLTRB(8, 0, 8, 12), child: Text(title, style: Theme.of(ctx).textTheme.titleMedium)),
-              for (final m in boot.models)
+              for (final m in items)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Pressable(
@@ -201,13 +205,19 @@ Future<String?> showModelPicker(BuildContext context, WidgetRef ref, {String tit
                         Expanded(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Row(children: [
-                              Text(m.displayName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-                              if (m.id == boot.defaultModelId) ...[
+                              if (m.id == kAutoModelId) ...[
+                                Icon(AppIcons.sparkles, size: 18, color: p.accent),
+                                const SizedBox(width: 6),
+                              ],
+                              Flexible(
+                                child: Text(m.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                              ),
+                              if (m.id == boot.defaultModelId || m.id == kAutoModelId) ...[
                                 const SizedBox(width: 8),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                                   decoration: BoxDecoration(color: p.accent.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-                                  child: Text('推荐', style: TextStyle(fontSize: 12, color: p.accent, fontWeight: FontWeight.w600)),
+                                  child: Text(m.id == boot.defaultModelId ? '推荐' : '省心', style: TextStyle(fontSize: 12, color: p.accent, fontWeight: FontWeight.w600)),
                                 ),
                               ],
                             ]),

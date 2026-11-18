@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/models.dart';
 import '../core/tts.dart';
 import '../main.dart';
 import '../state/chat.dart';
@@ -121,6 +122,8 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
     if (boot == null) return const Scaffold();
     if (ref.read(incomingShareProvider) != null) _scheduleConsumeShare();
     final model = boot.effectiveModel(chat.modelId, chat.assistantId);
+    final isAuto = model?.id == kAutoModelId;
+    final resolvedModel = isAuto ? boot.model(chat.resolvedModelId ?? _lastAssistantModel(chat.messages)) : null;
     final assistant = boot.assistant(chat.assistantId);
     final title = chat.isPrivate
         ? (assistant == null ? '隐私对话' : '隐私对话 · ${assistant.name}')
@@ -179,7 +182,18 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
             ),
             if (model != null)
               Row(mainAxisSize: MainAxisSize.min, children: [
-                Text(model.displayName, style: TextStyle(fontSize: 12.5, color: p.muted, fontWeight: FontWeight.w400)),
+                if (isAuto) ...[
+                  Icon(AppIcons.sparkles, size: 12.5, color: p.accent),
+                  const SizedBox(width: 3.5),
+                ],
+                Flexible(
+                  child: Text(
+                    isAuto ? (resolvedModel != null ? '自动 · ${resolvedModel.displayName}' : '自动选模型') : model.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12.5, color: p.muted, fontWeight: FontWeight.w400),
+                  ),
+                ),
                 const SizedBox(width: 3),
                 Icon(AppIcons.chevronDown, size: 13.5, color: p.muted),
               ]),
@@ -295,6 +309,13 @@ class _PrivateBanner extends StatelessWidget {
       ),
     );
   }
+}
+
+String? _lastAssistantModel(List<Message> msgs) {
+  for (var i = msgs.length - 1; i >= 0; i--) {
+    if (!msgs[i].isUser && msgs[i].modelId != null) return msgs[i].modelId;
+  }
+  return null;
 }
 
 /// Title of a conversation from the history list (updates live when the auto title arrives).

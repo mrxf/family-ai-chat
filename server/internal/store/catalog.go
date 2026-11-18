@@ -33,6 +33,7 @@ type Model struct {
 	UpstreamModel string  `json:"upstream_model"`
 	DisplayName   string  `json:"display_name"`
 	Description   string  `json:"description"`
+	RoutingNote   string  `json:"routing_note"` // admin scenario guide for Auto mode
 	Vision        bool    `json:"vision"`
 	Tools         bool    `json:"tools"` // may call tools (chat models)
 	DefaultEffort string  `json:"default_effort"`
@@ -110,11 +111,11 @@ func (s *Store) DeleteProvider(ctx context.Context, id string) error {
 
 // ---- models ----
 
-const modelCols = `id, provider_id, kind, upstream_model, display_name, description, vision, tools, default_effort, think_effort, context_window, max_output, input_price, output_price, enabled, sort, created_at, updated_at`
+const modelCols = `id, provider_id, kind, upstream_model, display_name, description, routing_note, vision, tools, default_effort, think_effort, context_window, max_output, input_price, output_price, enabled, sort, created_at, updated_at`
 
 func scanModel(row interface{ Scan(...any) error }) (*Model, error) {
 	var m Model
-	if err := row.Scan(&m.ID, &m.ProviderID, &m.Kind, &m.UpstreamModel, &m.DisplayName, &m.Description, &m.Vision, &m.Tools, &m.DefaultEffort, &m.ThinkEffort,
+	if err := row.Scan(&m.ID, &m.ProviderID, &m.Kind, &m.UpstreamModel, &m.DisplayName, &m.Description, &m.RoutingNote, &m.Vision, &m.Tools, &m.DefaultEffort, &m.ThinkEffort,
 		&m.ContextWindow, &m.MaxOutput, &m.InputPrice, &m.OutputPrice, &m.Enabled, &m.Sort, &m.CreatedAt, &m.UpdatedAt); err != nil {
 		return nil, notFound(err)
 	}
@@ -141,12 +142,12 @@ func upsertModel(ctx context.Context, db execer, m *Model) error {
 	if m.Kind == "" {
 		m.Kind = KindChat
 	}
-	_, err := db.exec(ctx, `INSERT INTO models (`+modelCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+	_, err := db.exec(ctx, `INSERT INTO models (`+modelCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET provider_id=excluded.provider_id, kind=excluded.kind, upstream_model=excluded.upstream_model,
-		display_name=excluded.display_name, description=excluded.description, vision=excluded.vision, tools=excluded.tools, default_effort=excluded.default_effort, think_effort=excluded.think_effort,
+		display_name=excluded.display_name, description=excluded.description, routing_note=excluded.routing_note, vision=excluded.vision, tools=excluded.tools, default_effort=excluded.default_effort, think_effort=excluded.think_effort,
 		context_window=excluded.context_window, max_output=excluded.max_output, input_price=excluded.input_price, output_price=excluded.output_price,
 		enabled=excluded.enabled, sort=excluded.sort, updated_at=excluded.updated_at`,
-		m.ID, m.ProviderID, m.Kind, m.UpstreamModel, m.DisplayName, m.Description, m.Vision, m.Tools, m.DefaultEffort, m.ThinkEffort,
+		m.ID, m.ProviderID, m.Kind, m.UpstreamModel, m.DisplayName, m.Description, m.RoutingNote, m.Vision, m.Tools, m.DefaultEffort, m.ThinkEffort,
 		m.ContextWindow, m.MaxOutput, m.InputPrice, m.OutputPrice, m.Enabled, m.Sort, m.CreatedAt, m.UpdatedAt)
 	return err
 }

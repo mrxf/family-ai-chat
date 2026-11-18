@@ -61,6 +61,9 @@ type Service struct {
 	clientsMu sync.Mutex
 	clients   map[string]*llm.Client // by provider id + updated_at
 
+	routersMu sync.RWMutex
+	routers   map[string]ModelRouter
+
 	noTools sync.Map // model id@updated_at -> upstream rejected tools
 
 	drawMu      sync.Mutex
@@ -68,7 +71,9 @@ type Service struct {
 }
 
 func NewService(st *store.Store, dataDir string, log *slog.Logger) *Service {
-	return &Service{Store: st, Hub: NewHub(), Log: log, DataDir: dataDir, clients: map[string]*llm.Client{}}
+	svc := &Service{Store: st, Hub: NewHub(), Log: log, DataDir: dataDir, clients: map[string]*llm.Client{}}
+	svc.RegisterRouter(&llmModelRouter{svc: svc})
+	return svc
 }
 
 // SendInput is a new user message.
@@ -107,7 +112,11 @@ func (s *Service) Send(ctx context.Context, user *store.User, in SendInput) (*Se
 	}
 
 	var conv *store.Conversation
+	var assistant *store.Assistant
 	var err error
+	switchedToAuto := false
+	autoOn := s.AutoEnabled(ctx)
+
 	if in.ConversationID == "" {
 		conv = &store.Conversation{UserID: user.ID, Private: in.Private}
 		if in.AssistantID != "" {
@@ -115,10 +124,23 @@ func (s *Service) Send(ctx context.Context, user *store.User, in SendInput) (*Se
 			if err != nil {
 				return nil, fmt.Errorf("assistant: %w", err)
 			}
+			assistant = a
 			conv.AssistantID = &a.ID
 		}
-		if in.ModelID != "" {
-			conv.ModelID = &in.ModelID
+		switch {
+		case in.ModelID == AutoModelID:
+			conv.AutoMode = autoOn
+		case in.ModelID != "":
+			if _, mErr := s.Store.GetModel(ctx, in.ModelID); mErr == nil {
+				conv.ModelID = &in.ModelID
+			}
+		default:
+			pinnedByAssistant := assistant != nil && assistant.ModelID != nil && *assistant.ModelID != ""
+			if !pinnedByAssistant && autoOn {
+				if def, _ := s.Store.GetSetting(ctx, "default_model_id"); def == AutoModelID {
+					conv.AutoMode = true
+				}
+			}
 		}
 		if err := s.Store.CreateConversation(ctx, conv); err != nil {
 			return nil, err
@@ -134,31 +156,55 @@ func (s *Service) Send(ctx context.Context, user *store.User, in SendInput) (*Se
 		if s.Hub.ActiveInConversation(conv.ID) != nil {
 			return nil, ErrConvBusy
 		}
-		if in.ModelID != "" && (conv.ModelID == nil || *conv.ModelID != in.ModelID) {
-			if conv, err = s.Store.UpdateConversation(ctx, conv.ID, user.ID, store.ConversationPatch{ModelID: &in.ModelID}); err != nil {
-				return nil, err
+		switch {
+		case in.ModelID == AutoModelID:
+			if autoOn && !conv.AutoMode {
+				on := true
+				if conv, err = s.Store.UpdateConversation(ctx, conv.ID, user.ID, store.ConversationPatch{AutoMode: &on}); err != nil {
+					return nil, err
+				}
+				switchedToAuto = true
+			}
+		case in.ModelID != "":
+			if _, mErr := s.Store.GetModel(ctx, in.ModelID); mErr == nil {
+				if conv.AutoMode || conv.ModelID == nil || *conv.ModelID != in.ModelID {
+					off := false
+					if conv, err = s.Store.UpdateConversation(ctx, conv.ID, user.ID, store.ConversationPatch{AutoMode: &off, ModelID: &in.ModelID}); err != nil {
+						return nil, err
+					}
+				}
 			}
 		}
 	}
 
+	editingFirstTurn := false
 	if in.EditOf != "" {
 		old, err := s.Store.GetMessageForUser(ctx, in.EditOf, user.ID)
 		if err != nil || old.ConversationID != conv.ID || old.Role != "user" {
 			return nil, store.ErrNotFound
 		}
+		if prior, pErr := s.Store.ListMessages(ctx, conv.ID, in.EditOf, 1); pErr == nil && len(prior) == 0 {
+			editingFirstTurn = true
+		}
 	}
 
-	model, provider, err := s.resolveModel(ctx, conv, user.ID, len(in.Attachments) > 0)
+	needVision := len(in.Attachments) > 0
+	model, provider, autoPlan, err := s.planTurnModel(ctx, conv, user.ID, in.Content, needVision, in.Think, switchedToAuto || editingFirstTurn, in.EditOf)
 	if err != nil {
 		return nil, err
 	}
 
 	userMsg := &store.Message{Role: "user", Content: in.Content, Attachments: in.Attachments, Status: store.StatusDone}
-	asst := &store.Message{Role: "assistant", Status: store.StatusStreaming, ModelID: &model.ID}
+	var asstModelID *string
+	if model != nil {
+		id := model.ID
+		asstModelID = &id
+	}
+	asst := &store.Message{Role: "assistant", Status: store.StatusStreaming, ModelID: asstModelID}
 	if err := s.Store.ApplyTurn(ctx, store.Turn{ConversationID: conv.ID, TruncateFrom: in.EditOf, Append: []*store.Message{userMsg, asst}}); err != nil {
 		return nil, err
 	}
-	s.startRun(user, conv, asst, model, provider, in.Think)
+	s.startRun(user, conv, asst, model, provider, in.Think, autoPlan)
 	return &SendResult{Conversation: conv, UserMessage: userMsg, Assistant: asst}, nil
 }
 
@@ -174,7 +220,7 @@ func (s *Service) Regenerate(ctx context.Context, user *store.User, convID, mode
 	if s.Hub.ActiveForUser(user.ID) >= maxRunsPerUser {
 		return nil, ErrBusy
 	}
-	last, err := s.Store.ListMessages(ctx, conv.ID, "", 2)
+	last, err := s.Store.ListMessages(ctx, conv.ID, "", 4)
 	if err != nil {
 		return nil, err
 	}
@@ -186,26 +232,52 @@ func (s *Service) Regenerate(ctx context.Context, user *store.User, convID, mode
 	if tail.Role == "assistant" {
 		truncate = tail.ID
 	}
-	if modelID != "" {
-		if conv, err = s.Store.UpdateConversation(ctx, conv.ID, user.ID, store.ConversationPatch{ModelID: &modelID}); err != nil {
-			return nil, err
+	switchedToAuto := false
+	autoOn := s.AutoEnabled(ctx)
+	switch {
+	case modelID == AutoModelID:
+		if autoOn && !conv.AutoMode {
+			on := true
+			if conv, err = s.Store.UpdateConversation(ctx, conv.ID, user.ID, store.ConversationPatch{AutoMode: &on}); err != nil {
+				return nil, err
+			}
+			switchedToAuto = true
+		}
+	case modelID != "":
+		if _, mErr := s.Store.GetModel(ctx, modelID); mErr == nil {
+			off := false
+			if conv, err = s.Store.UpdateConversation(ctx, conv.ID, user.ID, store.ConversationPatch{AutoMode: &off, ModelID: &modelID}); err != nil {
+				return nil, err
+			}
 		}
 	}
 	needVision := false
+	lastUserText := ""
+	userCount := 0
 	for _, m := range last {
-		if m.Role == "user" && len(m.Attachments) > 0 {
-			needVision = true
+		if m.Role == "user" {
+			userCount++
+			lastUserText = m.Content
+			if len(m.Attachments) > 0 {
+				needVision = true
+			}
 		}
 	}
-	model, provider, err := s.resolveModel(ctx, conv, user.ID, needVision)
+	isFirstTurn := userCount <= 1 && (truncate == "" || len(last) <= 2)
+	model, provider, autoPlan, err := s.planTurnModel(ctx, conv, user.ID, lastUserText, needVision, think, switchedToAuto || isFirstTurn, truncate)
 	if err != nil {
 		return nil, err
 	}
-	asst := &store.Message{Role: "assistant", Status: store.StatusStreaming, ModelID: &model.ID}
+	var asstModelID *string
+	if model != nil {
+		id := model.ID
+		asstModelID = &id
+	}
+	asst := &store.Message{Role: "assistant", Status: store.StatusStreaming, ModelID: asstModelID}
 	if err := s.Store.ApplyTurn(ctx, store.Turn{ConversationID: conv.ID, TruncateFrom: truncate, Append: []*store.Message{asst}}); err != nil {
 		return nil, err
 	}
-	s.startRun(user, conv, asst, model, provider, think)
+	s.startRun(user, conv, asst, model, provider, think, autoPlan)
 	return &SendResult{Conversation: conv, Assistant: asst}, nil
 }
 
@@ -370,13 +442,98 @@ func (s *Service) client(p *store.Provider) *llm.Client {
 	return c
 }
 
+type autoRunPlan struct {
+	mode         RouteMode
+	candidates   []RouteCandidate
+	currentModel *store.Model
+	recentTurns  []RouteTurnSummary
+	userMessage  string
+	hasImages    bool
+	deepThink    bool
+}
+
+// planTurnModel decides whether this turn resolves synchronously to a fixed model
+// or runs Auto routing inside startRun.
+func (s *Service) planTurnModel(ctx context.Context, conv *store.Conversation, userID, userText string, needVision, think, forceInitial bool, beforeMsgID string) (*store.Model, *store.Provider, *autoRunPlan, error) {
+	if !conv.AutoMode || !s.AutoEnabled(ctx) {
+		m, p, err := s.resolveModel(ctx, conv, userID, needVision)
+		return m, p, nil, err
+	}
+	candidates, err := s.buildRouteCandidates(ctx, needVision)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if len(candidates) == 1 {
+		c := candidates[0]
+		if conv.ModelID == nil || *conv.ModelID != c.Model.ID {
+			id := c.Model.ID
+			_, _ = s.Store.UpdateConversation(ctx, conv.ID, userID, store.ConversationPatch{ModelID: &id})
+			conv.ModelID = &id
+		}
+		return c.Model, c.Provider, nil, nil
+	}
+
+	var curModel *store.Model
+	var curProv *store.Provider
+	if conv.ModelID != nil {
+		if m, p, ok := s.usableModel(ctx, *conv.ModelID); ok && (!needVision || m.Vision) {
+			curModel, curProv = m, p
+		}
+	}
+
+	if curModel == nil || forceInitial {
+		return nil, nil, &autoRunPlan{
+			mode:        RouteInitial,
+			candidates:  candidates,
+			userMessage: userText,
+			hasImages:   needVision,
+			deepThink:   think,
+		}, nil
+	}
+
+	// Subsequent turn in Auto mode: keep the first-turn model unless dynamic updates are enabled.
+	if !s.AutoDynamic(ctx) {
+		return curModel, curProv, nil, nil
+	}
+	if !needVision && isShortContinuation(userText) {
+		return curModel, curProv, nil, nil
+	}
+
+	var recent []RouteTurnSummary
+	if hist, hErr := s.Store.ListMessages(ctx, conv.ID, beforeMsgID, 8); hErr == nil {
+		for _, m := range hist {
+			if m.Role == "user" && strings.TrimSpace(m.Content) != "" {
+				recent = append(recent, RouteTurnSummary{UserText: m.Content})
+			}
+		}
+		if len(recent) > 3 {
+			// Keep the first question (original topic anchor) plus the 2 latest user turns.
+			recent = []RouteTurnSummary{recent[0], recent[len(recent)-2], recent[len(recent)-1]}
+		}
+	}
+	return curModel, curProv, &autoRunPlan{
+		mode:         RouteDynamic,
+		candidates:   candidates,
+		currentModel: curModel,
+		recentTurns:  recent,
+		userMessage:  userText,
+		hasImages:    needVision,
+		deepThink:    think,
+	}, nil
+}
+
 // FinalEvent is the payload pushed to subscribers when a run ends.
 type FinalEvent struct {
 	Message *store.Message `json:"message"`
 }
 
-func (s *Service) startRun(user *store.User, conv *store.Conversation, asst *store.Message, model *store.Model, provider *store.Provider, think bool) {
+func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst *store.Message, model *store.Model, provider *store.Provider, think bool, autoPlan *autoRunPlan) {
+	convCopy := *convOrig
+	conv := &convCopy
 	run := &Run{MessageID: asst.ID, ConversationID: conv.ID, UserID: user.ID}
+	if asst.ModelID != nil {
+		run.modelID = *asst.ModelID
+	}
 	needTitle := conv.Title == "" && !conv.Private
 	s.Hub.start(run, func(ctx context.Context) {
 		started := time.Now()
@@ -384,6 +541,63 @@ func (s *Service) startRun(user *store.User, conv *store.Conversation, asst *sto
 		var firstToken time.Duration
 		var usage llm.Usage
 		turn := &toolTurn{user: user, convID: conv.ID, assistantID: conv.AssistantID, asstID: asst.ID, run: run, private: conv.Private}
+
+		if autoPlan != nil {
+			var asstMeta *store.Assistant
+			if conv.AssistantID != nil {
+				asstMeta, _ = s.Store.GetAssistant(ctx, *conv.AssistantID, user.ID)
+			}
+			if autoPlan.mode == RouteInitial {
+				run.setActivity("正在挑选合适的模型…")
+			}
+			dec, rerr := s.activeRouter(ctx).Route(ctx, RouteRequest{
+				Mode:         autoPlan.mode,
+				Candidates:   autoPlan.candidates,
+				CurrentModel: autoPlan.currentModel,
+				Assistant:    asstMeta,
+				RecentTurns:  autoPlan.recentTurns,
+				UserMessage:  autoPlan.userMessage,
+				HasImages:    autoPlan.hasImages,
+				DeepThink:    autoPlan.deepThink,
+			})
+			if autoPlan.mode == RouteInitial {
+				run.setActivity("")
+			}
+			if dec != nil {
+				turn.cost += dec.Cost
+			}
+			if rerr == nil && dec != nil && dec.Model != nil && dec.Provider != nil {
+				model, provider = dec.Model, dec.Provider
+				id := model.ID
+				msg.ModelID = &id
+				run.setModelID(id)
+				if conv.ModelID == nil || *conv.ModelID != id {
+					pctx, pcancel := context.WithTimeout(context.Background(), 5*time.Second)
+					_, _ = s.Store.UpdateConversation(pctx, conv.ID, user.ID, store.ConversationPatch{ModelID: &id})
+					pcancel()
+					conv.ModelID = &id
+				}
+				s.Log.Info("auto routed model", "conv", conv.ID, "mode", autoPlan.mode, "model", model.UpstreamModel, "switched", dec.Switched, "reason", dec.Reason)
+			}
+		}
+
+		if model == nil || provider == nil {
+			needVis := autoPlan != nil && autoPlan.hasImages
+			m, p, rerr := s.resolveModel(ctx, conv, user.ID, needVis)
+			if rerr != nil {
+				msg.Status = store.StatusError
+				msg.Error = friendlyError(rerr)
+				pctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				_ = s.Store.FinishMessage(pctx, &msg)
+				cancel()
+				run.finish(&FinalEvent{Message: &msg})
+				return
+			}
+			model, provider = m, p
+			id := model.ID
+			msg.ModelID = &id
+			run.setModelID(id)
+		}
 
 		if needTitle {
 			go s.generateTitle(conv.ID, user.ID, model, provider, run)
@@ -446,13 +660,24 @@ func (s *Service) startRun(user *store.User, conv *store.Conversation, asst *sto
 			}
 			// Nothing reached the user yet: let the fallback model answer instead of showing an error.
 			if err != nil && round == 0 && firstToken == 0 && ctx.Err() == nil {
-				if fm, fp := s.fallbackModel(ctx, model.ID); fm != nil {
+				fm, fp := s.fallbackModel(ctx, model.ID)
+				if fm == nil && autoPlan != nil {
+					for _, cand := range autoPlan.candidates {
+						if cand.Model.ID != model.ID {
+							fm, fp = cand.Model, cand.Provider
+							break
+						}
+					}
+				}
+				if fm != nil {
 					s.Log.Warn("primary model failed, using fallback", "message_id", asst.ID, "model", model.UpstreamModel, "fallback", fm.UpstreamModel, "err", err)
 					fts := s.toolsFor(ctx, user, conv, fm)
 					freq, ferr := s.buildRequestWithTools(ctx, user, conv, asst.ID, fm, fts)
 					if ferr == nil {
 						model, provider, tools, req = fm, fp, fts.tools, freq
-						msg.ModelID = &fm.ID
+						id := fm.ID
+						msg.ModelID = &id
+						run.setModelID(id)
 						req.ReasoningEffort = effortFor(fm, think)
 						req.Tools = tools
 						res, err = s.streamWithRetry(ctx, s.client(fp), req.Request, onEvent)
@@ -562,11 +787,47 @@ func (s *Service) fallbackModel(ctx context.Context, primaryID string) (*store.M
 // deletes or disables providers and models: a broken default moves to the first usable
 // model (vision preferred), a broken fallback or title model is cleared.
 func (s *Service) RepairSettings(ctx context.Context) error {
+	// Repair Auto judge model first so AutoEnabled reflects the repaired state.
+	autoOn, _ := s.Store.GetSetting(ctx, SettingAutoEnabled)
+	autoJudge, _ := s.Store.GetSetting(ctx, SettingAutoModelID)
+	if autoJudge != "" {
+		if _, _, ok := s.usableModel(ctx, autoJudge); !ok {
+			nextJudge := ""
+			if autoOn == "1" {
+				if jm, _ := s.resolveAutoJudge(ctx); jm != nil {
+					nextJudge = jm.ID
+				}
+			}
+			if err := s.Store.SetSetting(ctx, SettingAutoModelID, nextJudge); err != nil {
+				return err
+			}
+			if nextJudge == "" && autoOn == "1" {
+				if err := s.Store.SetSetting(ctx, SettingAutoEnabled, ""); err != nil {
+					return err
+				}
+			}
+		}
+	} else if autoOn == "1" {
+		if jm, _ := s.resolveAutoJudge(ctx); jm != nil {
+			if err := s.Store.SetSetting(ctx, SettingAutoModelID, jm.ID); err != nil {
+				return err
+			}
+		} else if err := s.Store.SetSetting(ctx, SettingAutoEnabled, ""); err != nil {
+			return err
+		}
+	}
+
 	def, err := s.Store.GetSetting(ctx, "default_model_id")
 	if err != nil {
 		return err
 	}
-	if _, _, ok := s.usableModel(ctx, def); !ok {
+	defValid := false
+	if def == AutoModelID {
+		defValid = s.AutoEnabled(ctx)
+	} else {
+		_, _, defValid = s.usableModel(ctx, def)
+	}
+	if !defValid {
 		next := ""
 		if vm, _ := s.firstVisionModel(ctx); vm != nil {
 			next = vm.ID

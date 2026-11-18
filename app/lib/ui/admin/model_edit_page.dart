@@ -32,6 +32,7 @@ const _contextOptions = [128000, 200000, 256000, 400000, 1000000];
 class _ModelEditPageState extends ConsumerState<ModelEditPage> {
   final _name = TextEditingController();
   final _desc = TextEditingController();
+  final _routingNote = TextEditingController();
   final _upstream = TextEditingController();
   final _daily = TextEditingController();
   final _think = TextEditingController();
@@ -53,7 +54,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
   @override
   void initState() {
     super.initState();
-    for (final c in [_name, _desc, _upstream, _daily, _think, _context, _maxOut, _inPrice, _outPrice]) {
+    for (final c in [_name, _desc, _routingNote, _upstream, _daily, _think, _context, _maxOut, _inPrice, _outPrice]) {
       c.addListener(_markDirty);
     }
   }
@@ -65,6 +66,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
   void _load(AdminModel? m) {
     _name.text = m?.displayName ?? '';
     _desc.text = m?.description ?? '';
+    _routingNote.text = m?.routingNote ?? '';
     _upstream.text = m?.upstreamModel ?? '';
     _daily.text = m?.defaultEffort ?? '';
     _think.text = m?.thinkEffort ?? '';
@@ -84,7 +86,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
 
   @override
   void dispose() {
-    for (final c in [_name, _desc, _upstream, _daily, _think, _context, _maxOut, _inPrice, _outPrice]) {
+    for (final c in [_name, _desc, _routingNote, _upstream, _daily, _think, _context, _maxOut, _inPrice, _outPrice]) {
       c.dispose();
     }
     super.dispose();
@@ -93,6 +95,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
   Map<String, dynamic> _body() => {
         'display_name': _name.text.trim(),
         'description': _desc.text.trim(),
+        'routing_note': _chat ? _routingNote.text.trim() : '',
         'upstream_model': _upstream.text.trim(),
         'default_effort': _chat ? _daily.text.trim() : '',
         'think_effort': _chat ? _think.text.trim() : '',
@@ -341,6 +344,60 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
                 ],
               ],
             ),
+
+            // ---- Auto routing scenario guide ----
+            if (_chat) ...[
+              const SectionHeader(
+                'Auto 选模型参考',
+                subtitle: '介绍它最适合解决什么场景的问题；不填时由服务端内置的御三家与开源模型知识库兜底',
+              ),
+              GroupCard(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      AdminField(
+                        controller: _routingNote,
+                        label: '适合什么场景（给 Auto 选模型看）',
+                        statusText: '选填 · 最高优先级',
+                        statusColor: p.accent,
+                        hint: '例如：日常闲聊、孩子数学题；或：医疗问题和深度研究',
+                        maxLength: 300,
+                        minLines: 2,
+                        maxLines: 3,
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: p.surfaceAlt,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(top: 1.5),
+                              child: Icon(AppIcons.sparkles, size: 15, color: p.accent),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                (m?.builtinRoutingNote ?? '').isNotEmpty
+                                    ? '服务端内置兜底：${m!.builtinRoutingNote}'
+                                    : '保存后服务端会自动根据模型家族与版本号（如 Opus > Sonnet、高版本优于低版本）生成兜底认知。',
+                                style: TextStyle(fontSize: 13, color: p.muted, height: 1.45),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
 
             // ---- thinking ----
             if (_chat) ...[

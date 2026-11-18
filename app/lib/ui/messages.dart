@@ -489,6 +489,10 @@ class _ActionRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final p = context.pal;
     final m = message;
+    final boot = ref.watch(sessionProvider).boot;
+    final sel = ref.watch(chatProvider.select((s) => (s.modelId, s.assistantId)));
+    final showModelBadge = m.modelId != null && boot != null && boot.isAutoSelection(sel.$1, sel.$2);
+    final usedModel = showModelBadge ? boot.model(m.modelId) : null;
     Widget btn(IconData icon, String tip, VoidCallback onTap, {Color? color}) => Tooltip(
           message: tip,
           child: Pressable(
@@ -520,6 +524,13 @@ class _ActionRow extends ConsumerWidget {
             ),
           if (isLast) btn(AppIcons.refresh, '重新回答', () => ref.read(chatProvider.notifier).regenerate()),
           if (m.content.isNotEmpty) btn(AppIcons.more, '更多', () => showAssistantMessageActions(context, ref, m, isLast)),
+          if (usedModel != null)
+            Flexible(
+              child: Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Text(usedModel.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: p.faint)),
+              ),
+            ),
         ]),
       ),
     );
