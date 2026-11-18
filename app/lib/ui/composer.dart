@@ -30,6 +30,7 @@ class ComposerState extends ConsumerState<Composer> {
   late final FocusNode _focus = widget.focusNode ?? FocusNode();
   final List<PickedImage> _images = [];
   bool _picking = false;
+  Future<void> _shareQueue = Future.value();
 
   @override
   void initState() {
@@ -61,6 +62,79 @@ class ComposerState extends ConsumerState<Composer> {
     }
     _ctrl.clear();
     if (_images.isNotEmpty && mounted) setState(() => _images.clear());
+  }
+
+  /// Populates the input box with text and/or images shared from external apps without auto-sending.
+  Future<void> applyShared({
+    String text = '',
+    List<String> imagePaths = const [],
+    int totalImages = 0,
+    int failedImages = 0,
+  }) =>
+      _shareQueue = _shareQueue.then(
+        (_) => _applySharedNow(text: text, imagePaths: imagePaths, totalImages: totalImages, failedImages: failedImages),
+      );
+
+  Future<void> _applySharedNow({
+    required String text,
+    required List<String> imagePaths,
+    required int totalImages,
+    required int failedImages,
+  }) async {
+    if (!mounted) return;
+    final trimmed = text.trim();
+    if (trimmed.isNotEmpty) {
+      final existing = _ctrl.text.trim();
+      final merged = existing.isEmpty ? trimmed : '$existing\n$trimmed';
+      _ctrl.value = TextEditingValue(
+        text: merged,
+        selection: TextSelection.collapsed(offset: merged.length),
+      );
+    }
+
+    var added = 0;
+    var decodeFailed = failedImages;
+    final room = 9 - _images.length;
+    final overflow = totalImages > room || imagePaths.length > room;
+    for (final path in imagePaths.take(room)) {
+      try {
+        final img = await _compress(path);
+        if (img != null && mounted) {
+          setState(() => _images.add(img));
+          added++;
+        } else {
+          decodeFailed++;
+        }
+      } catch (_) {
+        decodeFailed++;
+      } finally {
+        if (path.contains('shared_incoming')) {
+          File(path).delete().catchError((_) => File(path));
+        }
+      }
+    }
+    for (final extra in imagePaths.skip(room)) {
+      if (extra.contains('shared_incoming')) {
+        File(extra).delete().catchError((_) => File(extra));
+      }
+    }
+
+    if (!mounted) return;
+    if (overflow) {
+      showToast(context, '最多同时发 9 张图片，已选取前 9 张');
+    } else if (added == 0 && decodeFailed > 0) {
+      showToast(context, '没能读取分享过来的图片');
+    } else if (added > 0) {
+      final chat = ref.read(chatProvider);
+      final boot = ref.read(sessionProvider).boot;
+      final model = boot?.effectiveModel(chat.modelId, chat.assistantId);
+      if (model != null && !model.vision) {
+        showToast(context, '当前模型「${model.displayName}」看不了图片，点顶部可切换模型');
+      }
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
   }
 
   void _send() {
@@ -109,12 +183,28 @@ class ComposerState extends ConsumerState<Composer> {
   }
 
   /// Re-encodes to JPEG (long edge ≤ 2048, keeps small print legible) and strips EXIF.
+  /// Falls back to original image bytes (≤ 20MB, e.g. GIF stickers) if native re-encoding is unavailable.
   Future<PickedImage?> _compress(String path) async {
-    final dir = await getTemporaryDirectory();
-    final out = '${dir.path}/nuan_${DateTime.now().microsecondsSinceEpoch}.jpg';
-    final bytes = await FlutterImageCompress.compressWithFile(path, minWidth: 2048, minHeight: 2048, quality: 85, keepExif: false, format: CompressFormat.jpeg);
-    if (bytes == null) return null;
-    await File(out).writeAsBytes(bytes);
+    Uint8List? bytes;
+    var ext = 'jpg';
+    try {
+      bytes = await FlutterImageCompress.compressWithFile(path, minWidth: 2048, minHeight: 2048, quality: 85, keepExif: false, format: CompressFormat.jpeg);
+    } catch (_) {}
+    if (bytes == null) {
+      final raw = await File(path).readAsBytes();
+      if (raw.isEmpty || raw.length > 20 * 1024 * 1024) return null;
+      bytes = raw;
+      final dot = path.lastIndexOf('.');
+      if (dot != -1 && dot < path.length - 1) ext = path.substring(dot + 1).toLowerCase();
+    }
+    String out = '';
+    try {
+      final dir = await getTemporaryDirectory();
+      out = '${dir.path}/nuan_${DateTime.now().microsecondsSinceEpoch}.$ext';
+      await File(out).writeAsBytes(bytes);
+    } catch (_) {
+      out = path.contains('shared_incoming') ? '' : path;
+    }
     final codec = await ui.instantiateImageCodec(bytes);
     final frame = await codec.getNextFrame();
     final w = frame.image.width, h = frame.image.height;

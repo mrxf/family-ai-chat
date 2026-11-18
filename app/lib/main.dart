@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/storage.dart';
+import 'state/incoming_share.dart';
 import 'state/session.dart';
 import 'ui/home_page.dart';
 import 'ui/login_page.dart';
@@ -29,6 +30,8 @@ class NuanApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Eagerly attach the native share channel before login/home finishes loading.
+    ref.watch(incomingShareProvider.select((_) => 0));
     final settings = ref.watch(settingsProvider);
     // When the session ends (logout or expired token), drop any pages stacked
     // above home (settings, admin...) so nothing renders without a user.
