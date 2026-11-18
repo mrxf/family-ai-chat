@@ -1,0 +1,26 @@
+app/android/app/src/main/AndroidManifest.xml
+  h_8f297825d1fe21 16,33-53,55-66
+app/android/app/src/main/kotlin/com/nuan/chat/MainActivity.kt
+  h_8f297825d1fe21 3-8,10-14,16-229
+app/lib/main.dart
+  h_8f297825d1fe21 7,33-34
+app/lib/state/incoming_share.dart
+  h_8f297825d1fe21 1-76
+app/lib/ui/composer.dart
+  h_8f297825d1fe21 33,67-139,186,188-207
+app/lib/ui/home_page.dart
+  h_8f297825d1fe21 7,10,33-34,43-49,59,63-98,122
+app/test/incoming_share_test.dart
+  h_8f297825d1fe21 1-433
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "af54ad7ce767508c0f8e5da7a4d339ee5d343c0c",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
