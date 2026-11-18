@@ -1,0 +1,16 @@
+server/internal/memory/memory_test.go
+  h_8f297825d1fe21 554-560
+server/internal/memory/recall.go
+  h_8f297825d1fe21 71-80,123-137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "4a5eebab3bdfd67a45ae8dc40bd52494ce42643c",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
