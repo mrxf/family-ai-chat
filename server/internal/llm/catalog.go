@@ -157,7 +157,7 @@ var (
 )
 
 var nonChatMarkers = []string{
-	"embed", "tts", "whisper", "transcribe", "dall-e", "gpt-image", "-image", "imagen", "veo", "sora", "lyria",
+	"embed", "voyage-", "jina-clip", "tts", "whisper", "transcribe", "dall-e", "gpt-image", "-image", "imagen", "veo", "sora", "lyria",
 	"moderation", "rerank", "realtime", "audio", "speech", "aqa", "babbage", "davinci", "turbo-instruct", "deep-research",
 }
 
@@ -203,7 +203,7 @@ func Suggest(kind string, um UpstreamModel) Suggestion {
 		s.Chat = false
 	}
 	s.Kind = "chat"
-	if hasAny(base, []string{"bge", "gte", "e5", "embed", "m3e"}) && !strings.Contains(base, "rerank") {
+	if hasAny(base, []string{"bge", "gte", "e5", "embed", "m3e", "voyage-", "jina-clip"}) && !strings.Contains(base, "rerank") {
 		s.Kind, s.Chat, s.Image = "embedding", false, false
 	} else if s.Image {
 		s.Kind = "image"

@@ -6,6 +6,7 @@ import 'package:family_chat/core/admin_models.dart';
 import 'package:family_chat/core/api.dart';
 import 'package:family_chat/core/models.dart';
 import 'package:family_chat/state/catalog.dart';
+import 'package:family_chat/state/chat.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Map<String, dynamic> memoryJson({String id = 'm1', String category = 'health', int created = 1794930000000}) => {
@@ -262,5 +263,29 @@ void main() {
     expect((same.keywords, same.validUntil, same.replacesId), ('装修 房子', '2026-12-31', 'm0'));
     final changed = draft.edited(const MemoryDraft(category: MemoryCategory.profile, content: '装修好了'));
     expect((changed.keywords, changed.validUntil, changed.replacesId), ('', null, 'm0'));
+  });
+
+  test('memory lookup activity stays compact while drawing activity keeps DrawingCard', () {
+    const recall = LiveText('', '', activity: '正在翻看记忆…');
+    expect(recall.working, isTrue);
+    expect(recall.drawing, isFalse);
+
+    const readConv = LiveText('我看看之前的对话。', '', activity: '正在查看之前的对话…');
+    expect(readConv.working, isTrue);
+    expect(readConv.drawing, isFalse);
+
+    const draw = LiveText('', '', activity: '正在画图…');
+    expect(draw.drawing, isTrue);
+    expect(draw.working, isFalse);
+
+    final settings = ModelSettings.fromJson({
+      'embedding_model_id': 'emb-1',
+      'memory_active_count': '24',
+      'memory_embedded_count': '20',
+      'memory_keywords_pending': '4',
+    });
+    expect(settings.memoryActiveCount, 24);
+    expect(settings.memoryEmbeddedCount, 20);
+    expect(settings.memoryKeywordsPending, 4);
   });
 }

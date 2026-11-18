@@ -6,6 +6,7 @@ import '../core/models.dart';
 import '../state/chat.dart';
 import '../state/memories.dart';
 import '../state/session.dart';
+import 'icons.dart';
 import 'memory_editor.dart';
 import 'memory_import_page.dart';
 import 'sheets.dart';
@@ -73,8 +74,8 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
     context,
     title: memory.content,
     actions: [
-      SheetAction(Icons.edit_rounded, '修改', () => _edit(memory)),
-      SheetAction(Icons.delete_outline_rounded, '忘掉这条', () async {
+      SheetAction(AppIcons.edit, '修改', () => _edit(memory)),
+      SheetAction(AppIcons.delete, '忘掉这条', () async {
         final ok = await confirm(context, title: '忘掉这条？', body: '这条记忆会被删除，无法恢复。', ok: '忘掉', danger: true);
         if (!ok || !mounted) return;
         await _change(() => ref.read(apiProvider).deleteMemory(memory.id), '已忘掉这条');
@@ -85,8 +86,8 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
   void _menu() => showActionSheet(
     context,
     actions: [
-      SheetAction(Icons.move_to_inbox_outlined, '从其他 AI 导入', _import),
-      SheetAction(Icons.delete_sweep_outlined, '全部清空', () async {
+      SheetAction(AppIcons.inbox, '从其他 AI 导入', _import),
+      SheetAction(AppIcons.clearAll, '全部清空', () async {
         final ok = await confirm(context, title: '清空所有记忆？', body: '小暖记住的所有事情都会被删除，清空后无法恢复。聊天记录会保留。', ok: '全部清空', danger: true);
         if (!ok || !mounted) return;
         await _change(() => ref.read(apiProvider).clearMemories(), '已清空所有记忆');
@@ -103,7 +104,7 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('小暖记住的事'),
-        actions: [IconButton(tooltip: '更多', onPressed: _busy ? null : _menu, icon: const Icon(Icons.more_horiz_rounded))],
+        actions: [IconButton(tooltip: '更多', onPressed: _busy ? null : _menu, icon: const Icon(AppIcons.more))],
       ),
       bottomNavigationBar: SafeArea(
         top: false,
@@ -112,7 +113,7 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
           child: FilledButton.icon(
             style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
             onPressed: _busy ? null : () => _edit(),
-            icon: const Icon(Icons.add_rounded),
+            icon: const Icon(AppIcons.plus, size: 20),
             label: const Text('手动添加'),
           ),
         ),
@@ -152,7 +153,7 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
                         child: TextButton.icon(
                           style: TextButton.styleFrom(minimumSize: const Size(44, 48), padding: const EdgeInsets.symmetric(horizontal: 4)),
                           onPressed: _busy ? null : _import,
-                          icon: const Icon(Icons.move_to_inbox_outlined),
+                          icon: const Icon(AppIcons.inbox, size: 19),
                           label: const Text('从 ChatGPT、Gemini 等导入'),
                         ),
                       ),
@@ -195,7 +196,7 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
                             OutlinedButton.icon(
                               style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
                               onPressed: _busy ? null : _import,
-                              icon: const Icon(Icons.move_to_inbox_outlined),
+                              icon: const Icon(AppIcons.inbox, size: 19),
                               label: const Text('从其他 AI 导入'),
                             ),
                           ],
@@ -249,7 +250,7 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
                                                       ref.read(chatProvider.notifier).open(memory.sourceConvId!);
                                                       Navigator.of(context).popUntil((r) => r.isFirst);
                                                     },
-                                              icon: const Icon(Icons.chat_bubble_outline_rounded, size: 16),
+                                              icon: const Icon(AppIcons.chatBubble, size: 15),
                                               label: const Text('来自对话'),
                                             ),
                                           ),

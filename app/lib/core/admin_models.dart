@@ -235,7 +235,19 @@ class ModelSettings {
   final String defaultModelId, fallbackModelId, titleModelId, imageModelId, memoryModelId, embeddingModelId;
   /// Pictures per family member per day; 0 = no limit.
   final int imageDailyLimit;
-  const ModelSettings({this.defaultModelId = '', this.fallbackModelId = '', this.titleModelId = '', this.imageModelId = '', this.memoryModelId = '', this.embeddingModelId = '', this.imageDailyLimit = 0});
+  final int memoryActiveCount, memoryEmbeddedCount, memoryKeywordsPending;
+  const ModelSettings({
+    this.defaultModelId = '',
+    this.fallbackModelId = '',
+    this.titleModelId = '',
+    this.imageModelId = '',
+    this.memoryModelId = '',
+    this.embeddingModelId = '',
+    this.imageDailyLimit = 0,
+    this.memoryActiveCount = 0,
+    this.memoryEmbeddedCount = 0,
+    this.memoryKeywordsPending = 0,
+  });
   factory ModelSettings.fromJson(Map<String, dynamic> j) => ModelSettings(
         defaultModelId: _str(j['default_model_id']),
         fallbackModelId: _str(j['fallback_model_id']),
@@ -244,6 +256,9 @@ class ModelSettings {
         memoryModelId: _str(j['memory_model_id']),
         embeddingModelId: _str(j['embedding_model_id']),
         imageDailyLimit: int.tryParse(_str(j['image_daily_limit'])) ?? 0,
+        memoryActiveCount: int.tryParse(_str(j['memory_active_count'])) ?? 0,
+        memoryEmbeddedCount: int.tryParse(_str(j['memory_embedded_count'])) ?? 0,
+        memoryKeywordsPending: int.tryParse(_str(j['memory_keywords_pending'])) ?? 0,
       );
 }
 

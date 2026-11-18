@@ -8,26 +8,28 @@ import (
 	"errors"
 	"math"
 	"reflect"
+	"strings"
 	"unicode/utf8"
 )
 
 type Memory struct {
-	ID             string    `json:"id"`
-	UserID         string    `json:"-"`
-	AssistantID    *string   `json:"-"`
-	Category       string    `json:"category"`
-	Content        string    `json:"content"`
-	Keywords       string    `json:"-"`
-	Embedding      []float32 `json:"-"`
-	EmbeddingModel string    `json:"-"`
-	Source         string    `json:"source"`
-	SourceConvID   *string   `json:"source_conv_id"`
-	Status         string    `json:"-"`
-	Pinned         bool      `json:"pinned"`
-	SupersededBy   *string   `json:"-"`
-	ValidUntil     *int64    `json:"-"`
-	CreatedAt      int64     `json:"created_at"`
-	UpdatedAt      int64     `json:"updated_at"`
+	ID              string    `json:"id"`
+	UserID          string    `json:"-"`
+	AssistantID     *string   `json:"-"`
+	Category        string    `json:"category"`
+	Content         string    `json:"content"`
+	Keywords        string    `json:"-"`
+	KeywordsChecked bool      `json:"-"`
+	Embedding       []float32 `json:"-"`
+	EmbeddingModel  string    `json:"-"`
+	Source          string    `json:"source"`
+	SourceConvID    *string   `json:"source_conv_id"`
+	Status          string    `json:"-"`
+	Pinned          bool      `json:"pinned"`
+	SupersededBy    *string   `json:"-"`
+	ValidUntil      *int64    `json:"-"`
+	CreatedAt       int64     `json:"created_at"`
+	UpdatedAt       int64     `json:"updated_at"`
 }
 
 func (m Memory) MarshalJSON() ([]byte, error) {
@@ -69,12 +71,12 @@ func decodeEmbedding(b []byte) []float32 {
 	return v
 }
 
-const memoryCols = `id, user_id, assistant_id, category, content, keywords, embedding, embedding_model, source, source_conv_id, status, pinned, superseded_by, valid_until, created_at, updated_at`
+const memoryCols = `id, user_id, assistant_id, category, content, keywords, keywords_checked, embedding, embedding_model, source, source_conv_id, status, pinned, superseded_by, valid_until, created_at, updated_at`
 
 func scanMemory(row interface{ Scan(...any) error }) (*Memory, error) {
 	var m Memory
 	var b []byte
-	if err := row.Scan(&m.ID, &m.UserID, &m.AssistantID, &m.Category, &m.Content, &m.Keywords, &b, &m.EmbeddingModel, &m.Source, &m.SourceConvID, &m.Status, &m.Pinned, &m.SupersededBy, &m.ValidUntil, &m.CreatedAt, &m.UpdatedAt); err != nil {
+	if err := row.Scan(&m.ID, &m.UserID, &m.AssistantID, &m.Category, &m.Content, &m.Keywords, &m.KeywordsChecked, &b, &m.EmbeddingModel, &m.Source, &m.SourceConvID, &m.Status, &m.Pinned, &m.SupersededBy, &m.ValidUntil, &m.CreatedAt, &m.UpdatedAt); err != nil {
 		return nil, notFound(err)
 	}
 	m.Embedding = decodeEmbedding(b)
@@ -94,10 +96,13 @@ func insertMemory(ctx context.Context, db execer, m *Memory) error {
 	if m.Source == "" {
 		m.Source = "auto"
 	}
+	if strings.TrimSpace(m.Keywords) != "" {
+		m.KeywordsChecked = true
+	}
 	if m.Category == "episode" {
 		m.Pinned = false
 	}
-	_, err := db.exec(ctx, `INSERT INTO memories (`+memoryCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, m.ID, m.UserID, m.AssistantID, m.Category, m.Content, m.Keywords, EncodeEmbedding(m.Embedding), m.EmbeddingModel, m.Source, m.SourceConvID, m.Status, m.Pinned, m.SupersededBy, m.ValidUntil, m.CreatedAt, m.UpdatedAt)
+	_, err := db.exec(ctx, `INSERT INTO memories (`+memoryCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, m.ID, m.UserID, m.AssistantID, m.Category, m.Content, m.Keywords, m.KeywordsChecked, EncodeEmbedding(m.Embedding), m.EmbeddingModel, m.Source, m.SourceConvID, m.Status, m.Pinned, m.SupersededBy, m.ValidUntil, m.CreatedAt, m.UpdatedAt)
 	return err
 }
 func (s *Store) CreateMemories(ctx context.Context, ms []*Memory) error {
@@ -147,7 +152,7 @@ func (s *Store) UpdateMemory(ctx context.Context, id, user string, category, con
 		if content != nil {
 			m.Content = *content
 		}
-		return affected(tx.exec(ctx, `UPDATE memories SET category=?,content=?,keywords='',embedding=NULL,embedding_model='',pinned=?,updated_at=? WHERE id=? AND user_id=?`, m.Category, m.Content, m.Pinned, Now(), id, user))
+		return affected(tx.exec(ctx, `UPDATE memories SET category=?,content=?,keywords='',keywords_checked=0,embedding=NULL,embedding_model='',pinned=?,updated_at=? WHERE id=? AND user_id=?`, m.Category, m.Content, m.Pinned, Now(), id, user))
 	})
 	if err != nil {
 		return nil, err
@@ -161,6 +166,25 @@ func (s *Store) ClearMemories(ctx context.Context, user string) error {
 	_, err := s.exec(ctx, `DELETE FROM memories WHERE user_id=?`, user)
 	return err
 }
+func (s *Store) PendingKeywords(ctx context.Context, limit int) ([]*Memory, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 25
+	}
+	return readMemories(s.query(ctx, `SELECT `+memoryCols+` FROM memories WHERE status='active' AND keywords_checked=0 ORDER BY updated_at DESC,id DESC LIMIT ?`, limit))
+}
+
+// SetMemoryKeywords attaches generated synonym keywords unless the memory was edited meanwhile.
+// When keywords change, any stale vector is cleared so FillEmbeddings re-embeds with the new terms.
+func (s *Store) SetMemoryKeywords(ctx context.Context, m *Memory, keywords string) error {
+	keywords = strings.TrimSpace(keywords)
+	if keywords == strings.TrimSpace(m.Keywords) {
+		_, err := s.exec(ctx, `UPDATE memories SET keywords_checked=1 WHERE id=? AND content=? AND updated_at=? AND status='active'`, m.ID, m.Content, m.UpdatedAt)
+		return err
+	}
+	_, err := s.exec(ctx, `UPDATE memories SET keywords=?,keywords_checked=1,embedding=NULL,embedding_model='',updated_at=? WHERE id=? AND content=? AND updated_at=? AND status='active'`, keywords, Now(), m.ID, m.Content, m.UpdatedAt)
+	return err
+}
+
 func (s *Store) PendingEmbeddings(ctx context.Context, model string) ([]*Memory, error) {
 	return readMemories(s.query(ctx, `SELECT `+memoryCols+` FROM memories WHERE status='active' AND (embedding IS NULL OR embedding_model<>?) ORDER BY updated_at,id LIMIT 32`, model))
 }
@@ -171,6 +195,19 @@ func (s *Store) SetMemoryEmbedding(ctx context.Context, m *Memory, v []float32, 
 	return err
 }
 
+type MemoryStats struct {
+	Active          int
+	Embedded        int
+	PendingKeywords int
+}
+
+func (s *Store) MemoryStats(ctx context.Context, embeddingModel string) (MemoryStats, error) {
+	var st MemoryStats
+	err := s.queryRow(ctx, `SELECT COUNT(*), COUNT(CASE WHEN ? <> '' AND embedding IS NOT NULL AND embedding_model = ? THEN 1 END), COUNT(CASE WHEN keywords_checked = 0 THEN 1 END) FROM memories WHERE status = 'active'`, embeddingModel, embeddingModel).
+		Scan(&st.Active, &st.Embedded, &st.PendingKeywords)
+	return st, err
+}
+
 // MemorySnapshot captures exactly the segment that an extraction may commit.
 type MemorySnapshot struct {
 	ConversationID, UserID, Cursor string
@@ -179,6 +216,10 @@ type MemorySnapshot struct {
 type MemoryChange struct {
 	Op, RefID string
 	Memory    *Memory
+}
+type EpisodeSpec struct {
+	Content  string
+	Keywords string
 }
 
 var ErrMemoryStale = errors.New("memory snapshot changed")
@@ -221,8 +262,18 @@ func (s *Store) MemoryCandidates(ctx context.Context, before int64) ([]*Conversa
 	return out, rows.Err()
 }
 
-// ApplyMemoryExtraction locks the same conversation row as ApplyTurn before validating.
+// ApplyMemoryExtraction commits changes and at most a single episode summary.
 func (s *Store) ApplyMemoryExtraction(ctx context.Context, snap MemorySnapshot, changes []MemoryChange, episode string) error {
+	var eps []EpisodeSpec
+	if strings.TrimSpace(episode) != "" {
+		eps = []EpisodeSpec{{Content: strings.TrimSpace(episode)}}
+	}
+	return s.ApplyMemoryExtractionEpisodes(ctx, snap, changes, eps)
+}
+
+// ApplyMemoryExtractionEpisodes locks the same conversation row as ApplyTurn before validating,
+// and reconciles up to 3 topic-level episode summaries for the conversation.
+func (s *Store) ApplyMemoryExtractionEpisodes(ctx context.Context, snap MemorySnapshot, changes []MemoryChange, episodes []EpisodeSpec) error {
 	return s.tx(ctx, func(tx *Tx) error {
 		// Serialize a concurrent settings toggle with the commit, not the model call.
 		u, err := scanUser(tx.queryRow(ctx, `SELECT `+userCols+` FROM users WHERE id=?`+s.forUpdate(), snap.UserID))
@@ -250,7 +301,7 @@ func (s *Store) ApplyMemoryExtraction(ctx context.Context, snap MemorySnapshot, 
 		}
 		if !enabled {
 			changes = nil
-			episode = ""
+			episodes = nil
 		}
 		if cursor != snap.Cursor || len(snap.Messages) == 0 {
 			return ErrMemoryStale
@@ -295,19 +346,45 @@ func (s *Store) ApplyMemoryExtraction(ctx context.Context, snap MemorySnapshot, 
 				}
 			}
 		}
-		if episode != "" {
-			// A single mutable episode per conversation; facts keep their provenance.
-			var id string
-			err := tx.queryRow(ctx, `SELECT id FROM memories WHERE source_conv_id=? AND user_id=? AND category='episode' AND status='active'`, snap.ConversationID, snap.UserID).Scan(&id)
-			if err == sql.ErrNoRows {
-				m := &Memory{UserID: snap.UserID, Category: "episode", Content: episode, SourceConvID: &snap.ConversationID}
-				if err := insertMemory(ctx, tx, m); err != nil {
-					return err
-				}
-			} else if err != nil {
+		if len(episodes) > 0 {
+			if len(episodes) > 3 {
+				episodes = episodes[:3]
+			}
+			rows, err := tx.query(ctx, `SELECT `+memoryCols+` FROM memories WHERE source_conv_id=? AND user_id=? AND category='episode' AND status='active' ORDER BY created_at,id`+s.forUpdate(), snap.ConversationID, snap.UserID)
+			existingEps, err := readMemories(rows, err)
+			if err != nil {
 				return err
-			} else {
-				if _, err := tx.exec(ctx, `UPDATE memories SET content=?,embedding=NULL,embedding_model='',updated_at=? WHERE id=?`, episode, Now(), id); err != nil {
+			}
+			now := Now()
+			for i, ep := range episodes {
+				ep.Content = strings.TrimSpace(ep.Content)
+				ep.Keywords = strings.TrimSpace(ep.Keywords)
+				if ep.Content == "" {
+					continue
+				}
+				checked := ep.Keywords != ""
+				if i < len(existingEps) {
+					old := existingEps[i]
+					if old.Content == ep.Content && (ep.Keywords == "" || old.Keywords == ep.Keywords) {
+						continue
+					}
+					kw := ep.Keywords
+					if kw == "" && old.Content == ep.Content {
+						kw = old.Keywords
+						checked = old.KeywordsChecked
+					}
+					if _, err := tx.exec(ctx, `UPDATE memories SET content=?,keywords=?,keywords_checked=?,embedding=NULL,embedding_model='',updated_at=? WHERE id=?`, ep.Content, kw, checked, now, old.ID); err != nil {
+						return err
+					}
+				} else {
+					m := &Memory{UserID: snap.UserID, Category: "episode", Content: ep.Content, Keywords: ep.Keywords, KeywordsChecked: checked, SourceConvID: &snap.ConversationID}
+					if err := insertMemory(ctx, tx, m); err != nil {
+						return err
+					}
+				}
+			}
+			for i := len(episodes); i < len(existingEps); i++ {
+				if _, err := tx.exec(ctx, `UPDATE memories SET status='archived',updated_at=? WHERE id=?`, now, existingEps[i].ID); err != nil {
 					return err
 				}
 			}

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api.dart';
 import '../state/session.dart';
+import 'icons.dart';
 import 'setup_page.dart';
 import 'mascot_anim.dart';
 import 'theme.dart';
@@ -96,8 +97,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final p = context.pal;
     Widget? reachIcon = switch (_reach) {
       _Reach.checking => Padding(padding: const EdgeInsets.all(14), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: p.faint))),
-      _Reach.ok => Icon(Icons.check_circle_rounded, color: p.good),
-      _Reach.fail => Icon(Icons.error_outline_rounded, color: p.bad),
+      _Reach.ok => Icon(AppIcons.checkCircle, color: p.good),
+      _Reach.fail => Icon(AppIcons.error, color: p.bad),
       _Reach.unknown => null,
     };
 
@@ -128,7 +129,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       style: const TextStyle(fontSize: 17),
                       decoration: InputDecoration(
                         hintText: '例如 chat.example.com',
-                        prefixIcon: Icon(Icons.dns_outlined, color: p.faint),
+                        prefixIcon: Icon(AppIcons.server, color: p.faint),
                         suffixIcon: reachIcon,
                         helperText: _reach == _Reach.fail ? '连不上这个地址，请检查是否填写正确' : null,
                         helperStyle: TextStyle(color: p.bad),
@@ -147,7 +148,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                   padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(18), border: Border.all(color: p.accent.withValues(alpha: 0.4))),
                                   child: Row(children: [
-                                    Icon(Icons.rocket_launch_rounded, color: p.accent),
+                                    Icon(AppIcons.rocket, color: p.accent),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -156,7 +157,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                         Text('你是部署它的人？点这里完成初始化', style: TextStyle(fontSize: 13.5, color: p.muted)),
                                       ]),
                                     ),
-                                    Icon(Icons.chevron_right_rounded, color: p.accent),
+                                    Icon(AppIcons.chevronRight, color: p.accent, size: 18),
                                   ]),
                                 ),
                               ),
@@ -171,7 +172,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       textInputAction: TextInputAction.next,
                       onSubmitted: (_) => _passFocus.requestFocus(),
                       style: const TextStyle(fontSize: 17),
-                      decoration: InputDecoration(hintText: '管理员给你的用户名', prefixIcon: Icon(Icons.person_outline_rounded, color: p.faint)),
+                      decoration: InputDecoration(hintText: '管理员给你的用户名', prefixIcon: Icon(AppIcons.user, color: p.faint)),
                     ),
                     const SizedBox(height: 16),
                     _label('密码'),
@@ -185,9 +186,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       style: const TextStyle(fontSize: 17),
                       decoration: InputDecoration(
                         hintText: '请输入密码',
-                        prefixIcon: Icon(Icons.lock_outline_rounded, color: p.faint),
+                        prefixIcon: Icon(AppIcons.lock, color: p.faint),
                         suffixIcon: IconButton(
-                          icon: Icon(_hide ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: p.faint),
+                          icon: Icon(_hide ? AppIcons.eye : AppIcons.eyeOff, color: p.faint),
                           onPressed: () => setState(() => _hide = !_hide),
                         ),
                       ),
@@ -199,7 +200,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           : Padding(
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               child: Row(children: [
-                                Icon(Icons.info_outline_rounded, color: p.bad, size: 20),
+                                Icon(AppIcons.info, color: p.bad, size: 20),
                                 const SizedBox(width: 8),
                                 Expanded(child: Text(_error!, style: TextStyle(color: p.bad, fontSize: 15))),
                               ]),

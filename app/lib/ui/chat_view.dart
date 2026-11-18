@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/models.dart';
 import '../state/chat.dart';
+import 'icons.dart';
 import 'messages.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -167,7 +168,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
               child: AnimatedScale(
                 scale: _showDown ? 1 : 0.8,
                 duration: const Duration(milliseconds: 200),
-                child: SoftIconButton(icon: Icons.keyboard_arrow_down_rounded, filled: true, tooltip: '到底部', onTap: _toBottom),
+                child: SoftIconButton(icon: AppIcons.arrowDown, filled: true, tooltip: '到底部', onTap: _toBottom),
               ),
             ),
           ),

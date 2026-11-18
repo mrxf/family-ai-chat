@@ -5,6 +5,7 @@ import '../core/models.dart';
 import '../state/chat.dart';
 import '../state/conversations.dart';
 import '../state/session.dart';
+import 'icons.dart';
 import 'search_page.dart';
 import 'settings_page.dart';
 import 'theme.dart';
@@ -70,13 +71,13 @@ class HistoryDrawer extends ConsumerWidget {
                 const Text('小暖', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
                 const Spacer(),
                 SoftIconButton(
-                  icon: Icons.search_rounded,
+                  icon: AppIcons.search,
                   tooltip: '搜索聊天记录',
                   size: 42,
                   onTap: () => _openSearch(context, ref),
                 ),
                 SoftIconButton(
-                  icon: Icons.close_rounded,
+                  icon: AppIcons.close,
                   tooltip: '关闭',
                   size: 42,
                   onTap: () => Navigator.pop(context),
@@ -85,54 +86,23 @@ class HistoryDrawer extends ConsumerWidget {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Pressable(
-                      scale: 0.98,
-                      onTap: () {
-                        Navigator.pop(context);
-                        ref.read(chatProvider.notifier).newChat();
-                      },
-                      child: Container(
-                        height: 50,
-                        decoration: BoxDecoration(gradient: Palette.brandGradient, borderRadius: BorderRadius.circular(16), boxShadow: [
-                          BoxShadow(color: Palette.brand.withValues(alpha: 0.28), blurRadius: 14, offset: const Offset(0, 5)),
-                        ]),
-                        child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Icon(Icons.add_rounded, color: Colors.white, size: 24),
-                          SizedBox(width: 6),
-                          Text('新对话', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
-                        ]),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Tooltip(
-                    message: '新建隐私对话',
-                    child: Pressable(
-                      scale: 0.98,
-                      onTap: () {
-                        Navigator.pop(context);
-                        ref.read(chatProvider.notifier).newChat(isPrivate: true);
-                      },
-                      child: Container(
-                        height: 50,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        decoration: BoxDecoration(
-                          color: isPrivate ? p.privateSoft : p.surface,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: isPrivate ? p.privateAccent.withValues(alpha: 0.5) : p.line),
-                        ),
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          Icon(Icons.visibility_off_outlined, size: 20, color: p.privateAccent),
-                          const SizedBox(width: 5),
-                          Text('隐私', style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600, color: p.privateAccent)),
-                        ]),
-                      ),
-                    ),
-                  ),
-                ],
+              child: Pressable(
+                scale: 0.98,
+                onTap: () {
+                  Navigator.pop(context);
+                  ref.read(chatProvider.notifier).newChat();
+                },
+                child: Container(
+                  height: 50,
+                  decoration: BoxDecoration(gradient: Palette.brandGradient, borderRadius: BorderRadius.circular(16), boxShadow: [
+                    BoxShadow(color: Palette.brand.withValues(alpha: 0.28), blurRadius: 14, offset: const Offset(0, 5)),
+                  ]),
+                  child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(AppIcons.plus, color: Colors.white, size: 21),
+                    SizedBox(width: 6),
+                    Text('新对话', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
+                  ]),
+                ),
               ),
             ),
             Expanded(
@@ -191,7 +161,7 @@ class HistoryDrawer extends ConsumerWidget {
                     Expanded(
                       child: Text(user.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
                     ),
-                    Icon(Icons.settings_outlined, color: p.muted),
+                    Icon(AppIcons.settings, color: p.muted, size: 22),
                     const SizedBox(width: 6),
                   ]),
                 ),
@@ -222,7 +192,7 @@ class _ConvTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
         decoration: BoxDecoration(color: selected ? p.surface : Colors.transparent, borderRadius: BorderRadius.circular(14)),
         child: Row(children: [
-          if (conv.pinned) Padding(padding: const EdgeInsets.only(right: 6), child: Icon(Icons.push_pin_rounded, size: 15, color: p.accent)),
+          if (conv.pinned) Padding(padding: const EdgeInsets.only(right: 6), child: Icon(AppIcons.pin, size: 15, color: p.accent)),
           Expanded(
             child: Text(
               conv.title.isEmpty ? '新对话' : conv.title,

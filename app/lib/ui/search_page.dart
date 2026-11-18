@@ -7,6 +7,7 @@ import '../core/models.dart';
 import '../state/chat.dart';
 import '../state/conversations.dart';
 import '../state/session.dart';
+import 'icons.dart';
 import 'sheets.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -44,18 +45,18 @@ void showConversationMenu(
   FocusScope.of(context).unfocus();
   final convs = ref.read(conversationsProvider.notifier);
   showActionSheet(context, title: c.title.isEmpty ? '新对话' : c.title, actions: [
-    SheetAction(Icons.edit_rounded, '重命名', () async {
+    SheetAction(AppIcons.edit, '重命名', () async {
       final t = await showTextEditor(context, title: '重命名对话', initial: c.title, maxLines: 2);
       if (t != null && t.isNotEmpty) {
         onUpdated?.call(c.copyWith(title: t));
         await convs.rename(c.id, t);
       }
     }),
-    SheetAction(c.pinned ? Icons.push_pin_outlined : Icons.push_pin_rounded, c.pinned ? '取消置顶' : '置顶', () {
+    SheetAction(c.pinned ? AppIcons.unpin : AppIcons.pin, c.pinned ? '取消置顶' : '置顶', () {
       onUpdated?.call(c.copyWith(pinned: !c.pinned));
       convs.togglePin(c);
     }),
-    SheetAction(Icons.delete_outline_rounded, '删除', () async {
+    SheetAction(AppIcons.delete, '删除', () async {
       if (!await confirm(context, title: '删除这个对话？', body: '删除后无法恢复。', ok: '删除', danger: true)) return;
       try {
         await convs.delete(c.id);
@@ -281,7 +282,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
               child: Row(
                 children: [
                   const SizedBox(width: 16),
-                  Icon(Icons.search_rounded, color: p.muted, size: 22),
+                  Icon(AppIcons.search, color: p.muted, size: 21),
                   const SizedBox(width: 10),
                   Expanded(
                     child: TextField(
@@ -312,7 +313,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                       },
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        child: Icon(Icons.cancel_rounded, size: 20, color: p.faint),
+                        child: Icon(AppIcons.closeCircle, size: 19, color: p.faint),
                       ),
                     )
                   else
@@ -335,7 +336,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                   border: Border.all(color: p.line),
                   boxShadow: [BoxShadow(color: p.shadow, blurRadius: 18, offset: const Offset(0, 4))],
                 ),
-                child: Icon(Icons.close_rounded, color: p.text, size: 23),
+                child: Icon(AppIcons.close, color: p.text, size: 21),
               ),
             ),
           ),
@@ -382,8 +383,8 @@ class _SearchTile extends StatelessWidget {
             Padding(
               padding: EdgeInsets.only(top: hasSnippet ? 3 : 0, right: 14),
               child: Icon(
-                conv.pinned ? Icons.push_pin_rounded : Icons.chat_bubble_outline_rounded,
-                size: 20,
+                conv.pinned ? AppIcons.pin : AppIcons.chatBubble,
+                size: 19,
                 color: conv.pinned ? p.accent : p.muted,
               ),
             ),

@@ -49,6 +49,7 @@ dependencies:
   url_launcher: ^6.3.3
   record: ^7.2.0
   gal: ^3.0.1
+  phosphoricons_flutter: ^1.1.1
 
 dev_dependencies:
   flutter_test:

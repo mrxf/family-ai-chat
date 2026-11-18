@@ -2,11 +2,14 @@ package memory
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
 
+	"nuan/internal/llm"
 	"nuan/internal/store"
 )
 
@@ -14,6 +17,7 @@ type kick struct {
 	conv string
 	due  time.Time
 }
+
 type Worker struct {
 	service  *Service
 	ctx      context.Context
@@ -33,6 +37,7 @@ func NewWorker(s *Service) *Worker {
 	go w.loop()
 	return w
 }
+
 func Trigger(text string) bool {
 	for _, term := range []string{"记住", "别忘", "以后", "停药", "换药", "不吃了", "过敏", "搬家", "生日", "去世", "住院", "出院", "怀孕", "忘掉", "别记"} {
 		if strings.Contains(text, term) {
@@ -41,6 +46,7 @@ func Trigger(text string) bool {
 	}
 	return false
 }
+
 func (w *Worker) Kick(convID string, delay time.Duration) {
 	select {
 	case w.kicks <- kick{convID, time.Now().Add(delay)}:
@@ -49,6 +55,7 @@ func (w *Worker) Kick(convID string, delay time.Duration) {
 		w.service.Log.Warn("memory kick queue full", "conv", convID)
 	}
 }
+
 func (w *Worker) Shutdown(ctx context.Context) {
 	w.cancel()
 	done := make(chan struct{})
@@ -58,6 +65,7 @@ func (w *Worker) Shutdown(ctx context.Context) {
 	case <-ctx.Done():
 	}
 }
+
 func (w *Worker) loop() {
 	defer w.wg.Done()
 	ticker := time.NewTicker(time.Minute)
@@ -95,6 +103,7 @@ func (w *Worker) loop() {
 		}
 	}
 }
+
 func (w *Worker) scan(immediate map[string]bool) {
 	cs, err := w.service.Store.MemoryCandidates(w.ctx, store.Now())
 	if err != nil {
@@ -103,10 +112,19 @@ func (w *Worker) scan(immediate map[string]bool) {
 		}
 		return
 	}
+	// MemoryCandidates returns conversations ordered by updated_at ASC. If a user
+	// already started a newer conversation, any older unextracted conversation has
+	// been left behind and does not need the 60-second quiet-period wait.
+	latestByUser := map[string]string{}
+	for _, c := range cs {
+		latestByUser[c.UserID] = c.ID
+	}
 	groups := map[string][]*store.Conversation{}
 	order := []string{}
+	cutoff := time.Now().Add(-time.Minute).UnixMilli()
 	for _, c := range cs {
-		if !immediate[c.ID] && c.UpdatedAt > time.Now().Add(-time.Minute).UnixMilli() {
+		isNewest := latestByUser[c.UserID] == c.ID
+		if !immediate[c.ID] && isNewest && c.UpdatedAt > cutoff {
 			continue
 		}
 		if len(groups[c.UserID]) == 0 {
@@ -153,10 +171,14 @@ func (w *Worker) scan(immediate map[string]bool) {
 			}
 		}(user, groups[user])
 	}
-	// Embedding writes use content/version guards and can run alongside extraction.
+	// Backfill missing synonym keywords first so subsequent embedding runs encode
+	// both the statement and its colloquial search terms in a single pass.
 	w.wg.Add(1)
 	go func() {
 		defer w.wg.Done()
+		if err := w.service.FillKeywords(w.ctx); err != nil && w.ctx.Err() == nil {
+			w.service.Log.Warn("memory keyword backfill", "err", err)
+		}
 		if err := w.service.FillEmbeddings(w.ctx); err != nil && w.ctx.Err() == nil {
 			w.service.Log.Warn("memory embedding backfill", "err", err)
 		}
@@ -231,6 +253,84 @@ func (w *Worker) Process(ctx context.Context, c *store.Conversation) error {
 		}
 	}
 }
+
+const keywordBackfillPrompt = `你是「小暖」的记忆检索词补充员。请为下面每条记忆生成 4–10 个检索词（空格分隔），用于在用户日常大白话提问时准确召回：
+- 必须包含：日常口语说法、俗称、同义词、上下位词（例如原文写「柯基」要补「小狗 狗狗 宠物 犬」；写「瘙痒」要补「痒 痒痒 抓挠 皮肤病」；写具体药名要补病症和俗称，如「硝苯地平」补「降压药 高血压 血压」；写人物或故事要补主题通俗词）。
+- 不要重复整句原文，只写高价值的检索词，用空格分隔。
+- 输出严格 JSON，不要任何解释：
+{"items":[{"ref":1,"keywords":"词1 词2 词3"}]}`
+
+const keywordBatch = 25
+
+// FillKeywords generates colloquial/synonym search keywords for legacy or manually
+// edited memories whose keywords have not been populated yet.
+func (s *Service) FillKeywords(ctx context.Context) error {
+	if !s.keywordMu.TryLock() {
+		return nil
+	}
+	defer s.keywordMu.Unlock()
+	_, err := s.fillKeywords(ctx)
+	return err
+}
+
+func (s *Service) fillKeywords(ctx context.Context) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	ms, err := s.Store.PendingKeywords(ctx, keywordBatch)
+	if err != nil || len(ms) == 0 {
+		return 0, err
+	}
+	m, c, err := s.Resolve(ctx, "memory")
+	if err != nil || m == nil {
+		return 0, err
+	}
+	var b strings.Builder
+	b.WriteString("待补充检索词的记忆条目：\n")
+	for i, item := range ms {
+		fmt.Fprintf(&b, "#%d [%s] %s\n", i+1, item.Category, item.Content)
+	}
+	text, _, err := c.Complete(ctx, llm.Request{
+		Model:           m.UpstreamModel,
+		ReasoningEffort: m.DefaultEffort,
+		Messages: []llm.Message{
+			{Role: "system", Content: keywordBackfillPrompt},
+			{Role: "user", Content: b.String()},
+		},
+	})
+	if err != nil {
+		return 0, err
+	}
+	first, last := strings.Index(text, "{"), strings.LastIndex(text, "}")
+	if first < 0 || last <= first {
+		return 0, ErrParse
+	}
+	var parsed struct {
+		Items []struct {
+			Ref      int    `json:"ref"`
+			Keywords string `json:"keywords"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(text[first:last+1]), &parsed); err != nil || parsed.Items == nil {
+		return 0, ErrParse
+	}
+	byRef := map[int]string{}
+	for _, it := range parsed.Items {
+		if it.Ref >= 1 && it.Ref <= len(ms) {
+			byRef[it.Ref] = clip(strings.TrimSpace(it.Keywords), 100)
+		}
+	}
+	for i, item := range ms {
+		kw := byRef[i+1]
+		if kw == "" {
+			kw = item.Keywords
+		}
+		if err := s.Store.SetMemoryKeywords(ctx, item, kw); err != nil {
+			return 0, err
+		}
+	}
+	return len(ms), nil
+}
+
 func (s *Service) FillEmbeddings(ctx context.Context) error {
 	if !s.embedMu.TryLock() {
 		return nil
@@ -243,6 +343,19 @@ func (s *Service) FillEmbeddings(ctx context.Context) error {
 // DrainEmbeddings embeds a large batch (an import) right away instead of 32
 // memories per minute. It gives up after a bounded number of rounds.
 func (s *Service) DrainEmbeddings(ctx context.Context) {
+	s.keywordMu.Lock()
+	for range 12 {
+		n, err := s.fillKeywords(ctx)
+		if err != nil {
+			s.Log.Warn("memory keyword drain", "err", err)
+			break
+		}
+		if n < keywordBatch {
+			break
+		}
+	}
+	s.keywordMu.Unlock()
+
 	s.embedMu.Lock()
 	defer s.embedMu.Unlock()
 	for range 20 {
@@ -271,8 +384,8 @@ func (s *Service) fillEmbeddings(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	inputs := make([]string, len(ms))
-	for i, m := range ms {
-		inputs[i] = m.Content
+	for i, item := range ms {
+		inputs[i] = EmbedText(item)
 	}
 	vectors, _, err := c.Embed(ctx, m.UpstreamModel, inputs)
 	if err != nil {

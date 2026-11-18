@@ -7,6 +7,7 @@ import '../core/models.dart';
 import '../state/chat.dart';
 import '../state/session.dart';
 import 'admin/models_page.dart';
+import 'icons.dart';
 import 'mascot_anim.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -126,7 +127,7 @@ class _WelcomeState extends ConsumerState<Welcome> {
                 Center(
                   child: TextButton.icon(
                     onPressed: () => setState(() => _picks = _shuffle()),
-                    icon: Icon(Icons.refresh_rounded, size: 18, color: p.muted),
+                    icon: Icon(AppIcons.refresh, size: 17, color: p.muted),
                     label: Text('换一批', style: TextStyle(color: p.muted, fontSize: 15)),
                   ),
                 ),
@@ -138,6 +139,11 @@ class _WelcomeState extends ConsumerState<Welcome> {
                 ),
                 _AssistantStrip(assistants: boot.assistants),
               ],
+              const SizedBox(height: 18),
+              _PrivateChatEntryCard(
+                assistantName: assistant?.name,
+                onTap: () => ref.read(chatProvider.notifier).newChat(isPrivate: true, assistantId: assistant?.id),
+              ),
             ],
           ),
         ),
@@ -161,7 +167,7 @@ class _NoModels extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(18), border: Border.all(color: p.accent.withValues(alpha: 0.4))),
         child: Row(children: [
-          Icon(isAdmin ? Icons.hub_rounded : Icons.hourglass_empty_rounded, color: p.accent),
+          Icon(isAdmin ? AppIcons.hub : AppIcons.hourglass, color: p.accent),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -171,7 +177,7 @@ class _NoModels extends StatelessWidget {
                   style: TextStyle(fontSize: 13.5, color: p.muted, height: 1.4)),
             ]),
           ),
-          if (isAdmin) Icon(Icons.chevron_right_rounded, color: p.accent),
+          if (isAdmin) Icon(AppIcons.chevronRight, color: p.accent, size: 18),
         ]),
       ),
     );
@@ -199,7 +205,7 @@ class _SuggestionCard extends StatelessWidget {
         child: Row(children: [
           if (emoji.isNotEmpty) ...[Text(emoji, style: const TextStyle(fontSize: 20)), const SizedBox(width: 12)],
           Expanded(child: Text(text, style: const TextStyle(fontSize: 16.5, height: 1.4))),
-          Icon(Icons.north_east_rounded, size: 18, color: p.faint),
+          Icon(AppIcons.arrowUpRight, size: 17, color: p.faint),
         ]),
       ),
     );
@@ -245,7 +251,7 @@ class _PrivateWelcome extends ConsumerWidget {
                           shape: BoxShape.circle,
                           border: Border.all(color: p.privateAccent.withValues(alpha: 0.25), width: 1.5),
                         ),
-                        child: Icon(Icons.visibility_off_rounded, size: 40, color: p.privateAccent),
+                        child: Icon(AppIcons.privateChat, size: 38, color: p.privateAccent),
                       )
                     : Stack(
                         clipBehavior: Clip.none,
@@ -262,7 +268,7 @@ class _PrivateWelcome extends ConsumerWidget {
                                 shape: BoxShape.circle,
                                 border: Border.all(color: p.bg, width: 2.5),
                               ),
-                              child: const Icon(Icons.visibility_off_rounded, size: 15, color: Colors.white),
+                              child: const Icon(AppIcons.privateChat, size: 15, color: Colors.white),
                             ),
                           ),
                         ],
@@ -296,19 +302,19 @@ class _PrivateWelcome extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _PrivatePoint(
-                      icon: Icons.history_toggle_off_rounded,
+                      icon: AppIcons.history,
                       title: '不进聊天记录',
                       body: '不会出现在左侧历史列表和搜索结果里',
                     ),
                     SizedBox(height: 14),
                     _PrivatePoint(
-                      icon: Icons.favorite_border_rounded,
+                      icon: AppIcons.heart,
                       title: '不读取也不写入记忆',
                       body: '不参考以往记忆，小暖也不会记住这次聊的事',
                     ),
                     SizedBox(height: 14),
                     _PrivatePoint(
-                      icon: Icons.auto_delete_outlined,
+                      icon: AppIcons.clearAll,
                       title: '关闭即清理',
                       body: '退出或切换对话后，消息和图片立即删除',
                     ),
@@ -327,7 +333,7 @@ class _PrivateWelcome extends ConsumerWidget {
                 Center(
                   child: TextButton.icon(
                     onPressed: () => ref.read(chatProvider.notifier).newChat(isPrivate: true),
-                    icon: Icon(Icons.restart_alt_rounded, size: 18, color: p.privateAccent),
+                    icon: Icon(AppIcons.refresh, size: 17, color: p.privateAccent),
                     label: Text('切回通用隐私对话', style: TextStyle(color: p.privateAccent, fontSize: 15)),
                   ),
                 ),
@@ -387,7 +393,7 @@ class _AssistantStrip extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final p = context.pal;
-    final h = MediaQuery.textScalerOf(context).scale(112).clamp(128.0, 168.0);
+    final h = MediaQuery.textScalerOf(context).scale(142).clamp(142.0, 192.0);
     return SizedBox(
       height: h,
       child: ListView.separated(
@@ -419,4 +425,106 @@ class _AssistantStrip extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Dashed-border entry button at the bottom of the new-chat screen to start a private chat.
+class _PrivateChatEntryCard extends StatelessWidget {
+  const _PrivateChatEntryCard({required this.onTap, this.assistantName});
+  final VoidCallback onTap;
+  final String? assistantName;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    final label = assistantName == null ? '开启隐私对话' : '开启隐私对话 · $assistantName';
+    return Semantics(
+      button: true,
+      label: label,
+      child: Pressable(
+        scale: 0.98,
+        onTap: onTap,
+        child: CustomPaint(
+          foregroundPainter: _DashedBorderPainter(
+            color: p.privateAccent.withValues(alpha: 0.42),
+            radius: 18,
+          ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+            decoration: BoxDecoration(
+              color: p.privateSoft.withValues(alpha: 0.52),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: p.privateSoft,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(AppIcons.privateChat, size: 19, color: p.privateAccent),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600, color: p.privateAccent),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '不留聊天记录 · 关闭后自动清除，小暖不会记住',
+                        style: TextStyle(fontSize: 13, color: p.muted, height: 1.35),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Icon(AppIcons.chevronRight, size: 17, color: p.privateAccent.withValues(alpha: 0.75)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DashedBorderPainter extends CustomPainter {
+  const _DashedBorderPainter({required this.color, this.radius = 18});
+
+  static const double _strokeWidth = 1.25;
+  static const double _dashLength = 6.0;
+  static const double _gapLength = 4.5;
+
+  final Color color;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = (Offset.zero & size).deflate(_strokeWidth / 2);
+    final path = Path()..addRRect(RRect.fromRectAndRadius(rect, Radius.circular(radius)));
+    final dashed = Path();
+    for (final metric in path.computeMetrics()) {
+      var d = 0.0;
+      while (d < metric.length) {
+        dashed.addPath(metric.extractPath(d, math.min(d + _dashLength, metric.length)), Offset.zero);
+        d += _dashLength + _gapLength;
+      }
+    }
+    canvas.drawPath(
+      dashed,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = _strokeWidth
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_DashedBorderPainter old) => old.color != color || old.radius != radius;
 }

@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/models.dart';
 import '../state/chat.dart';
 import '../state/session.dart';
+import 'icons.dart';
+import 'share_page.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -112,12 +114,12 @@ void showUserMessageActions(BuildContext context, WidgetRef ref, Message m) {
   final busy = ref.read(chatProvider).busy;
   showActionSheet(context, title: m.content, actions: [
     if (m.content.isNotEmpty)
-      SheetAction(Icons.copy_rounded, '复制', () {
+      SheetAction(AppIcons.copy, '复制', () {
         Clipboard.setData(ClipboardData(text: m.content));
         showToast(context, '已复制');
       }),
     if (!busy)
-      SheetAction(Icons.edit_rounded, '修改后重新发送', () async {
+      SheetAction(AppIcons.edit, '修改后重新发送', () async {
         final t = await showTextEditor(context, title: '修改问题', initial: m.content, ok: '重新发送');
         if (t != null && t.isNotEmpty) chat.editAndResend(m, t);
       }),
@@ -126,16 +128,21 @@ void showUserMessageActions(BuildContext context, WidgetRef ref, Message m) {
 
 void showAssistantMessageActions(BuildContext context, WidgetRef ref, Message m, bool isLast) {
   final chat = ref.read(chatProvider.notifier);
+  final isPrivate = ref.read(chatProvider).isPrivate;
   showActionSheet(context, actions: [
-    SheetAction(Icons.copy_rounded, '复制全部', () {
+    if (!isPrivate)
+      SheetAction(AppIcons.share, '分享这段对话', () {
+        openShareChat(context, ref, focusMessage: m);
+      }),
+    SheetAction(AppIcons.copy, '复制全部', () {
       Clipboard.setData(ClipboardData(text: m.content));
       showToast(context, '已复制');
     }),
-    SheetAction(Icons.text_fields_rounded, '选择部分文字', () {
+    SheetAction(AppIcons.selectText, '选择部分文字', () {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => SelectTextPage(text: m.content)));
     }),
     if (isLast)
-      SheetAction(Icons.swap_horiz_rounded, '换个模型重新回答', () async {
+      SheetAction(AppIcons.swap, '换个模型重新回答', () async {
         final id = await showModelPicker(context, ref, title: '用哪个模型重新回答？');
         if (id != null) chat.regenerate(modelId: id);
       }),
@@ -210,12 +217,12 @@ Future<String?> showModelPicker(BuildContext context, WidgetRef ref, {String tit
                             ],
                             const SizedBox(height: 6),
                             Wrap(spacing: 10, children: [
-                              if (m.vision) _cap(p, Icons.image_outlined, '能看图'),
-                              if (m.think) _cap(p, Icons.lightbulb_outline_rounded, '可深度思考'),
+                              if (m.vision) _cap(p, AppIcons.image, '能看图'),
+                              if (m.think) _cap(p, AppIcons.thinkOff, '可深度思考'),
                             ]),
                           ]),
                         ),
-                        if (m.id == current) Icon(Icons.check_circle_rounded, color: p.accent),
+                        if (m.id == current) Icon(AppIcons.checkCircle, color: p.accent),
                       ]),
                     ),
                   ),

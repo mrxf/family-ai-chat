@@ -453,7 +453,7 @@ func (s *Server) adminSaveModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if id == "" {
-		s.adoptImageModel(r, []*store.Model{m})
+		s.adoptSpecialModels(r, []*store.Model{m})
 	}
 	s.repairSettings(r)
 	writeJSON(w, 200, m)
@@ -503,7 +503,7 @@ func (s *Server) adminBatchModels(w http.ResponseWriter, r *http.Request) {
 			s.writeStoreErr(w, r, err)
 			return
 		}
-		s.adoptImageModel(r, add)
+		s.adoptSpecialModels(r, add)
 	}
 	s.repairSettings(r)
 	def, _ := s.Store.GetSetting(r.Context(), "default_model_id")
@@ -536,20 +536,27 @@ func (s *Server) adminReorderModels(w http.ResponseWriter, r *http.Request) {
 	s.adminListModels(w, r)
 }
 
-// adoptImageModel makes the first newly added image model the one conversations
-// draw with, when none is set yet (adding one means the admin wants drawing).
-func (s *Server) adoptImageModel(r *http.Request, added []*store.Model) {
-	if cur, _ := s.Store.GetSetting(r.Context(), "image_model_id"); cur != "" {
-		return
-	}
-	for _, m := range added {
-		if m.Kind == store.KindImage && m.Enabled {
-			if err := s.Store.SetSetting(r.Context(), "image_model_id", m.ID); err != nil {
-				s.Log.Error("set image model", "err", err)
-			}
+// adoptSpecialModels makes the first newly added image or embedding model active
+// when none is configured yet (adding one means the admin wants that capability).
+func (s *Server) adoptSpecialModels(r *http.Request, added []*store.Model) {
+	adopt := func(settingKey, wantKind string) {
+		if cur, _ := s.Store.GetSetting(r.Context(), settingKey); cur != "" {
 			return
 		}
+		for _, m := range added {
+			if m.Kind == wantKind && m.Enabled {
+				if err := s.Store.SetSetting(r.Context(), settingKey, m.ID); err != nil {
+					s.Log.Error("adopt model setting", "key", settingKey, "err", err)
+				}
+				if wantKind == store.KindEmbedding && s.Chat.Memory != nil {
+					go s.Chat.Memory.DrainEmbeddings(context.WithoutCancel(r.Context()))
+				}
+				return
+			}
+		}
 	}
+	adopt("image_model_id", store.KindImage)
+	adopt("embedding_model_id", store.KindEmbedding)
 }
 
 // adminTestModel sends one short real request with the model's current settings,

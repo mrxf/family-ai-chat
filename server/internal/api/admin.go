@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -136,6 +137,11 @@ func (s *Server) adminGetSettings(w http.ResponseWriter, r *http.Request) {
 		v, _ := s.Store.GetSetting(r.Context(), k)
 		out[k] = v
 	}
+	if st, err := s.Store.MemoryStats(r.Context(), out["embedding_model_id"]); err == nil {
+		out["memory_active_count"] = strconv.Itoa(st.Active)
+		out["memory_embedded_count"] = strconv.Itoa(st.Embedded)
+		out["memory_keywords_pending"] = strconv.Itoa(st.PendingKeywords)
+	}
 	writeJSON(w, 200, out)
 }
 
@@ -189,6 +195,9 @@ func (s *Server) adminPutSettings(w http.ResponseWriter, r *http.Request) {
 		if err := s.Store.SetSetting(r.Context(), k, v); err != nil {
 			s.writeStoreErr(w, r, err)
 			return
+		}
+		if k == "embedding_model_id" && v != "" && s.Chat.Memory != nil {
+			go s.Chat.Memory.DrainEmbeddings(context.WithoutCancel(r.Context()))
 		}
 	}
 	s.adminGetSettings(w, r)

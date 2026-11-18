@@ -5,6 +5,7 @@ import '../../core/admin_models.dart';
 import '../../core/api.dart';
 import '../../state/catalog.dart';
 import '../../state/session.dart';
+import '../icons.dart';
 import '../sheets.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -219,7 +220,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
             if (m != null)
               IconButton(
                 tooltip: '删除',
-                icon: Icon(Icons.delete_outline_rounded, color: p.bad),
+                icon: Icon(AppIcons.delete, color: p.bad),
                 onPressed: () => _delete(c, m),
               ),
           ],
@@ -254,11 +255,11 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
                     if (m != null && !isDefault && c.usable(m))
                       SectionAction(
                         label: '设为全家默认',
-                        icon: Icons.star_outline_rounded,
+                        icon: AppIcons.star,
                         filled: true,
                         onTap: () => _makeDefault(m),
                       ),
-                    if (isDefault) Tag('全家默认', icon: Icons.star_rounded, color: p.accent),
+                    if (isDefault) Tag('全家默认', icon: AppIcons.starActive, color: p.accent),
                   ],
                 ),
               ),
@@ -307,7 +308,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
                   ]),
                 ),
                 SwitchRow(
-                  icon: Icons.visibility_outlined,
+                  icon: AppIcons.eye,
                   value: _enabled,
                   onChanged: (v) => setState(() {
                     _enabled = v;
@@ -318,7 +319,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
                 ),
                 if (_chat) ...[
                   SwitchRow(
-                    icon: Icons.image_outlined,
+                    icon: AppIcons.image,
                     value: _vision,
                     onChanged: (v) => setState(() {
                       _vision = v;
@@ -328,7 +329,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
                     desc: '打开后才会把照片发给它；不支持看图的模型打开会报错',
                   ),
                   SwitchRow(
-                    icon: Icons.auto_fix_high_outlined,
+                    icon: AppIcons.magicWand,
                     value: _tools,
                     onChanged: (v) => setState(() {
                       _tools = v;
@@ -373,7 +374,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
                         padding: const EdgeInsets.only(bottom: 4),
                         child: SectionAction(
                           label: _advanced ? '收起高级设置' : '高级：直接填写参数值',
-                          icon: _advanced ? Icons.expand_less_rounded : Icons.tune_rounded,
+                          icon: _advanced ? AppIcons.chevronUp : AppIcons.tune,
                           onTap: () => setState(() => _advanced = !_advanced),
                         ),
                       ),
@@ -575,7 +576,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
     final running = _testingThink == think;
     return SecondaryButton(
       label: running ? (_embedding ? '正在测试…' : (_image ? '正在画…' : '等待回答…')) : label,
-      icon: think ? Icons.lightbulb_outline_rounded : Icons.play_arrow_rounded,
+      icon: think ? AppIcons.thinkOff : AppIcons.play,
       busy: running,
       onTap: _testingThink != null ? null : () => _runTest(think),
     );

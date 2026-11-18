@@ -9,6 +9,7 @@ import '../core/models.dart';
 import '../core/tts.dart';
 import '../state/chat.dart';
 import '../state/session.dart';
+import 'icons.dart';
 import 'markdown.dart';
 import 'sheets.dart';
 import 'mascot_anim.dart';
@@ -49,7 +50,7 @@ class UserMessage extends ConsumerWidget {
                 if (m.status == MsgStatus.error)
                   Pressable(
                     onTap: () => ref.read(chatProvider.notifier).retryFailed(m),
-                    child: Padding(padding: const EdgeInsets.only(right: 8), child: Icon(Icons.error_rounded, color: p.bad, size: 24)),
+                    child: Padding(padding: const EdgeInsets.only(right: 8), child: Icon(AppIcons.error, color: p.bad, size: 22)),
                   ),
                 Flexible(
                   child: Pressable(
@@ -107,7 +108,7 @@ class ImageGrid extends ConsumerWidget {
       }
       if (api == null || a.fileId.isEmpty) return const SizedBox();
       return Image.network(api.fileUrl(a.fileId), headers: api.authHeaders, fit: fit, gaplessPlayback: true, cacheWidth: 900,
-          errorBuilder: (_, _, _) => Container(color: context.pal.surfaceAlt, child: Icon(Icons.broken_image_outlined, color: context.pal.faint)));
+          errorBuilder: (_, _, _) => Container(color: context.pal.surfaceAlt, child: Icon(AppIcons.brokenImage, color: context.pal.faint)));
     }
 
     void open(int i) => Navigator.of(context).push(PageRouteBuilder(
@@ -319,7 +320,7 @@ class _ImageViewerState extends ConsumerState<ImageViewer> {
                 onPressed: _saving ? null : _save,
                 icon: _saving
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.download_rounded),
+                    : const Icon(AppIcons.download),
                 label: const Text('保存到相册'),
               ),
             ),
@@ -396,6 +397,7 @@ class _AssistantMessageState extends ConsumerState<AssistantMessage> {
         final reasoning = isLive ? live.reasoning : m.reasoning;
         final drawn = isLive ? live.attachments : m.attachments;
         final drawing = isLive && live.drawing;
+        final working = isLive && live.working;
         final phase = isLive ? live.phase : null;
         return Padding(
           padding: const EdgeInsets.fromLTRB(18, 8, 18, 4),
@@ -405,9 +407,16 @@ class _AssistantMessageState extends ConsumerState<AssistantMessage> {
               if (reasoning.isNotEmpty) ReasoningPanel(text: reasoning, thinking: phase == LivePhase.reasoning, durationMs: m.durationMs),
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 250),
-                child: phase == LivePhase.waiting && !drawing && drawn.isEmpty ? const ThinkingIndicator() : const SizedBox(width: double.infinity),
+                child: phase == LivePhase.waiting && !drawing && drawn.isEmpty
+                    ? ThinkingIndicator(label: working ? live.activity : '')
+                    : const SizedBox(width: double.infinity),
               ),
               if (content.isNotEmpty) Md(content, streaming: isLive, animate: _wasLive),
+              if (working && phase != LivePhase.waiting)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: ThinkingIndicator(label: live.activity, compact: true),
+                ),
               if (drawn.isNotEmpty || drawing)
                 Padding(
                   padding: EdgeInsets.only(top: content.isEmpty ? 2 : 10, bottom: 4),
@@ -452,16 +461,16 @@ class _Footer extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
           decoration: BoxDecoration(color: p.bad.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(14)),
           child: Row(children: [
-            Icon(Icons.cloud_off_rounded, size: 20, color: p.bad),
+            Icon(AppIcons.cloudOff, size: 20, color: p.bad),
             const SizedBox(width: 10),
             Expanded(child: Text(m.error.isEmpty ? '回答出错了' : m.error, style: TextStyle(fontSize: 15, color: p.text))),
             if (isLast) TextButton(onPressed: () => chat.regenerate(), child: const Text('重试')),
           ]),
         ));
       case MsgStatus.cancelled:
-        children.add(note(Icons.stop_circle_outlined, '已停止回答', p.muted));
+        children.add(note(AppIcons.stopCircle, '已停止回答', p.muted));
       case MsgStatus.interrupted:
-        children.add(note(Icons.info_outline_rounded, '回答被中断了，可以点下方「重新回答」', p.muted));
+        children.add(note(AppIcons.info, '回答被中断了，可以点下方「重新回答」', p.muted));
       default:
     }
     if (m.content.isNotEmpty || m.attachments.isNotEmpty || isLast) {
@@ -484,7 +493,7 @@ class _ActionRow extends ConsumerWidget {
           message: tip,
           child: Pressable(
             onTap: onTap,
-            child: Padding(padding: const EdgeInsets.all(9), child: Icon(icon, size: 21, color: color ?? p.muted)),
+            child: Padding(padding: const EdgeInsets.all(9), child: Icon(icon, size: 20, color: color ?? p.muted)),
           ),
         );
     return Padding(
@@ -492,9 +501,9 @@ class _ActionRow extends ConsumerWidget {
       child: Transform.translate(
         offset: const Offset(-9, 0),
         child: Row(children: [
-          if (m.attachments.isNotEmpty) btn(Icons.download_rounded, '保存图片', () => saveToGallery(context, ref, m.attachments)),
+          if (m.attachments.isNotEmpty) btn(AppIcons.download, '保存图片', () => saveToGallery(context, ref, m.attachments)),
           if (m.content.isNotEmpty)
-            btn(Icons.copy_rounded, '复制', () {
+            btn(AppIcons.copy, '复制', () {
               Clipboard.setData(ClipboardData(text: m.content));
               showToast(context, '已复制');
             }),
@@ -503,23 +512,25 @@ class _ActionRow extends ConsumerWidget {
               valueListenable: Speaker.instance.speaking,
               builder: (_, speakingId, _) {
                 final on = speakingId == m.id;
-                return btn(on ? Icons.stop_circle_rounded : Icons.volume_up_rounded, on ? '停止朗读' : '朗读', () async {
+                return btn(on ? AppIcons.stopCircle : AppIcons.speaker, on ? '停止朗读' : '朗读', () async {
                   final ok = await Speaker.instance.toggle(m.id, m.content, rate: ref.read(settingsProvider).ttsRate);
                   if (!ok && context.mounted) showToast(context, '这台手机暂时不支持朗读，可以在系统设置里安装中文语音');
                 }, color: on ? p.accent : null);
               },
             ),
-          if (isLast) btn(Icons.refresh_rounded, '重新回答', () => ref.read(chatProvider.notifier).regenerate()),
-          if (m.content.isNotEmpty) btn(Icons.more_horiz_rounded, '更多', () => showAssistantMessageActions(context, ref, m, isLast)),
+          if (isLast) btn(AppIcons.refresh, '重新回答', () => ref.read(chatProvider.notifier).regenerate()),
+          if (m.content.isNotEmpty) btn(AppIcons.more, '更多', () => showAssistantMessageActions(context, ref, m, isLast)),
         ]),
       ),
     );
   }
 }
 
-/// Shown between sending and the first token.
+/// Shown between sending and the first token (or during fast read-only tool calls).
 class ThinkingIndicator extends StatefulWidget {
-  const ThinkingIndicator({super.key});
+  const ThinkingIndicator({super.key, this.label = '', this.compact = false});
+  final String label;
+  final bool compact;
   @override
   State<ThinkingIndicator> createState() => _ThinkingIndicatorState();
 }
@@ -541,8 +552,10 @@ class _ThinkingIndicatorState extends State<ThinkingIndicator> with SingleTicker
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const AnimatedMascot(size: 34, motion: MascotMotion.thinking),
-          const SizedBox(width: 8),
+          if (!widget.compact) ...[
+            const AnimatedMascot(size: 34, motion: MascotMotion.thinking),
+            const SizedBox(width: 8),
+          ],
           AnimatedBuilder(
             animation: _c,
             builder: (_, _) => Row(
@@ -550,8 +563,8 @@ class _ThinkingIndicatorState extends State<ThinkingIndicator> with SingleTicker
                 for (var i = 0; i < 3; i++)
                   Container(
                     margin: const EdgeInsets.symmetric(horizontal: 3),
-                    width: 8,
-                    height: 8,
+                    width: widget.compact ? 6 : 8,
+                    height: widget.compact ? 6 : 8,
                     decoration: BoxDecoration(
                       color: p.accent.withValues(alpha: 0.25 + 0.75 * _pulse((_c.value - i * 0.18) % 1.0)),
                       shape: BoxShape.circle,
@@ -560,6 +573,10 @@ class _ThinkingIndicatorState extends State<ThinkingIndicator> with SingleTicker
               ],
             ),
           ),
+          if (widget.label.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            Flexible(child: Text(widget.label, style: TextStyle(fontSize: 13.5, color: p.muted))),
+          ],
         ],
       ),
     );
@@ -599,13 +616,14 @@ class _ReasoningPanelState extends State<ReasoningPanel> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(color: p.surfaceAlt, borderRadius: BorderRadius.circular(20)),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.lightbulb_outline_rounded, size: 17, color: p.accent),
+                Icon(AppIcons.thinkOff, size: 16, color: p.accent),
                 const SizedBox(width: 6),
                 Text(label, style: TextStyle(fontSize: 14, color: p.muted, fontWeight: FontWeight.w500)),
+                const SizedBox(width: 3),
                 AnimatedRotation(
                   turns: open ? 0.5 : 0,
                   duration: const Duration(milliseconds: 200),
-                  child: Icon(Icons.expand_more_rounded, size: 18, color: p.muted),
+                  child: Icon(AppIcons.chevronDown, size: 15, color: p.muted),
                 ),
               ]),
             ),

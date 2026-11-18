@@ -6,6 +6,7 @@ import '../../core/admin_models.dart';
 import '../../core/api.dart';
 import '../../state/catalog.dart';
 import '../../state/session.dart';
+import '../icons.dart';
 import '../sheets.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -79,7 +80,7 @@ class PresetPickerPage extends ConsumerWidget {
                         ]),
                       ),
                       const SizedBox(width: 6),
-                      Icon(Icons.chevron_right_rounded, color: p.faint, size: 22),
+                      Icon(AppIcons.chevronRight, color: p.faint, size: 18),
                     ]),
                   ),
                 ),
@@ -229,7 +230,7 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
                     const SizedBox(height: 10),
                     SectionAction(
                       label: '去官网创建 API Key',
-                      icon: Icons.open_in_new_rounded,
+                      icon: AppIcons.externalLink,
                       filled: true,
                       onTap: () => openLink(context, pr.keyUrl),
                     ),
@@ -255,7 +256,7 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
                       onTap: () => setState(() => _hideKey = !_hideKey),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                        child: Icon(_hideKey ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 19, color: p.muted),
+                        child: Icon(_hideKey ? AppIcons.eye : AppIcons.eyeOff, size: 19, color: p.muted),
                       ),
                     ),
                     const SizedBox(width: 4),
@@ -275,7 +276,7 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
                     alignment: Alignment.centerLeft,
                     child: SectionAction(
                       label: '修改接口地址（一般不需要）',
-                      icon: Icons.tune_rounded,
+                      icon: AppIcons.tune,
                       onTap: () => setState(() => _showUrl = true),
                     ),
                   ),
@@ -452,14 +453,14 @@ class _ProviderDetailPageState extends ConsumerState<ProviderDetailPage> {
             // ---- connection ----
             const SectionHeader('连接'),
             GroupCard(children: [
-              InfoRow(icon: Icons.badge_outlined, title: '名称', value: pr.name, onTap: () => _editName(pr)),
-              InfoRow(icon: Icons.link_rounded, title: '接口地址', subtitle: pr.endpoint, onTap: () => _editUrl(pr)),
-              InfoRow(icon: Icons.key_rounded, title: 'API Key', value: pr.apiKeyHint, onTap: () => _editKey(pr)),
+              InfoRow(icon: AppIcons.badge, title: '名称', value: pr.name, onTap: () => _editName(pr)),
+              InfoRow(icon: AppIcons.link, title: '接口地址', subtitle: pr.endpoint, onTap: () => _editUrl(pr)),
+              InfoRow(icon: AppIcons.key, title: 'API Key', value: pr.apiKeyHint, onTap: () => _editKey(pr)),
               if (pr.keyUrl.isNotEmpty)
                 InfoRow(
-                  icon: Icons.account_balance_wallet_outlined,
+                  icon: AppIcons.wallet,
                   title: '去官网查看余额、管理 Key',
-                  trailing: Icon(Icons.open_in_new_rounded, size: 18, color: p.faint),
+                  trailing: Icon(AppIcons.externalLink, size: 18, color: p.faint),
                   onTap: () => openLink(context, pr.keyUrl),
                 ),
               Padding(
@@ -467,7 +468,7 @@ class _ProviderDetailPageState extends ConsumerState<ProviderDetailPage> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   SecondaryButton(
                     label: _testing ? '正在测试…' : '测试连接',
-                    icon: Icons.wifi_tethering_rounded,
+                    icon: AppIcons.connectionTest,
                     busy: _testing,
                     onTap: _runTest,
                   ),
@@ -491,7 +492,7 @@ class _ProviderDetailPageState extends ConsumerState<ProviderDetailPage> {
               Expanded(
                 child: PrimaryButton(
                   label: '从列表添加',
-                  icon: Icons.playlist_add_rounded,
+                  icon: AppIcons.listPlus,
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => UpstreamPickerPage(providerId: pr.id))),
                 ),
               ),
@@ -499,7 +500,7 @@ class _ProviderDetailPageState extends ConsumerState<ProviderDetailPage> {
               Expanded(
                 child: SecondaryButton(
                   label: '手动添加',
-                  icon: Icons.edit_note_rounded,
+                  icon: AppIcons.editNote,
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ModelEditPage(providerId: pr.id))),
                 ),
               ),

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/admin_models.dart';
 import '../../core/api.dart';
 import '../../state/session.dart';
+import '../icons.dart';
 import '../sheets.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -226,7 +227,7 @@ class _AsrAdminPageState extends ConsumerState<AsrAdminPage> {
       actions: [
         for (final m in pr.models)
           SheetAction(
-            _model.text.trim() == m.id ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+            _model.text.trim() == m.id ? AppIcons.radioOn : AppIcons.radioOff,
             m.name,
             () => setState(() => _model.text = m.id),
             subtitle: m.description,
@@ -243,7 +244,7 @@ class _AsrAdminPageState extends ConsumerState<AsrAdminPage> {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
               child: Icon(
-                _hideSecret ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                _hideSecret ? AppIcons.eye : AppIcons.eyeOff,
                 size: 19,
                 color: p.muted,
               ),
@@ -282,7 +283,7 @@ class _AsrAdminPageState extends ConsumerState<AsrAdminPage> {
             child: Row(children: [
               SecondaryButton(
                 label: '测试连接',
-                icon: Icons.wifi_tethering_rounded,
+                icon: AppIcons.connectionTest,
                 busy: _testing,
                 onTap: _saving ? null : () => _runTest(current),
               ),
@@ -290,7 +291,7 @@ class _AsrAdminPageState extends ConsumerState<AsrAdminPage> {
               Expanded(
                 child: PrimaryButton(
                   label: isActiveThis ? '保存并更新' : '测试并启用',
-                  icon: Icons.mic_rounded,
+                  icon: AppIcons.mic,
                   busy: _saving,
                   onTap: _testing ? null : () => _saveAndEnable(current),
                 ),
@@ -322,9 +323,9 @@ class _AsrAdminPageState extends ConsumerState<AsrAdminPage> {
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Icon(
-                        state.enabled ? Icons.mic_rounded : Icons.mic_none_rounded,
+                        state.enabled ? AppIcons.mic : AppIcons.micOff,
                         color: state.enabled ? p.accent : p.muted,
-                        size: 23,
+                        size: 22,
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -415,8 +416,8 @@ class _AsrAdminPageState extends ConsumerState<AsrAdminPage> {
                             if (pr.available) ...[
                               const SizedBox(width: 10),
                               Icon(
-                                selected ? Icons.check_circle_rounded : Icons.circle_outlined,
-                                size: 22,
+                                selected ? AppIcons.checkCircle : AppIcons.circle,
+                                size: 21,
                                 color: selected ? p.accent : p.line,
                               ),
                             ],
@@ -434,7 +435,7 @@ class _AsrAdminPageState extends ConsumerState<AsrAdminPage> {
                   trailing: current.keyUrl.isNotEmpty
                       ? SectionAction(
                           label: '获取密钥',
-                          icon: Icons.open_in_new_rounded,
+                          icon: AppIcons.externalLink,
                           filled: true,
                           onTap: () => openLink(context, current.keyUrl),
                         )
@@ -477,7 +478,7 @@ class _AsrAdminPageState extends ConsumerState<AsrAdminPage> {
                       ]),
                     ),
                     InfoRow(
-                      icon: Icons.tune_rounded,
+                      icon: AppIcons.tune,
                       title: '识别引擎',
                       subtitle: '通用版适配免费额度；方言版需大模型资源包',
                       value: current.models.where((m) => m.id == _model.text.trim()).map((m) => m.name).firstOrNull ?? _model.text.trim(),
@@ -491,7 +492,7 @@ class _AsrAdminPageState extends ConsumerState<AsrAdminPage> {
                   trailing: current.keyUrl.isNotEmpty
                       ? SectionAction(
                           label: '获取 Key',
-                          icon: Icons.open_in_new_rounded,
+                          icon: AppIcons.externalLink,
                           filled: true,
                           onTap: () => openLink(context, current.keyUrl),
                         )

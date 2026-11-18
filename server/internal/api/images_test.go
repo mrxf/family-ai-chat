@@ -59,7 +59,8 @@ func (d *drawUpstream) handler(t *testing.T) http.HandlerFunc {
 		d.chats = append(d.chats, body)
 		reject := d.rejectAll
 		d.mu.Unlock()
-		_, hasTools := body["tools"]
+		rawTools, hasTools := body["tools"]
+		hasDrawTool := strings.Contains(fmt.Sprint(rawTools), "generate_image")
 		if reject && hasTools {
 			w.WriteHeader(400)
 			fmt.Fprint(w, `{"error":{"message":"tools is not supported"}}`)
@@ -76,17 +77,17 @@ func (d *drawUpstream) handler(t *testing.T) http.HandlerFunc {
 			b, _ := json.Marshal(map[string]any{"choices": []any{ch}})
 			fmt.Fprintf(w, "data: %s\n\n", b)
 		}
-		if hasTools && last["role"] == "user" && strings.Contains(fmt.Sprint(last["content"]), "四张") {
+		if hasDrawTool && last["role"] == "user" && strings.Contains(fmt.Sprint(last["content"]), "四张") {
 			var calls []any
 			for i, a := range []string{"square", "landscape", "portrait", "square"} {
 				calls = append(calls, map[string]any{"index": i, "id": fmt.Sprintf("call_%d", i), "type": "function",
 					"function": map[string]any{"name": "generate_image", "arguments": fmt.Sprintf(`{"prompt":"pic %d","aspect":%q}`, i, a)}})
 			}
 			chunk(map[string]any{"tool_calls": calls}, "tool_calls")
-		} else if hasTools && last["role"] == "user" && strings.Contains(fmt.Sprint(last["content"]), "改") {
+		} else if hasDrawTool && last["role"] == "user" && strings.Contains(fmt.Sprint(last["content"]), "改") {
 			chunk(map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": "call_e", "type": "function",
 				"function": map[string]any{"name": "generate_image", "arguments": `{"prompt":"make it black","image":"图1"}`}}}}, "tool_calls")
-		} else if hasTools && last["role"] == "user" && strings.Contains(fmt.Sprint(last["content"]), "画") {
+		} else if hasDrawTool && last["role"] == "user" && strings.Contains(fmt.Sprint(last["content"]), "画") {
 			chunk(map[string]any{"content": "我来画一只。"}, "")
 			chunk(map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": "call_a", "type": "function",
 				"function": map[string]any{"name": "generate_image", "arguments": `{"prompt":"a cute puppy","aspect":"portrait"}`}}}}, "")
@@ -263,12 +264,19 @@ func TestChatWithoutImageModelSendsNoTools(t *testing.T) {
 	res := f.send(map[string]any{"content": "帮我画一只小狗"})
 	f.waitRun(res.Assistant.ID)
 	chats := d.chatRequests()
-	if len(chats) != 1 || chats[0]["tools"] != nil {
+	if len(chats) != 1 || strings.Contains(fmt.Sprint(chats[0]["tools"]), "generate_image") || !strings.Contains(fmt.Sprint(chats[0]["tools"]), "recall_memory") {
 		t.Fatalf("requests: %+v", chats)
 	}
 	sys := chats[0]["messages"].([]any)[0].(map[string]any)["content"].(string)
 	if !strings.Contains(sys, "不能画图") {
 		t.Fatal("system prompt should say drawing is unavailable")
+	}
+	// Private conversation without an image model sends zero tools at all.
+	priv := f.send(map[string]any{"content": "你好", "private": true})
+	f.waitRun(priv.Assistant.ID)
+	chats = d.chatRequests()
+	if len(chats) != 2 || chats[1]["tools"] != nil {
+		t.Fatalf("private chat without image model must send no tools: %+v", chats[1]["tools"])
 	}
 	var boot struct {
 		Models   []map[string]any `json:"models"`

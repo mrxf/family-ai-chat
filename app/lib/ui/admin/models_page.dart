@@ -6,6 +6,7 @@ import '../../core/admin_models.dart';
 import '../../core/api.dart';
 import '../../state/catalog.dart';
 import '../../state/session.dart';
+import '../icons.dart';
 import '../sheets.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -50,7 +51,7 @@ class _Empty extends StatelessWidget {
         style: TextStyle(fontSize: 15, color: p.muted, height: 1.6),
       ),
       const SizedBox(height: 28),
-      PrimaryButton(label: '添加供应商', icon: Icons.add_rounded, onTap: () => openAddProvider(context)),
+      PrimaryButton(label: '添加供应商', icon: AppIcons.plus, onTap: () => openAddProvider(context)),
     ]);
   }
 }
@@ -81,7 +82,7 @@ class _Body extends ConsumerWidget {
           const SectionHeader('全家使用'),
           GroupCard(children: [
             InfoRow(
-              icon: Icons.star_outline_rounded,
+              icon: AppIcons.star,
               title: '默认模型',
               subtitle: '家人开新对话时默认用它',
               value: nameOf(s.defaultModelId, '未设置'),
@@ -89,7 +90,7 @@ class _Body extends ConsumerWidget {
               onTap: noUsable ? null : () => _assign(context, ref, 'default_model_id', '全家默认模型', s.defaultModelId, allowNone: false),
             ),
             InfoRow(
-              icon: Icons.shield_outlined,
+              icon: AppIcons.shield,
               title: '备用模型',
               subtitle: '默认模型出错时自动换它回答，家人不会看到报错',
               value: nameOf(s.fallbackModelId, '不启用'),
@@ -97,7 +98,7 @@ class _Body extends ConsumerWidget {
               onTap: noUsable ? null : () => _assign(context, ref, 'fallback_model_id', '备用模型', s.fallbackModelId, noneLabel: '不启用备用模型'),
             ),
             InfoRow(
-              icon: Icons.drive_file_rename_outline_rounded,
+              icon: AppIcons.rename,
               title: '起标题的模型',
               subtitle: '自动给对话起标题，选便宜、快的就行',
               value: nameOf(s.titleModelId, '跟随对话'),
@@ -108,20 +109,30 @@ class _Body extends ConsumerWidget {
           const SectionHeader('记忆'),
           GroupCard(children: [
             InfoRow(
-              icon: Icons.auto_awesome_outlined,
+              icon: AppIcons.sparkles,
               title: '记忆整理模型',
-              subtitle: '从聊天中整理家人的情况，选聊天模型',
+              subtitle: s.memoryKeywordsPending > 0
+                  ? '正在后台为 ${s.memoryKeywordsPending} 条记忆补充口语检索词'
+                  : '从聊天中整理家人的情况并生成同义检索词',
               value: nameOf(s.memoryModelId, '跟随起标题的模型'),
               valueColor: s.memoryModelId.isEmpty ? p.faint : p.muted,
               onTap: () => _assign(context, ref, 'memory_model_id', '记忆整理模型', s.memoryModelId, noneLabel: '跟随起标题的模型'),
             ),
             InfoRow(
-              icon: Icons.manage_search_rounded,
+              icon: AppIcons.manageSearch,
               title: '记忆检索模型',
-              subtitle: '用向量模型查找相关的记忆',
-              value: nameOf(s.embeddingModelId, '只按关键词找'),
-              valueColor: s.embeddingModelId.isEmpty ? p.faint : p.muted,
-              onTap: () => _assign(context, ref, 'embedding_model_id', '记忆检索模型', s.embeddingModelId, noneLabel: '不用向量，只按关键词找', kind: 'embedding'),
+              subtitle: s.embeddingModelId.isEmpty
+                  ? (embeddings.isEmpty
+                      ? '当前使用关键词 + AI 主动检索；可在供应商中添加 bge-m3 等向量模型增强口语召回'
+                      : '当前仅用关键词 + AI 主动检索，点此启用已添加的向量模型')
+                  : (s.memoryActiveCount > 0
+                      ? '向量 + 关键词混合检索（已向量化 ${s.memoryEmbeddedCount}/${s.memoryActiveCount} 条）'
+                      : '向量 + 关键词混合查找相关记忆'),
+              value: nameOf(s.embeddingModelId, '仅关键词'),
+              valueColor: s.embeddingModelId.isEmpty ? p.accent : p.muted,
+              onTap: embeddings.isEmpty && s.embeddingModelId.isEmpty
+                  ? () => showToast(context, '先到下面的供应商里挑选一个标着「向量」的模型（如 bge-m3、text-embedding-3-small）')
+                  : () => _assign(context, ref, 'embedding_model_id', '记忆检索模型', s.embeddingModelId, noneLabel: '不用向量，只按关键词找', kind: 'embedding'),
             ),
           ]),
           if (chat.isNotEmpty)
@@ -180,7 +191,7 @@ class _Body extends ConsumerWidget {
           ),
           GroupCard(children: [
             InfoRow(
-              icon: Icons.palette_outlined,
+              icon: AppIcons.palette,
               title: '画图模型',
               subtitle: images.isEmpty ? '还没有添加' : '用哪个模型画',
               value: s.imageModelId.isEmpty ? '未开通' : nameOf(s.imageModelId, '未开通'),
@@ -191,7 +202,7 @@ class _Body extends ConsumerWidget {
             ),
             if (s.imageModelId.isNotEmpty)
               InfoRow(
-                icon: Icons.event_repeat_rounded,
+                icon: AppIcons.repeat,
                 title: '每人每天',
                 subtitle: '最多画几张，管理员不受限',
                 value: s.imageDailyLimit > 0 ? '${s.imageDailyLimit} 张' : '不限',
@@ -206,7 +217,7 @@ class _Body extends ConsumerWidget {
             subtitle: '模型从这里来，费用也由它们收取',
             trailing: SectionAction(
               label: '添加供应商',
-              icon: Icons.add_rounded,
+              icon: AppIcons.plus,
               filled: true,
               onTap: () => openAddProvider(context),
             ),
@@ -229,11 +240,11 @@ class _Body extends ConsumerWidget {
       }
     }
 
-    SheetAction option(int n) => SheetAction(n == current ? Icons.check_circle_rounded : Icons.circle_outlined, n == 0 ? '不限' : '$n 张', () => save(n));
+    SheetAction option(int n) => SheetAction(n == current ? AppIcons.checkCircle : AppIcons.circle, n == 0 ? '不限' : '$n 张', () => save(n));
     await showActionSheet(context, title: '每人每天最多画几张（画好的才算，失败不算）', actions: [
       for (final n in const [0, 5, 10, 20]) option(n),
       if (current > 0 && !const [5, 10, 20].contains(current)) option(current),
-      SheetAction(Icons.edit_rounded, '自定义…', () async {
+      SheetAction(AppIcons.edit, '自定义…', () async {
         final v = await showTextEditor(context, title: '每人每天最多画几张', initial: current > 0 ? '$current' : '', maxLines: 1, hint: '填数字，0 表示不限');
         if (v == null) return;
         final n = int.tryParse(v.trim());
@@ -281,8 +292,8 @@ class ModelRow extends ConsumerWidget {
 
     final tags = <Widget>[
       if (providerOff) Tag('供应商已停用', color: p.bad),
-      if (m.isImage) const Tag('画图', icon: Icons.palette_outlined),
-      if (m.isEmbedding) const Tag('向量', icon: Icons.manage_search_rounded),
+      if (m.isImage) const Tag('画图', icon: AppIcons.palette),
+      if (m.isEmbedding) const Tag('向量', icon: AppIcons.manageSearch),
       if (m.isEmbedding && catalog.settings.embeddingModelId == m.id) Tag('正在使用', color: p.good),
       if (m.isImage && catalog.settings.imageModelId == m.id) Tag('正在使用', color: p.good),
       if (m.isChat) ...modelTags(context, vision: m.vision, think: m.think),
@@ -352,7 +363,7 @@ class ModelRow extends ConsumerWidget {
               index: dragIndex!,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(4, 8, 6, 8),
-                child: Icon(Icons.drag_handle_rounded, size: 20, color: p.faint.withValues(alpha: 0.75)),
+                child: Icon(AppIcons.dragHandle, size: 19, color: p.faint.withValues(alpha: 0.75)),
               ),
             ),
         ]),
@@ -400,7 +411,7 @@ class ProviderCard extends StatelessWidget {
               ),
             ]),
           ),
-          Icon(Icons.chevron_right_rounded, color: p.faint, size: 22),
+          Icon(AppIcons.chevronRight, color: p.faint, size: 18),
         ]),
       ),
     );
@@ -438,7 +449,7 @@ Future<String?> showAdminModelChooser(BuildContext context, Catalog c, {required
                     if (tags.isNotEmpty) ...[const SizedBox(height: 6), Wrap(spacing: 6, runSpacing: 6, children: tags)],
                   ]),
                 ),
-                if (selected) Icon(Icons.check_circle_rounded, color: p.accent, size: 22),
+                if (selected) Icon(AppIcons.checkCircle, color: p.accent, size: 20),
               ]),
             ),
           ),

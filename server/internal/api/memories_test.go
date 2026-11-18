@@ -3,7 +3,10 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -251,5 +254,110 @@ func TestAssistantMemoryDefaultsAndToggle(t *testing.T) {
 	f.json("PATCH", "/api/assistants/"+a.ID, map[string]any{"use_memory": false}, 200, &a)
 	if a.UseMemory {
 		t.Fatal(a)
+	}
+}
+
+func TestAgenticMemoryToolsMultiRoundRecallAndReadConversation(t *testing.T) {
+	f := newAPIFixture(t)
+	// Seed past conversation with concrete details + core memory + 24 episodes.
+	past := &store.Conversation{UserID: f.user.ID, Title: "柯基雨后护理"}
+	if err := f.st.CreateConversation(t.Context(), past); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.st.ApplyTurn(t.Context(), store.Turn{
+		ConversationID: past.ID,
+		Append: []*store.Message{
+			{Role: "user", Content: "我家5岁柯基下雨踩水后肚子总是红痒，上次去医院洗药浴花了680太贵了", Status: store.StatusDone},
+			{Role: "assistant", Content: "回家立刻用吸水毛巾擦干脚垫和肚子，再用冷暖风彻底吹透毛根。", Status: store.StatusDone},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	mems := []*store.Memory{
+		{UserID: f.user.ID, Category: "family", Content: "用户家养了一只五岁的柯基。", Pinned: true},
+		{UserID: f.user.ID, Category: "episode", Content: "2026-11-17 用户询问5岁柯基雨后反复瘙痒的处理办法，因上次检查和药浴费用较高不想再就医。", SourceConvID: &past.ID},
+	}
+	for i := 0; i < 23; i++ {
+		mems = append(mems, &store.Memory{UserID: f.user.ID, Category: "episode", Content: fmt.Sprintf("2026-11-01 历史闲聊记录 #%d", i+1)})
+	}
+	if err := f.st.CreateMemories(t.Context(), mems); err != nil {
+		t.Fatal(err)
+	}
+
+	var mu sync.Mutex
+	var chatCalls []map[string]any
+	srv := newHTTPTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["stream"] != true {
+			fmt.Fprint(w, `{"choices":[{"message":{"content":"小狗持续瘙痒"}}]}`)
+			return
+		}
+		mu.Lock()
+		round := len(chatCalls)
+		chatCalls = append(chatCalls, body)
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		emit := func(delta map[string]any, finish string) {
+			ch := map[string]any{"delta": delta}
+			if finish != "" {
+				ch["finish_reason"] = finish
+			}
+			b, _ := json.Marshal(map[string]any{"choices": []any{ch}})
+			fmt.Fprintf(w, "data: %s\n\n", b)
+		}
+		switch round {
+		case 0:
+			// Round 0: model calls recall_memory to inspect the 24 episodes & raw messages.
+			emit(map[string]any{"tool_calls": []any{map[string]any{
+				"index": 0, "id": "call_mem_1", "type": "function",
+				"function": map[string]any{"name": "recall_memory", "arguments": `{"queries":["柯基 瘙痒 药浴","小狗 痒 医院"]}`},
+			}}}, "tool_calls")
+		case 1:
+			// Round 1: model drills down into the past conversation via read_past_conversation.
+			emit(map[string]any{"tool_calls": []any{map[string]any{
+				"index": 0, "id": "call_conv_2", "type": "function",
+				"function": map[string]any{"name": "read_past_conversation", "arguments": fmt.Sprintf(`{"conversation_id":%q,"focus":"药浴"}`, past.ID)},
+			}}}, "tool_calls")
+		default:
+			emit(map[string]any{"content": "看到啦，一共24条聊过的事！上次是因为下雨踩水后没吹透引起瘙痒，药浴花了680元。"}, "stop")
+		}
+		fmt.Fprint(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":12}}\n\ndata: [DONE]\n\n")
+	}))
+	t.Cleanup(srv.Close)
+
+	prov := &store.Provider{ID: "agent-p", Kind: "custom", Name: "AgentP", BaseURL: srv.URL, APIKey: "k", Enabled: true}
+	if err := f.st.UpsertProvider(t.Context(), prov); err != nil {
+		t.Fatal(err)
+	}
+	f.svc.Client(prov).HTTP = srv.Client()
+	agentModel := &store.Model{ID: "agent-terra", ProviderID: prov.ID, Kind: store.KindChat, UpstreamModel: "gpt-6.1-terra", DisplayName: "Terra", Tools: true, Vision: true, ContextWindow: 128000, Enabled: true}
+	if err := f.st.UpsertModel(t.Context(), agentModel); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.st.SetSetting(t.Context(), "default_model_id", agentModel.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	res := f.send(map[string]any{"content": "我看你的记忆里聊过的事有24条，还记得上次小狗为啥痒、药浴花了多少钱吗？"})
+	f.waitRun(res.Assistant.ID)
+
+	got, err := f.st.GetMessage(t.Context(), res.Assistant.ID)
+	if err != nil || got.Status != store.StatusDone || !strings.Contains(got.Content, "680") {
+		t.Fatalf("final assistant message=%+v err=%v", got, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(chatCalls) != 3 {
+		t.Fatalf("expected 3 rounds (recall_memory -> read_past_conversation -> final answer), got %d", len(chatCalls))
+	}
+	round1Msgs := fmt.Sprint(chatCalls[1]["messages"])
+	if !strings.Contains(round1Msgs, "聊过的事 24") || !strings.Contains(round1Msgs, past.ID) {
+		t.Fatalf("round 1 tool output missing 24-episode inventory or conv_id: %s", round1Msgs)
+	}
+	round2Msgs := fmt.Sprint(chatCalls[2]["messages"])
+	if !strings.Contains(round2Msgs, "680") || !strings.Contains(round2Msgs, "冷暖风彻底吹透") {
+		t.Fatalf("round 2 read_past_conversation output missing original dialogue details: %s", round2Msgs)
 	}
 }

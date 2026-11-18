@@ -245,7 +245,7 @@ func TestPromptsExcludePrivateTopics(t *testing.T) {
 			t.Fatal(name, "prompt lost the private topics")
 		}
 	}
-	if !strings.Contains(extractionPrompt, `{"actions":[],"episode":""}`) {
+	if !strings.Contains(extractionPrompt, `{"actions":[],"episodes":[]}`) {
 		t.Fatal("private conversations must not get an episode")
 	}
 }

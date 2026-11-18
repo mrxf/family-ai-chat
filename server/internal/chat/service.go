@@ -35,7 +35,11 @@ const (
 )
 
 type MemoryService interface {
+	Allowed(context.Context, *store.User, *string) bool
 	Inject(context.Context, *store.User, *string, string) memory.Context
+	InjectTurn(context.Context, *store.User, memory.InjectRequest) memory.Context
+	Recall(context.Context, *store.User, *string, string, memory.RecallRequest) string
+	ReadConversation(context.Context, *store.User, *string, string, string) string
 	StartImport(*store.User, string) (memory.ImportJob, error)
 	ImportStatus(string) (memory.ImportJob, bool)
 	CancelImport(string)
@@ -379,7 +383,7 @@ func (s *Service) startRun(user *store.User, conv *store.Conversation, asst *sto
 		msg := *asst
 		var firstToken time.Duration
 		var usage llm.Usage
-		turn := &toolTurn{user: user, convID: conv.ID, asstID: asst.ID, run: run, private: conv.Private}
+		turn := &toolTurn{user: user, convID: conv.ID, assistantID: conv.AssistantID, asstID: asst.ID, run: run, private: conv.Private}
 
 		if needTitle {
 			go s.generateTitle(conv.ID, user.ID, model, provider, run)
@@ -419,8 +423,9 @@ func (s *Service) startRun(user *store.User, conv *store.Conversation, asst *sto
 			usage.Cost += cost
 		}
 
-		tools := s.toolsFor(ctx, model)
-		req, err := s.buildRequest(ctx, user, conv, asst.ID, model, tools != nil)
+		ts := s.toolsFor(ctx, user, conv, model)
+		tools := ts.tools
+		req, err := s.buildRequestWithTools(ctx, user, conv, asst.ID, model, ts)
 		for round := 0; err == nil && round < maxToolRounds; round++ {
 			req.ReasoningEffort = effortFor(model, think)
 			req.Tools = tools
@@ -436,17 +441,17 @@ func (s *Service) startRun(user *store.User, conv *store.Conversation, asst *sto
 				s.Log.Warn("upstream rejected tools, retrying without", "message_id", asst.ID, "model", model.UpstreamModel, "err", err)
 				s.markToolsRejected(model)
 				tools, req.Tools = nil, nil
-				req.Messages[0].Content = s.systemPrompt(ctx, user, conv, false, req.core)
+				req.Messages[0].Content = s.systemPromptWithTools(ctx, user, conv, toolSet{}, req.core)
 				res, err = s.streamWithRetry(ctx, s.client(provider), req.Request, onEvent)
 			}
 			// Nothing reached the user yet: let the fallback model answer instead of showing an error.
 			if err != nil && round == 0 && firstToken == 0 && ctx.Err() == nil {
 				if fm, fp := s.fallbackModel(ctx, model.ID); fm != nil {
 					s.Log.Warn("primary model failed, using fallback", "message_id", asst.ID, "model", model.UpstreamModel, "fallback", fm.UpstreamModel, "err", err)
-					ftools := s.toolsFor(ctx, fm)
-					freq, ferr := s.buildRequest(ctx, user, conv, asst.ID, fm, ftools != nil)
+					fts := s.toolsFor(ctx, user, conv, fm)
+					freq, ferr := s.buildRequestWithTools(ctx, user, conv, asst.ID, fm, fts)
 					if ferr == nil {
-						model, provider, tools, req = fm, fp, ftools, freq
+						model, provider, tools, req = fm, fp, fts.tools, freq
 						msg.ModelID = &fm.ID
 						req.ReasoningEffort = effortFor(fm, think)
 						req.Tools = tools
@@ -470,8 +475,12 @@ func (s *Service) startRun(user *store.User, conv *store.Conversation, asst *sto
 			}
 			content, _ := run.text()
 			req.Messages = append(req.Messages, llm.Message{Role: "assistant", Content: strings.TrimSpace(content[roundStart:]), ToolCalls: calls})
-			for i, result := range s.runTools(ctx, turn, calls) {
+			results, stopTools := s.runTools(ctx, turn, calls)
+			for i, result := range results {
 				req.Messages = append(req.Messages, llm.Message{Role: "tool", ToolCallID: calls[i].ID, Content: result})
+			}
+			if stopTools {
+				tools = nil
 			}
 			needBreak = true
 			if ctx.Err() != nil {
@@ -658,9 +667,16 @@ const privatePrompt = `
 本次对话为「隐私对话」，对话结束后记录与图片会自动清除，系统不会读取也不会保存任何跨对话记忆。如果用户请你在以后的对话里「记住」某件事，请温和说明当前是隐私对话、关闭后不会留存；需要长期记住的内容可以退出隐私对话后再说，或在「设置 → 小暖记住的事」里手动添加。`
 
 func (s *Service) systemPrompt(ctx context.Context, user *store.User, conv *store.Conversation, canDraw bool, core ...string) string {
+	return s.systemPromptWithTools(ctx, user, conv, toolSet{canDraw: canDraw}, core...)
+}
+
+func (s *Service) systemPromptWithTools(ctx context.Context, user *store.User, conv *store.Conversation, ts toolSet, core ...string) string {
 	var b strings.Builder
 	b.WriteString(basePrompt)
-	b.WriteString(s.drawPrompt(ctx, canDraw))
+	b.WriteString(s.drawPrompt(ctx, ts.canDraw))
+	if ts.canRecall && !conv.Private {
+		b.WriteString(memoryToolPrompt)
+	}
 	if conv.AssistantID != nil {
 		if a, err := s.Store.GetAssistant(ctx, *conv.AssistantID, user.ID); err == nil && strings.TrimSpace(a.SystemPrompt) != "" {
 			fmt.Fprintf(&b, "\n\n# 本次对话的角色设定（%s）\n%s", a.Name, a.SystemPrompt)
@@ -712,31 +728,36 @@ type chatRequest struct {
 }
 
 func (s *Service) buildRequest(ctx context.Context, user *store.User, conv *store.Conversation, asstID string, model *store.Model, canDraw bool) (chatRequest, error) {
+	return s.buildRequestWithTools(ctx, user, conv, asstID, model, toolSet{canDraw: canDraw})
+}
+
+func (s *Service) buildRequestWithTools(ctx context.Context, user *store.User, conv *store.Conversation, asstID string, model *store.Model, ts toolSet) (chatRequest, error) {
 	history, err := s.Store.ListMessages(ctx, conv.ID, asstID, 500)
 	if err != nil {
 		return chatRequest{}, err
 	}
 	lastUser := -1
-	query := ""
+	var recentUsers []string
 	for i := len(history) - 1; i >= 0; i-- {
 		if history[i].Role == "user" {
 			if lastUser < 0 {
 				lastUser = i
-				query = history[i].Content
-				if utf8.RuneCountInString(query) >= 8 {
-					break
-				}
-			} else {
-				query = history[i].Content + "\n" + query
-				break
+			}
+			if txt := strings.TrimSpace(history[i].Content); txt != "" && len(recentUsers) < 3 {
+				recentUsers = append([]string{txt}, recentUsers...)
 			}
 		}
 	}
 	mem := memory.Context{}
 	if s.Memory != nil && !conv.Private {
-		mem = s.Memory.Inject(ctx, user, conv.AssistantID, query)
+		mem = s.Memory.InjectTurn(ctx, user, memory.InjectRequest{
+			ConversationID:    conv.ID,
+			ConversationTitle: conv.Title,
+			AssistantID:       conv.AssistantID,
+			UserMessages:      recentUsers,
+		})
 	}
-	sys := s.systemPrompt(ctx, user, conv, canDraw, mem.Core)
+	sys := s.systemPromptWithTools(ctx, user, conv, ts, mem.Core)
 	note := "（系统附注，不是用户说的话，回复时不要写出这种附注：现在是 " + time.Now().In(shanghai).Format("15:04") + "。"
 	if mem.Recall != "" {
 		note += "可能相关的往事：" + mem.Recall
@@ -755,7 +776,7 @@ func (s *Service) buildRequest(ctx context.Context, user *store.User, conv *stor
 
 	// Pictures are numbered (图N) so the model can name the one to modify.
 	var num map[string]int
-	if canDraw {
+	if ts.canDraw {
 		num = map[string]int{}
 		for i, a := range collectRefs(history) {
 			num[a.FileID] = i + 1

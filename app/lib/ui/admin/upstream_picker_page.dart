@@ -6,6 +6,7 @@ import '../../core/admin_models.dart';
 import '../../core/api.dart';
 import '../../state/catalog.dart';
 import '../../state/session.dart';
+import '../icons.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'common.dart';
@@ -186,7 +187,7 @@ class _UpstreamPickerPageState extends ConsumerState<UpstreamPickerPage> {
           child: Center(
             child: SectionAction(
               label: '显示其他 ${others.length} 个模型（语音、视频等）',
-              icon: Icons.expand_more_rounded,
+              icon: AppIcons.chevronDown,
               onTap: () => setState(() => _showOthers = true),
             ),
           ),
@@ -210,10 +211,10 @@ class _UpstreamPickerPageState extends ConsumerState<UpstreamPickerPage> {
           style: TextStyle(fontSize: 15.5, color: p.text),
           decoration: InputDecoration(
             hintText: '搜索模型，例如 gpt、claude、gemini',
-            prefixIcon: Icon(Icons.search_rounded, color: p.faint, size: 21),
+            prefixIcon: Icon(AppIcons.search, color: p.faint, size: 19),
             suffixIcon: _search.text.isEmpty
                 ? null
-                : IconButton(icon: Icon(Icons.close_rounded, size: 19, color: p.muted), onPressed: () => setState(_search.clear)),
+                : IconButton(icon: Icon(AppIcons.close, size: 18, color: p.muted), onPressed: () => setState(_search.clear)),
             contentPadding: const EdgeInsets.symmetric(vertical: 12),
           ),
         ),
@@ -272,8 +273,8 @@ class _ItemTile extends StatelessWidget {
     final it = item;
     final tags = <Widget>[
       if (it.isChat) ...modelTags(context, vision: it.vision, think: it.think, inPrice: it.inputPrice, outPrice: it.outputPrice),
-      if (it.isEmbedding) const Tag('向量（记忆检索）', icon: Icons.manage_search_rounded),
-      if (it.isImage) const Tag('画图', icon: Icons.palette_outlined),
+      if (it.isEmbedding) const Tag('向量（记忆检索）', icon: AppIcons.manageSearch),
+      if (it.isImage) const Tag('画图', icon: AppIcons.palette),
     ];
 
     return Padding(
@@ -299,10 +300,10 @@ class _ItemTile extends StatelessWidget {
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 160),
               child: Icon(
-                it.added ? Icons.check_circle_rounded : (selected ? Icons.check_circle_rounded : Icons.circle_outlined),
+                it.added ? AppIcons.checkCircle : (selected ? AppIcons.checkCircle : AppIcons.circle),
                 key: ValueKey('${it.added}$selected'),
                 color: it.added ? p.faint : (selected ? p.accent : p.line),
-                size: 23,
+                size: 22,
               ),
             ),
             const SizedBox(width: 12),

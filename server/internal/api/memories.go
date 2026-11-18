@@ -46,6 +46,9 @@ func (s *Server) createMemory(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreErr(w, r, err)
 		return
 	}
+	if s.Chat.Memory != nil {
+		go s.Chat.Memory.DrainEmbeddings(context.WithoutCancel(r.Context()))
+	}
 	writeJSON(w, 201, m)
 }
 func (s *Server) updateMemory(w http.ResponseWriter, r *http.Request) {
@@ -72,6 +75,9 @@ func (s *Server) updateMemory(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.writeStoreErr(w, r, err)
 		return
+	}
+	if s.Chat.Memory != nil {
+		go s.Chat.Memory.DrainEmbeddings(context.WithoutCancel(r.Context()))
 	}
 	writeJSON(w, 200, m)
 }

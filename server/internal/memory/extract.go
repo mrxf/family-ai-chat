@@ -18,39 +18,44 @@ import (
 const extractionPrompt = `你是「小暖」的记忆整理员。小暖是家人用的 AI 助手。你的工作是从一段对话里，找出值得长期记住的、关于用户本人和用户家人的事实，并维护一份记忆清单。
 
 输出严格的 JSON，不要任何解释：
-{"actions":[...],"episode":"..."}
+{"actions":[...],"episodes":[{"content":"...","keywords":"..."}]}
 
 actions 里每一项是下面三种之一：
 - {"op":"add","category":"…","content":"…","keywords":"…","valid_until":"YYYY-MM-DD 或省略"}
-- {"op":"update","ref":编号,"content":"…","keywords":"…","category":"可省略","valid_until":"可省略"} —— 已有记忆变了（换药、搬家、改主意），用新内容替换编号那条
-- {"op":"remove","ref":编号} —— 已有记忆不再成立（事情办完了、用户说不对、用户要求忘掉）
+- {"op":"update","ref":编号,"content":"…","keywords":"…","category":"可省略","valid_until":"可省略"} —— 已有记忆变了（换药、搬家、改主意、病情变化），用新内容替换编号那条
+- {"op":"remove","ref":编号} —— 已有记忆不再成立（事情办完了、病好了、用户说不对、用户要求忘掉）
 
 category 只能是：
 - profile：用户的基本情况（称呼、年龄段、职业或退休、住在哪个城市、生活习惯）
 - health：健康与用药，用户本人和家人的都算（疾病、过敏、正在吃的药和剂量、手术、体检的关键异常），例如「用户的父亲有高血压，每天早上吃氨氯地平 5mg」
-- family：家人（谁是谁、年龄、生日、在哪工作上学、住在哪），健康和用药不放这里
+- family：家人与宠物的基本情况（家里有谁、年龄、生日、在哪工作上学、住在哪、养了什么宠物及年龄品种），人的健康和用药放 health
 - preference：喜好和习惯（口味、忌口、爱好、希望小暖怎么回答，比如「说简单点」「字少点」）
-- ongoing：正在进行、会结束的事（准备旅行、装修、找工作、孩子备考），能估计结束日期的写 valid_until
+- ongoing：正在进行或近期持续未解决的事（准备旅行、装修、找工作、备考，以及用户/家人近期的病痛恢复、家里宠物当前的生病/瘙痒/护理困扰、近期正在纠结处理的问题）。能估计结束日期的写 valid_until；拿不准何时结束的短期困扰写距今天约 21 天后的 YYYY-MM-DD
 
-写 content 的规则：
-- 一条只写一件事，用第三人称「用户……」，不超过 60 字，脱离上下文也能看懂（写全名称，不写「他」「这个药」）。
+写 content 和 keywords 的规则：
+- 一条只写一件事，用第三人称「用户……」，不超过 60 字，脱离上下文也能看懂（写全名称，不写「他」「这个药」「它」）。
 - 写上时间：对话里说「今天」「上周」时，按消息的日期换成具体年月。
-- keywords 写 3–8 个检索词，空格分隔：同义词、口语说法、上位词（例如「氨氯地平」配「降压药 高血压 血压」）。
+- keywords 写 4–8 个检索词，空格分隔：必须包含日常口语说法、俗称、同义词、上下位词（例如写「柯基」配「小狗 狗狗 宠物 犬」；写「瘙痒」配「痒 痒痒 抓挠 皮肤病」；写「氨氯地平」配「降压药 高血压 血压」）。
 
 最重要的规则：宁可漏记，不要记错。
-- 只记用户明确说出的、关于自己或自己家人的事实。小暖说的话、小暖的建议都不是事实。
+- 只记用户明确说出的、关于自己或自己家人/宠物的事实。小暖说的话、小暖的建议都不是事实。
 - 不记：替别人打听的（「帮邻居问问糖尿病怎么吃」）、假设的、开玩笑的、单纯问知识的、一次性的小事（「今天中午吃了面」）。
 - 不记任何密码、验证码、身份证号、银行卡号、详细门牌地址。
 - 拿不准是不是用户本人的事，就不记。
 - 和已有记忆说的是同一件事：内容没变就什么都不做，变了就 update，不要重复 add。
-- 用户说「忘掉」「别记」某事：对相关编号 remove，并且不要把这件事再写进任何记忆或 episode。
+- 用户说「忘掉」「别记」某事：对相关编号 remove，并且不要把这件事再写进任何记忆或 episodes。
 
 ` + privateTopics + `
-整段对话都是这类内容时，输出 {"actions":[],"episode":""}；只有一部分是时，只记其余部分，episode 里也不要提到这些内容。
+整段对话都是这类内容时，输出 {"actions":[],"episodes":[]}；只有一部分是时，只记其余部分，episodes 里也不要提到这些内容。
 
-episode：用一两句话（不超过 80 字）概括这次对话聊了什么、有什么结论，方便以后想起「上次聊过」。只写聊的内容和结论，不要写「已记录」「未记录」「此前已记下」这类关于记忆整理本身的话。如果下面给了这个对话已有的概括，在它的基础上增补成一段新的，不要丢掉原来的要点。闲聊寒暄、没有实质内容，或者只是问小暖记不记得某事、复述已知信息时，输出空字符串。
+episodes：按话题概括这次对话聊了什么、有什么顾虑和结论，方便以后想起「上次聊过」。
+- 通常写 1 条；只有同一段对话里聊了完全不相关的多个独立话题时，才拆成 2–3 条（最多 3 条），避免把无关话题塞进同一条。
+- 每条 content 不超过 110 字，只写聊的内容、用户顾虑和结论，不要写日期前缀，也不要写「已记录」「未记录」「此前已记下」这类关于记忆整理本身的话。
+- 每条必须配 keywords（4–10 个空格分隔的口语词、俗称、同义词、上下位词，例如「小狗 狗狗 柯基 宠物 痒 痒痒 抓挠 皮肤 雨后 药浴 宠物医院」）。
+- 如果下面给了这个对话已有的概括，在它的基础上增补更新，不要丢掉原来的要点。
+- 闲聊寒暄、没有实质内容，或者只是问小暖记不记得某事、复述已知信息时，输出空数组 "episodes":[]。
 
-没有要改的就输出 {"actions":[],"episode":"…"}。`
+没有要改的事实就输出 {"actions":[],"episodes":[...]}。`
 
 type Action struct {
 	Op         string  `json:"op"`
@@ -60,9 +65,16 @@ type Action struct {
 	Keywords   string  `json:"keywords"`
 	ValidUntil *string `json:"valid_until"`
 }
+
+type EpisodeDraft struct {
+	Content  string `json:"content"`
+	Keywords string `json:"keywords"`
+}
+
 type Extraction struct {
-	Actions []Action
-	Episode string
+	Actions  []Action
+	Episode  string         // first episode summary (kept for compatibility)
+	Episodes []EpisodeDraft // 0..3 topic-pure episode summaries with keywords
 }
 
 // privateTopics are never remembered automatically, whatever the user says.
@@ -86,17 +98,43 @@ func Parse(text string, log *slog.Logger) (Extraction, error) {
 		return Extraction{}, ErrParse
 	}
 	var raw struct {
-		Actions []json.RawMessage `json:"actions"`
-		Episode *string           `json:"episode"`
+		Actions         []json.RawMessage `json:"actions"`
+		Episode         *string           `json:"episode"`
+		EpisodeKeywords string            `json:"episode_keywords"`
+		Episodes        []json.RawMessage `json:"episodes"`
 	}
-	if json.Unmarshal([]byte(text[first:last+1]), &raw) != nil || raw.Actions == nil || raw.Episode == nil {
+	if json.Unmarshal([]byte(text[first:last+1]), &raw) != nil || raw.Actions == nil || (raw.Episode == nil && raw.Episodes == nil) {
 		return Extraction{}, ErrParse
 	}
-	out := Extraction{Episode: clip(strings.TrimSpace(*raw.Episode), 80)}
+	out := Extraction{}
+	for _, epRaw := range raw.Episodes {
+		var d EpisodeDraft
+		if json.Unmarshal(epRaw, &d) != nil {
+			var s string
+			if json.Unmarshal(epRaw, &s) == nil {
+				d.Content = s
+			}
+		}
+		d.Content = clip(strings.TrimSpace(d.Content), 120)
+		d.Keywords = clip(strings.TrimSpace(d.Keywords), 100)
+		if d.Content != "" && len(out.Episodes) < 3 {
+			out.Episodes = append(out.Episodes, d)
+		}
+	}
+	if len(out.Episodes) == 0 && raw.Episode != nil {
+		ep := clip(strings.TrimSpace(*raw.Episode), 120)
+		if ep != "" {
+			out.Episodes = []EpisodeDraft{{Content: ep, Keywords: clip(strings.TrimSpace(raw.EpisodeKeywords), 100)}}
+		}
+	}
+	if len(out.Episodes) > 0 {
+		out.Episode = out.Episodes[0].Content
+	}
 	for _, item := range raw.Actions {
 		var a Action
 		err := json.Unmarshal(item, &a)
 		a.Content = clip(strings.TrimSpace(a.Content), 80)
+		a.Keywords = clip(strings.TrimSpace(a.Keywords), 100)
 		valid := err == nil && ((a.Op == "add" && store.ValidMemoryCategory(a.Category, false) && a.Content != "") || (a.Op == "update" && a.Ref > 0 && a.Content != "" && (a.Category == "" || store.ValidMemoryCategory(a.Category, false))) || (a.Op == "remove" && a.Ref > 0 && a.Category != "episode"))
 		if a.ValidUntil != nil && *a.ValidUntil != "" {
 			_, err := time.ParseInLocation("2006-01-02", *a.ValidUntil, zone)
@@ -110,6 +148,7 @@ func Parse(text string, log *slog.Logger) (Extraction, error) {
 	}
 	return out, nil
 }
+
 func (s *Service) extract(ctx context.Context, u *store.User, conv *store.Conversation, snap store.MemorySnapshot) (Extraction, []*store.Memory, error) {
 	ms, err := s.Store.ListMemories(ctx, u.ID)
 	if err != nil {
@@ -124,14 +163,14 @@ func (s *Service) extract(ctx context.Context, u *store.User, conv *store.Conver
 	}
 	existing := []*store.Memory{}
 	retrieval := []*store.Memory{}
-	episode := ""
+	var priorEpisodes []string
 	for _, m := range ms {
 		if m.AssistantID != nil {
 			continue
 		}
 		if m.Category == "episode" && m.SourceConvID != nil && *m.SourceConvID == conv.ID {
 			// The stored summary starts with its date; apply() adds a fresh one.
-			episode = episodeDate.ReplaceAllString(m.Content, "")
+			priorEpisodes = append(priorEpisodes, strings.TrimSpace(episodeDate.ReplaceAllString(m.Content, "")))
 			continue
 		}
 		if isCore(m, store.Now()) {
@@ -139,6 +178,10 @@ func (s *Service) extract(ctx context.Context, u *store.User, conv *store.Conver
 		} else {
 			retrieval = append(retrieval, m)
 		}
+	}
+	episode := strings.Join(priorEpisodes, "\n- ")
+	if len(priorEpisodes) > 1 {
+		episode = "- " + episode
 	}
 	vector, model := s.queryVector(ctx, query.String(), backgroundTimeout)
 	existing = append(existing, rank(query.String(), vector, model, retrieval, 15, false)...)
@@ -158,6 +201,7 @@ func (s *Service) extract(ctx context.Context, u *store.User, conv *store.Conver
 	out, err := s.requestExtraction(ctx, u, existing, episode, contextMsgs)
 	return out, existing, err
 }
+
 func (s *Service) requestExtraction(ctx context.Context, u *store.User, existing []*store.Memory, episode string, msgs []*store.Message) (Extraction, error) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "今天日期：%s\n用户称呼：%s\n已有记忆：\n", time.Now().In(zone).Format("2006-01-02"), u.DisplayName)
@@ -250,9 +294,18 @@ func (s *Service) extractLong(ctx context.Context, u *store.User, existing []*st
 				d.until = a.ValidUntil
 			}
 		}
-		if out.Episode != "" {
+		if len(out.Episodes) > 0 {
+			result.Episodes = out.Episodes
+			result.Episode = out.Episodes[0].Content
+			parts := make([]string, 0, len(out.Episodes))
+			for _, ep := range out.Episodes {
+				parts = append(parts, ep.Content)
+			}
+			episode = strings.Join(parts, "\n- ")
+		} else if out.Episode != "" {
 			episode = out.Episode
 			result.Episode = out.Episode
+			result.Episodes = []EpisodeDraft{{Content: out.Episode}}
 		}
 		// The preceding chunk is context only; keep it compact for the next request.
 		prev := part
@@ -297,7 +350,16 @@ func (s *Service) apply(ctx context.Context, snap store.MemorySnapshot, out Extr
 			ch.RefID = old.ID
 		}
 		if a.Op != "remove" {
-			m := &store.Memory{UserID: snap.UserID, Category: a.Category, Content: a.Content, Keywords: a.Keywords, Source: "auto", SourceConvID: &snap.ConversationID, Pinned: true}
+			m := &store.Memory{
+				UserID:          snap.UserID,
+				Category:        a.Category,
+				Content:         a.Content,
+				Keywords:        a.Keywords,
+				KeywordsChecked: true,
+				Source:          "auto",
+				SourceConvID:    &snap.ConversationID,
+				Pinned:          true,
+			}
 			if old != nil {
 				m.Pinned = old.Pinned
 				m.ValidUntil = old.ValidUntil
@@ -317,12 +379,25 @@ func (s *Service) apply(ctx context.Context, snap store.MemorySnapshot, out Extr
 		}
 		changes = append(changes, ch)
 	}
-	// The model sometimes copies the message dates into its summary.
-	ep := strings.TrimSpace(episodeDate.ReplaceAllString(strings.TrimSpace(out.Episode), ""))
-	if ep != "" {
-		ep = time.UnixMilli(snap.Messages[len(snap.Messages)-1].CreatedAt).In(zone).Format("2006-01-02") + " " + ep
+
+	drafts := out.Episodes
+	if len(drafts) == 0 && strings.TrimSpace(out.Episode) != "" {
+		drafts = []EpisodeDraft{{Content: out.Episode}}
 	}
-	return s.Store.ApplyMemoryExtraction(ctx, snap, changes, ep)
+	datePrefix := time.UnixMilli(snap.Messages[len(snap.Messages)-1].CreatedAt).In(zone).Format("2006-01-02")
+	var specs []store.EpisodeSpec
+	for _, d := range drafts {
+		// The model sometimes copies the message dates into its summary.
+		ep := strings.TrimSpace(episodeDate.ReplaceAllString(strings.TrimSpace(d.Content), ""))
+		if ep == "" {
+			continue
+		}
+		specs = append(specs, store.EpisodeSpec{
+			Content:  datePrefix + " " + ep,
+			Keywords: strings.TrimSpace(d.Keywords),
+		})
+	}
+	return s.Store.ApplyMemoryExtractionEpisodes(ctx, snap, changes, specs)
 }
 
 // segment preserves message boundaries; extractLong splits an oversized message.

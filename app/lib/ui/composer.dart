@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../state/chat.dart';
 import '../state/session.dart';
+import 'icons.dart';
 import 'sheets.dart';
 import 'theme.dart';
 import 'voice.dart';
@@ -124,8 +125,8 @@ class ComposerState extends ConsumerState<Composer> {
   void _photoMenu() {
     FocusScope.of(context).unfocus();
     showActionSheet(context, actions: [
-      SheetAction(Icons.photo_camera_rounded, '拍照', () => _pick(ImageSource.camera)),
-      SheetAction(Icons.photo_library_rounded, '从相册选择', () => _pick(ImageSource.gallery)),
+      SheetAction(AppIcons.camera, '拍照', () => _pick(ImageSource.camera)),
+      SheetAction(AppIcons.image, '从相册选择', () => _pick(ImageSource.gallery)),
     ]);
   }
 
@@ -179,9 +180,9 @@ class ComposerState extends ConsumerState<Composer> {
                           child: Pressable(
                             onTap: () => setState(() => _images.removeAt(i)),
                             child: Container(
-                              padding: const EdgeInsets.all(3),
+                              padding: const EdgeInsets.all(3.5),
                               decoration: const BoxDecoration(color: Color(0xCC000000), shape: BoxShape.circle),
-                              child: const Icon(Icons.close_rounded, size: 15, color: Colors.white),
+                              child: const Icon(AppIcons.closeSmall, size: 13.5, color: Colors.white),
                             ),
                           ),
                         ),
@@ -213,7 +214,7 @@ class ComposerState extends ConsumerState<Composer> {
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
             child: Row(
               children: [
-                _ToolButton(icon: Icons.photo_camera_outlined, label: '拍照/图片', onTap: chat.busy ? null : _photoMenu),
+                _ToolButton(icon: AppIcons.camera, label: '拍照/图片', onTap: chat.busy ? null : _photoMenu),
                 if (model?.think == true) ...[
                   const SizedBox(width: 6),
                   _ThinkChip(on: chat.think, onTap: () => ref.read(chatProvider.notifier).setThink(!chat.think)),
@@ -257,7 +258,7 @@ class _ToolButton extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(color: p.surfaceAlt, shape: BoxShape.circle),
-          child: Icon(icon, size: 23, color: onTap == null ? p.faint : p.text),
+          child: Icon(icon, size: 22, color: onTap == null ? p.faint : p.text),
         ),
       ),
     );
@@ -284,7 +285,7 @@ class _ThinkChip extends StatelessWidget {
           border: Border.all(color: on ? p.accent.withValues(alpha: 0.6) : Colors.transparent),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(on ? Icons.lightbulb_rounded : Icons.lightbulb_outline_rounded, size: 19, color: on ? p.accent : p.muted),
+          Icon(on ? AppIcons.thinkOn : AppIcons.thinkOff, size: 18, color: on ? p.accent : p.muted),
           const SizedBox(width: 5),
           Text('深度思考', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: on ? p.accent : p.muted)),
         ]),
@@ -322,7 +323,7 @@ class _SendButton extends StatelessWidget {
               shape: BoxShape.circle,
               boxShadow: enabled ? [BoxShadow(color: glow.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 4))] : null,
             ),
-            child: Icon(Icons.arrow_upward_rounded, color: enabled ? Colors.white : p.faint, size: 26),
+            child: Icon(AppIcons.arrowUp, color: enabled ? Colors.white : p.faint, size: 22),
           );
     return Tooltip(
       message: busy ? '停止回答' : '发送',

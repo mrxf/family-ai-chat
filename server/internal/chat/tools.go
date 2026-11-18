@@ -24,14 +24,16 @@ import (
 	_ "golang.org/x/image/webp"
 
 	"nuan/internal/llm"
+	"nuan/internal/memory"
 	"nuan/internal/store"
 )
 
 const (
-	// Model turns per reply: the first may call tools (several pictures are
-	// drawn in parallel), the last gets no tools so it must answer in words.
-	maxToolRounds    = 2
+	// Up to 3 tool rounds (e.g. recall_memory -> read_past_conversation -> generate_image)
+	// followed by a final words-only round.
+	maxToolRounds    = 4
 	maxImagesPerTurn = 3
+	maxMemoryCalls   = 6
 	imageTimeout     = 3 * time.Minute
 )
 
@@ -68,6 +70,58 @@ var imageTool = llm.Tool{
 	},
 }
 
+var recallMemoryTool = llm.Tool{
+	Name: "recall_memory",
+	Description: "Search or browse the user's saved memories AND past non-private chat messages. " +
+		"Call this proactively whenever the user mentions past events/topics/pets/medications ('上次', '之前', '还记得吗', '还在继续'), " +
+		"asks what or how many things you remember, or when core facts mention an entity whose past context is missing.",
+	Parameters: map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"queries": map[string]any{
+				"type":  "array",
+				"items": map[string]any{"type": "string"},
+				"description": "1 to 4 search keyword groups resolving pronouns and expanding colloquialisms/synonyms " +
+					"(e.g. [\"柯基 瘙痒 皮肤\", \"小狗 痒 宠物医院\"]). Omit or pass [] when mode=\"recent\".",
+			},
+			"mode": map[string]any{
+				"type":        "string",
+				"enum":        []string{"search", "recent"},
+				"description": "\"search\" (default) ranks matching memories and raw chat excerpts; \"recent\" lists chronological memories with total counts (use when the user asks what/how many memories exist or what was discussed recently).",
+			},
+			"category": map[string]any{
+				"type":        "string",
+				"enum":        []string{"all", "episode", "health", "family", "profile", "preference", "ongoing"},
+				"description": "Optional category filter; \"all\" by default, or \"episode\" for past conversation summaries ('聊过的事').",
+			},
+			"limit": map[string]any{
+				"type":        "integer",
+				"description": "Max memories to return (default 12 for search, 30 for recent).",
+			},
+		},
+	},
+}
+
+var readConversationTool = llm.Tool{
+	Name: "read_past_conversation",
+	Description: "Read the original messages of a past conversation by its conv_id (shown in memory entries or recall_memory results). " +
+		"Call this when a summary is too brief and you need exact details, numbers, medications, or conclusions from that chat.",
+	Parameters: map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"conversation_id": map[string]any{
+				"type":        "string",
+				"description": "The conv_id of the past conversation to inspect.",
+			},
+			"focus": map[string]any{
+				"type":        "string",
+				"description": "Optional keywords to focus on when the past conversation is very long.",
+			},
+		},
+		"required": []string{"conversation_id"},
+	},
+}
+
 // imageSize maps the tool's aspect to a size the model family accepts ("" = model default).
 func imageSize(upstream, aspect string) string {
 	m := strings.ToLower(upstream)
@@ -100,6 +154,18 @@ const otherModelDrawsPrompt = `
 
 当前这个模型不能画图（别的模型可以）。如果用户想要你画图或生成图片，温和地告诉他：点屏幕顶部的模型名称，换一个模型再说一遍就能画。`
 
+const memoryToolPrompt = `
+
+# 记忆与历史检索
+你可以调用 recall_memory 和 read_past_conversation 工具查阅用户的记忆库和以往对话记录。
+- 系统提示词里的「关于用户的事」只是常驻画像，消息附注里的「可能相关的往事」只是自动粗筛的少量片段，绝不代表用户的全部记忆。
+- 遇到以下情况时，必须先调用 recall_memory 查找，不要未经检索就说「不记得」「看不到」或盲目猜测：
+  1. 用户提到过去聊过的事、家人、宠物、药物、症状或安排（如「上次」「之前」「还记得吗」「还在继续」「为啥又…」）；
+  2. 用户询问你记得哪些事、界面里有多少条记忆、最近聊过什么（设置 mode="recent" 浏览全量记忆与统计）；
+  3. 常驻画像里提到了某个宠物、家人或健康问题，但当前缺少前因后果。
+- 调用 recall_memory 时，主动把代词和口语换算成多组同义词/专名并发查询（例如用户说「小狗痒痒」、画像里有「五岁柯基」，传 queries: ["柯基 瘙痒 皮肤", "小狗 痒 医院 药浴"]）。
+- 当记忆条目或检索结果带有 conv_id，而用户追问当时的具体细节（原因、费用、检查项、药名用法、原话结论）时，继续调用 read_past_conversation 读取原对话全文。`
+
 // imageModel returns the configured image model when it is usable.
 func (s *Service) imageModel(ctx context.Context) (*store.Model, *store.Provider) {
 	id, _ := s.Store.GetSetting(ctx, "image_model_id")
@@ -119,15 +185,27 @@ func (s *Service) ImageAvailable(ctx context.Context) bool {
 	return m != nil
 }
 
+type toolSet struct {
+	tools     []llm.Tool
+	canDraw   bool
+	canRecall bool
+}
+
 // toolsFor returns the tools a chat model may use in this reply.
-func (s *Service) toolsFor(ctx context.Context, m *store.Model) []llm.Tool {
+func (s *Service) toolsFor(ctx context.Context, user *store.User, conv *store.Conversation, m *store.Model) toolSet {
 	if !m.Tools || s.toolsRejected(m) {
-		return nil
+		return toolSet{}
 	}
+	var ts toolSet
 	if im, _ := s.imageModel(ctx); im != nil {
-		return []llm.Tool{imageTool}
+		ts.canDraw = true
+		ts.tools = append(ts.tools, imageTool)
 	}
-	return nil
+	if !conv.Private && s.Memory != nil && s.Memory.Allowed(ctx, user, conv.AssistantID) {
+		ts.canRecall = true
+		ts.tools = append(ts.tools, recallMemoryTool, readConversationTool)
+	}
+	return ts
 }
 
 // drawPrompt is the system prompt section about drawing for this reply.
@@ -154,65 +232,136 @@ func (s *Service) markToolsRejected(m *store.Model) { s.noTools.Store(toolKey(m)
 
 // toolTurn carries the state of one reply's tool use.
 type toolTurn struct {
-	user    *store.User
-	convID  string
-	asstID  string
-	run     *Run
-	private bool
-	images  int
-	cost    float64
+	user        *store.User
+	convID      string
+	assistantID *string
+	asstID      string
+	run         *Run
+	private     bool
+	images      int
+	memCalls    int
+	cost        float64
 }
 
 // runTools executes the calls of one round (pictures are drawn in parallel)
-// and returns the text handed back to the model for each call, in order.
-func (s *Service) runTools(ctx context.Context, t *toolTurn, calls []llm.ToolCall) []string {
+// and returns the text handed back to the model for each call, in order, plus
+// whether the round only drew pictures (so the wrap-up round needs no tools).
+func (s *Service) runTools(ctx context.Context, t *toolTurn, calls []llm.ToolCall) ([]string, bool) {
 	results := make([]string, len(calls))
 	var jobs []drawJob
 	im, ip := s.imageModel(ctx)
 	var refs []store.Attachment
 	refsLoaded := false
+	usedMemoryTool := false
+
 	for i, call := range calls {
-		if call.Name != imageTool.Name {
-			results[i] = "没有这个工具：" + call.Name
-			continue
-		}
-		var args struct {
-			Prompt string `json:"prompt"`
-			Image  string `json:"image"`
-			Aspect string `json:"aspect"`
-		}
-		if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil || strings.TrimSpace(args.Prompt) == "" {
-			results[i] = "参数不对：需要 prompt（画面描述）。"
-			continue
-		}
-		if im == nil {
-			results[i] = "画图功能现在不可用（管理员关闭了画图模型）。请向用户说明。"
-			continue
-		}
-		if t.images+len(jobs) >= maxImagesPerTurn {
-			results[i] = fmt.Sprintf("这条回复最多画 %d 张，这张没有画。", maxImagesPerTurn)
-			continue
-		}
-		j := drawJob{i: i, prompt: clip(strings.TrimSpace(args.Prompt), 4000), size: imageSize(im.UpstreamModel, args.Aspect)}
-		if ref := strings.TrimSpace(args.Image); ref != "" {
-			if !refsLoaded {
-				refs, refsLoaded = s.imageRefs(ctx, t.convID, t.asstID), true
-			}
-			n := refNumber(ref)
-			if n < 1 || n > len(refs) {
-				results[i] = fmt.Sprintf("没有找到「%s」：这段对话里的图片编号是 图1 到 图%d。", ref, len(refs))
-				if len(refs) == 0 {
-					results[i] = "这段对话里还没有图片，没法修改；不填 image 就是画一张新图。"
-				}
+		switch call.Name {
+		case recallMemoryTool.Name:
+			usedMemoryTool = true
+			if t.private || s.Memory == nil {
+				results[i] = "当前是隐私对话或未开启记忆功能，无法查阅记忆。"
 				continue
 			}
-			j.source = &refs[n-1]
-			j.sourceNo = n
+			if t.memCalls >= maxMemoryCalls {
+				results[i] = "本轮对话查阅记忆次数已达上限，请根据已有信息回答。"
+				continue
+			}
+			t.memCalls++
+			var args memory.RecallRequest
+			if strings.TrimSpace(call.Arguments) != "" && json.Unmarshal([]byte(call.Arguments), &args) != nil {
+				// Tolerate models sending {"query":"..."} as a single string.
+				var alt struct {
+					Query    string `json:"query"`
+					Category string `json:"category"`
+					Mode     string `json:"mode"`
+					Limit    int    `json:"limit"`
+				}
+				if json.Unmarshal([]byte(call.Arguments), &alt) == nil {
+					if strings.TrimSpace(alt.Query) != "" {
+						args.Queries = []string{alt.Query}
+					}
+					args.Category, args.Mode, args.Limit = alt.Category, alt.Mode, alt.Limit
+				}
+			} else if len(args.Queries) == 0 && strings.TrimSpace(call.Arguments) != "" {
+				var alt struct {
+					Query string `json:"query"`
+				}
+				if json.Unmarshal([]byte(call.Arguments), &alt) == nil && strings.TrimSpace(alt.Query) != "" {
+					args.Queries = []string{alt.Query}
+				}
+			}
+			t.run.setActivity("正在翻看记忆…")
+			results[i] = s.Memory.Recall(ctx, t.user, t.assistantID, t.convID, args)
+			t.run.setActivity("")
+
+		case readConversationTool.Name:
+			usedMemoryTool = true
+			if t.private || s.Memory == nil {
+				results[i] = "当前是隐私对话或未开启记忆功能，无法读取历史对话。"
+				continue
+			}
+			if t.memCalls >= maxMemoryCalls {
+				results[i] = "本轮对话查阅次数已达上限，请根据已有信息回答。"
+				continue
+			}
+			t.memCalls++
+			var args struct {
+				ConversationID string `json:"conversation_id"`
+				ConvID         string `json:"conv_id"`
+				Focus          string `json:"focus"`
+			}
+			_ = json.Unmarshal([]byte(call.Arguments), &args)
+			cid := strings.TrimSpace(args.ConversationID)
+			if cid == "" {
+				cid = strings.TrimSpace(args.ConvID)
+			}
+			t.run.setActivity("正在查看之前的对话…")
+			results[i] = s.Memory.ReadConversation(ctx, t.user, t.assistantID, cid, args.Focus)
+			t.run.setActivity("")
+
+		case imageTool.Name:
+			var args struct {
+				Prompt string `json:"prompt"`
+				Image  string `json:"image"`
+				Aspect string `json:"aspect"`
+			}
+			if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil || strings.TrimSpace(args.Prompt) == "" {
+				results[i] = "参数不对：需要 prompt（画面描述）。"
+				continue
+			}
+			if im == nil {
+				results[i] = "画图功能现在不可用（管理员关闭了画图模型）。请向用户说明。"
+				continue
+			}
+			if t.images+len(jobs) >= maxImagesPerTurn {
+				results[i] = fmt.Sprintf("这条回复最多画 %d 张，这张没有画。", maxImagesPerTurn)
+				continue
+			}
+			j := drawJob{i: i, prompt: clip(strings.TrimSpace(args.Prompt), 4000), size: imageSize(im.UpstreamModel, args.Aspect)}
+			if ref := strings.TrimSpace(args.Image); ref != "" {
+				if !refsLoaded {
+					refs, refsLoaded = s.imageRefs(ctx, t.convID, t.asstID), true
+				}
+				n := refNumber(ref)
+				if n < 1 || n > len(refs) {
+					results[i] = fmt.Sprintf("没有找到「%s」：这段对话里的图片编号是 图1 到 图%d。", ref, len(refs))
+					if len(refs) == 0 {
+						results[i] = "这段对话里还没有图片，没法修改；不填 image 就是画一张新图。"
+					}
+					continue
+				}
+				j.source = &refs[n-1]
+				j.sourceNo = n
+			}
+			jobs = append(jobs, j)
+
+		default:
+			results[i] = "没有这个工具：" + call.Name
 		}
-		jobs = append(jobs, j)
 	}
+
 	if len(jobs) == 0 {
-		return results
+		return results, false
 	}
 
 	// Daily limit: refuse what does not fit, draw the rest.
@@ -229,7 +378,7 @@ func (s *Service) runTools(ctx context.Context, t *toolTurn, calls []llm.ToolCal
 	}
 	jobs = jobs[:allowed]
 	if len(jobs) == 0 {
-		return results
+		return results, !usedMemoryTool
 	}
 
 	label := "正在画图…"
@@ -291,7 +440,7 @@ func (s *Service) runTools(ctx context.Context, t *toolTurn, calls []llm.ToolCal
 		}()
 	}
 	wg.Wait()
-	return results
+	return results, !usedMemoryTool
 }
 
 // drawJob is one picture to draw, or to modify when source is set.

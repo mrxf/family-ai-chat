@@ -12,6 +12,7 @@ import 'package:record/record.dart';
 
 import '../core/api.dart';
 import '../state/session.dart';
+import 'icons.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -359,7 +360,7 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
               color: phase == _Phase.idle ? p.accentSoft : null,
               shape: BoxShape.circle,
             ),
-            child: Icon(Icons.mic_rounded, size: 26, color: phase == _Phase.idle ? p.accent : Colors.white),
+            child: Icon(AppIcons.mic, size: 23, color: phase == _Phase.idle ? p.accent : Colors.white),
           ),
         ),
       ),
@@ -419,7 +420,7 @@ class _VoiceOverlay extends StatelessWidget {
                                 width: 82,
                                 height: 82,
                                 decoration: BoxDecoration(shape: BoxShape.circle, gradient: cancelling ? null : Palette.brandGradient, color: cancelling ? p.bad : null),
-                                child: Icon(cancelling ? Icons.close_rounded : Icons.mic_rounded, color: Colors.white, size: 40),
+                                child: Icon(cancelling ? AppIcons.close : AppIcons.mic, color: Colors.white, size: 36),
                               ),
                             ]),
                           ),

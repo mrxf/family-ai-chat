@@ -5,6 +5,7 @@ import '../../core/admin_models.dart';
 import '../../core/api.dart';
 import '../../core/models.dart';
 import '../../state/session.dart';
+import '../icons.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'common.dart';
@@ -94,7 +95,7 @@ class _UsagePageState extends ConsumerState<UsagePage> {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(color: p.surfaceAlt, borderRadius: BorderRadius.circular(14)),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(Icons.info_outline_rounded, size: 18, color: p.muted),
+              Icon(AppIcons.info, size: 18, color: p.muted),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(

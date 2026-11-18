@@ -10,6 +10,7 @@ import 'admin/asr_page.dart';
 import 'admin/models_page.dart';
 import 'admin/usage_page.dart';
 import 'admin_page.dart';
+import 'icons.dart';
 import 'sheets.dart';
 import 'memories_page.dart';
 import 'theme.dart';
@@ -70,7 +71,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     Text('用户名：${user.username}${user.isAdmin ? ' · 管理员' : ''}', style: TextStyle(fontSize: 14, color: p.muted)),
                   ]),
                 ),
-                Icon(Icons.chevron_right_rounded, color: p.faint),
+                Icon(AppIcons.chevronRight, color: p.faint, size: 19),
               ]),
             ),
           ),
@@ -82,7 +83,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               color: p.surface,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: p.line)),
               child: _Tile(
-                icon: Icons.favorite_outline_rounded,
+                icon: AppIcons.heart,
                 title: '小暖记住的事',
                 subtitle: memorySubtitle,
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MemoriesPage())),
@@ -126,25 +127,25 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ]),
 
           _Section('账号', children: [
-            _Tile(icon: Icons.lock_reset_rounded, title: '修改密码', onTap: () => _changePassword(context, ref)),
+            _Tile(icon: AppIcons.key, title: '修改密码', onTap: () => _changePassword(context, ref)),
           ]),
 
           if (user.isAdmin)
             _Section('家庭管理', children: [
               _Tile(
-                icon: Icons.family_restroom_rounded,
+                icon: AppIcons.family,
                 title: '家庭成员',
                 subtitle: '给家人创建账号、重置密码',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminUsersPage())),
               ),
               _Tile(
-                icon: Icons.hub_rounded,
+                icon: AppIcons.hub,
                 title: '模型与供应商',
                 subtitle: session.boot?.defaultModel == null ? '还没有可用的模型，点这里添加' : '默认：${session.boot!.defaultModel!.displayName} · 共 ${session.boot!.models.length} 个模型${session.boot!.imageGeneration ? (session.boot!.imagesLeft >= 0 ? ' · 今天还能画 ${session.boot!.imagesLeft} 张' : ' · 能画图') : ''}',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ModelsPage())),
               ),
               _Tile(
-                icon: Icons.mic_rounded,
+                icon: AppIcons.mic,
                 title: '语音输入',
                 subtitle: session.boot?.voiceInput == true
                     ? (session.boot?.voiceMode == 'stream' ? '已开启 · 实时边说边出字' : '已开启 · 录音转文字')
@@ -152,7 +153,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AsrAdminPage())),
               ),
               _Tile(
-                icon: Icons.bar_chart_rounded,
+                icon: AppIcons.chart,
                 title: '用量与花费',
                 subtitle: '每个人、每个模型用了多少钱',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UsagePage())),
@@ -160,12 +161,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ]),
 
           _Section('关于', children: [
-            _Tile(icon: Icons.system_update_rounded, title: '检查更新', onTap: () => checkForUpdate(context, ref)),
+            _Tile(icon: AppIcons.update, title: '检查更新', onTap: () => checkForUpdate(context, ref)),
             FutureBuilder<PackageInfo>(
               future: PackageInfo.fromPlatform(),
-              builder: (_, snap) => _Tile(icon: Icons.info_outline_rounded, title: '版本', trailing: Text(snap.data?.version ?? '', style: TextStyle(color: p.muted))),
+              builder: (_, snap) => _Tile(icon: AppIcons.info, title: '版本', trailing: Text(snap.data?.version ?? '', style: TextStyle(color: p.muted))),
             ),
-            _Tile(icon: Icons.dns_outlined, title: '服务器', trailing: Text(session.server.replaceFirst(RegExp(r'^https?://'), ''), style: TextStyle(color: p.muted, fontSize: 14))),
+            _Tile(icon: AppIcons.server, title: '服务器', trailing: Text(session.server.replaceFirst(RegExp(r'^https?://'), ''), style: TextStyle(color: p.muted, fontSize: 14))),
           ]),
 
           const SizedBox(height: 24),
@@ -383,7 +384,7 @@ class _Tile extends StatelessWidget {
       subtitle: subtitle == null || subtitle!.isEmpty
           ? null
           : Padding(padding: const EdgeInsets.only(top: 4), child: Text(subtitle!, style: TextStyle(fontSize: 13.5, color: p.muted, height: 1.45))),
-      trailing: trailing ?? (onTap != null ? Icon(Icons.chevron_right_rounded, color: p.faint) : null),
+      trailing: trailing ?? (onTap != null ? Icon(AppIcons.chevronRight, color: p.faint, size: 18) : null),
       onTap: onTap,
     );
   }

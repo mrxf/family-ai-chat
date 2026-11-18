@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/admin_models.dart';
+import '../icons.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
@@ -62,14 +63,14 @@ class ProviderIcon extends StatelessWidget {
   final bool muted;
 
   static const _styles = <String, (Color, IconData)>{
-    'openrouter': (Color(0xFF6B66D6), Icons.alt_route_rounded),
-    'openai': (Color(0xFF2B8A73), Icons.cyclone_rounded),
-    'gemini': (Color(0xFF4A78D0), Icons.auto_awesome_rounded),
-    'deepseek': (Color(0xFF4768B5), Icons.waves_rounded),
-    'dashscope': (Color(0xFFE06D3B), Icons.cloud_queue_rounded),
-    'siliconflow': (Color(0xFF7B5CE6), Icons.memory_rounded),
-    'tencent': (Color(0xFF3D6EC9), Icons.graphic_eq_rounded),
-    'xfyun': (Color(0xFF4878B8), Icons.mic_none_rounded),
+    'openrouter': (Color(0xFF6B66D6), AppIcons.route),
+    'openai': (Color(0xFF2B8A73), AppIcons.aperture),
+    'gemini': (Color(0xFF4A78D0), AppIcons.sparkles),
+    'deepseek': (Color(0xFF4768B5), AppIcons.waves),
+    'dashscope': (Color(0xFFE06D3B), AppIcons.cloud),
+    'siliconflow': (Color(0xFF7B5CE6), AppIcons.cpu),
+    'tencent': (Color(0xFF3D6EC9), AppIcons.waveform),
+    'xfyun': (Color(0xFF4878B8), AppIcons.micOff),
   };
 
   @override
@@ -92,7 +93,7 @@ class ProviderIcon extends StatelessWidget {
             ? Border.all(color: muted ? p.line : tone.withValues(alpha: isDark ? 0.26 : 0.16))
             : null,
       ),
-      child: Icon(style?.$2 ?? Icons.hub_rounded, color: tone, size: size * 0.50),
+      child: Icon(style?.$2 ?? AppIcons.hub, color: tone, size: size * 0.50),
     );
   }
 }
@@ -145,8 +146,8 @@ class Tag extends StatelessWidget {
 /// Capability tags shared by model rows — unified warm neutral style to avoid rainbow clutter.
 List<Widget> modelTags(BuildContext context, {required bool vision, required bool think, int contextWindow = 0, double inPrice = 0, double outPrice = 0}) {
   return [
-    if (vision) const Tag('能看图', icon: Icons.image_outlined),
-    if (think) const Tag('深度思考', icon: Icons.lightbulb_outline_rounded),
+    if (vision) const Tag('能看图', icon: AppIcons.image),
+    if (think) const Tag('深度思考', icon: AppIcons.thinkOff),
     if (contextWindow > 0) Tag(fmtContext(contextWindow)),
     if (inPrice > 0 || outPrice > 0) Tag(fmtPrice(inPrice, outPrice)),
   ];
@@ -346,7 +347,7 @@ class InfoRow extends StatelessWidget {
               trailing!,
             ] else if (onTap != null) ...[
               const SizedBox(width: 4),
-              Icon(Icons.chevron_right_rounded, color: p.faint, size: 22),
+              Icon(AppIcons.chevronRight, color: p.faint, size: 18),
             ],
           ]),
         ),
@@ -492,7 +493,7 @@ class ResultBanner extends StatelessWidget {
         border: Border.all(color: c.withValues(alpha: 0.22)),
       ),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(ok ? Icons.check_circle_rounded : Icons.error_outline_rounded, color: c, size: 21),
+        Icon(ok ? AppIcons.checkCircle : AppIcons.error, color: c, size: 20),
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

@@ -37,7 +37,8 @@ class LiveText {
           ? LivePhase.reasoning
           : LivePhase.waiting;
 
-  bool get drawing => activity.isNotEmpty;
+  bool get drawing => activity.contains('画') || activity.contains('改图');
+  bool get working => activity.isNotEmpty && !drawing;
 
   /// [activityAt] is the server's start time (unix ms) when known, so the
   /// elapsed counter survives reconnects.

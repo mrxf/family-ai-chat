@@ -2,6 +2,8 @@ import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'icons.dart';
+
 /// Design tokens. Warm, soft, high-contrast enough for older eyes.
 @immutable
 class Palette extends ThemeExtension<Palette> {
@@ -146,6 +148,12 @@ ThemeData buildTheme(Brightness b) {
     textTheme: text,
     extensions: [p],
     splashFactory: InkSparkle.splashFactory,
+    iconTheme: IconThemeData(color: p.text, size: 22),
+    actionIconTheme: ActionIconThemeData(
+      backButtonIconBuilder: (_) => const Icon(AppIcons.back, size: 23),
+      closeButtonIconBuilder: (_) => const Icon(AppIcons.close, size: 22),
+      drawerButtonIconBuilder: (_) => const Icon(AppIcons.menu, size: 24),
+    ),
     appBarTheme: AppBarTheme(
       backgroundColor: p.bg,
       surfaceTintColor: Colors.transparent,

@@ -169,12 +169,25 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     await tester.pump(const Duration(milliseconds: 400));
 
-    // Normal welcome screen initially.
+    // Normal welcome screen initially: no private-chat button in top bar, dashed entry at bottom.
     expect(find.text('小暖'), findsOneWidget);
-    expect(find.byTooltip('隐私对话'), findsOneWidget);
+    expect(find.byTooltip('隐私对话'), findsNothing);
+    expect(find.byTooltip('分享对话'), findsNothing);
 
-    // Enter private mode from the top-right action button.
-    await tester.tap(find.byTooltip('隐私对话'));
+    // Drawer only shows the primary 新对话 button (no private-mode button next to it).
+    await tester.tap(find.byTooltip('聊天记录'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('新对话'), findsOneWidget);
+    expect(find.byTooltip('新建隐私对话'), findsNothing);
+    expect(find.text('隐私'), findsNothing);
+    await tester.tap(find.byTooltip('关闭'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // Scroll to the bottom of Welcome and tap the dashed-border 开启隐私对话 entry card.
+    await tester.scrollUntilVisible(find.text('开启隐私对话'), 220, scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('开启隐私对话'));
     await tester.pumpAndSettle();
 
     expect(find.text('隐私对话'), findsAtLeastNWidgets(1));

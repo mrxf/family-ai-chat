@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api.dart';
 import '../core/models.dart';
 import '../state/session.dart';
+import 'icons.dart';
 import 'settings_page.dart' show avatarChoices;
 import 'sheets.dart';
 import 'theme.dart';
@@ -30,7 +31,7 @@ class AdminUsersPage extends ConsumerWidget {
         onPressed: () => _create(context, ref),
         backgroundColor: p.accent,
         foregroundColor: Colors.white,
-        icon: const Icon(Icons.person_add_alt_1_rounded),
+        icon: const Icon(AppIcons.userPlus, size: 21),
         label: const Text('添加家人', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
       ),
       body: users.when(
@@ -65,7 +66,7 @@ class AdminUsersPage extends ConsumerWidget {
                         Text(disabled ? '已停用 · 不能登录' : '用户名：${u.username}', style: TextStyle(fontSize: 14, color: disabled ? p.bad : p.muted)),
                       ]),
                     ),
-                    Icon(Icons.more_horiz_rounded, color: p.faint),
+                    Icon(AppIcons.more, color: p.faint),
                   ]),
                 ),
               );
@@ -186,22 +187,22 @@ class AdminUsersPage extends ConsumerWidget {
     }
 
     showActionSheet(context, title: '${u.displayName}（${u.username}）', actions: [
-      SheetAction(Icons.password_rounded, '重置密码', () async {
+      SheetAction(AppIcons.key, '重置密码', () async {
         final pw = await showTextEditor(context, title: '给 ${u.displayName} 设置新密码', initial: _randomPassword(), ok: '确定', maxLines: 1);
         if (pw == null || pw.isEmpty) return;
         await run(() => api.adminUpdateUser(u.id, {'password': pw}), '密码已重置');
         if (context.mounted) _showCredentials(context, ref, u, pw);
       }),
       if (!isMe)
-        SheetAction(u.isAdmin ? Icons.remove_moderator_outlined : Icons.admin_panel_settings_outlined, u.isAdmin ? '取消管理员' : '设为管理员',
+        SheetAction(u.isAdmin ? AppIcons.shieldOff : AppIcons.shield, u.isAdmin ? '取消管理员' : '设为管理员',
             () => run(() => api.adminUpdateUser(u.id, {'role': u.isAdmin ? 'member' : 'admin'}), '已更新')),
       if (!isMe)
-        SheetAction(u.disabled ? Icons.lock_open_rounded : Icons.block_rounded, u.disabled ? '恢复使用' : '停用账号（暂时不让登录）', () async {
+        SheetAction(u.disabled ? AppIcons.lockOpen : AppIcons.ban, u.disabled ? '恢复使用' : '停用账号（暂时不让登录）', () async {
           if (!u.disabled && !await confirm(context, title: '停用 ${u.displayName} 的账号？', body: 'TA 会立刻退出登录，聊天记录会保留。之后可以随时恢复。', ok: '停用', danger: true)) return;
           await run(() => api.adminUpdateUser(u.id, {'disabled': !u.disabled}), u.disabled ? '已恢复' : '已停用');
         }),
       if (!isMe)
-        SheetAction(Icons.delete_outline_rounded, '删除账号', () async {
+        SheetAction(AppIcons.delete, '删除账号', () async {
           if (!await confirm(context, title: '删除 ${u.displayName} 的账号？', body: 'TA 的所有聊天记录也会一起删除，无法恢复。', ok: '删除', danger: true)) return;
           await run(() => api.adminDeleteUser(u.id), '已删除');
         }, danger: true),
