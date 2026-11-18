@@ -17,6 +17,8 @@ class Palette extends ThemeExtension<Palette> {
     required this.userText,
     required this.accent,
     required this.accentSoft,
+    required this.privateAccent,
+    required this.privateSoft,
     required this.codeBg,
     required this.preBg,
     required this.preText,
@@ -25,7 +27,7 @@ class Palette extends ThemeExtension<Palette> {
     required this.shadow,
   });
 
-  final Color bg, surface, surfaceAlt, text, muted, faint, line, userBubble, userText, accent, accentSoft, codeBg, preBg, preText, good, bad, shadow;
+  final Color bg, surface, surfaceAlt, text, muted, faint, line, userBubble, userText, accent, accentSoft, privateAccent, privateSoft, codeBg, preBg, preText, good, bad, shadow;
 
   static const brand = Color(0xFFFF7A45);
   static const brandDeep = Color(0xFFF25A2A);
@@ -33,6 +35,11 @@ class Palette extends ThemeExtension<Palette> {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [Color(0xFFFF9C5B), Color(0xFFFF6A3D)],
+  );
+  static const privateGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF5A7099), Color(0xFF3E4F70)],
   );
 
   static const light = Palette(
@@ -47,6 +54,8 @@ class Palette extends ThemeExtension<Palette> {
     userText: Color(0xFF3A2414),
     accent: brand,
     accentSoft: Color(0xFFFFEDE2),
+    privateAccent: Color(0xFF475B82),
+    privateSoft: Color(0xFFEDF1F8),
     codeBg: Color(0xFFF8EFE8),
     preBg: Color(0xFF2B2420),
     preText: Color(0xFFF5EDE6),
@@ -67,6 +76,8 @@ class Palette extends ThemeExtension<Palette> {
     userText: Color(0xFFFBE9DC),
     accent: Color(0xFFFF8B57),
     accentSoft: Color(0xFF3A2519),
+    privateAccent: Color(0xFF93ADD9),
+    privateSoft: Color(0xFF202734),
     codeBg: Color(0xFF2A2522),
     preBg: Color(0xFF0F0D0C),
     preText: Color(0xFFEDE5DE),
@@ -94,6 +105,8 @@ class Palette extends ThemeExtension<Palette> {
       userText: l(userText, other.userText),
       accent: l(accent, other.accent),
       accentSoft: l(accentSoft, other.accentSoft),
+      privateAccent: l(privateAccent, other.privateAccent),
+      privateSoft: l(privateSoft, other.privateSoft),
       codeBg: l(codeBg, other.codeBg),
       preBg: l(preBg, other.preBg),
       preText: l(preText, other.preText),

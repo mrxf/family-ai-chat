@@ -406,11 +406,13 @@ func (f *apiFixture) send(body map[string]any) *chat.SendResult {
 	if result.Assistant == nil || result.Assistant.ID == "" || result.Conversation == nil || result.UserMessage == nil {
 		f.t.Fatalf("invalid send result: %+v", result)
 	}
-	// Titles run in a detached goroutine. Drain that work before fixture teardown.
-	eventually(f.t, "title persistence", func() bool {
-		c, err := f.st.GetConversation(f.t.Context(), result.Conversation.ID, f.user.ID)
-		return err == nil && c.Title != ""
-	})
+	if !result.Conversation.Private {
+		// Titles run in a detached goroutine. Drain that work before fixture teardown.
+		eventually(f.t, "title persistence", func() bool {
+			c, err := f.st.GetConversation(f.t.Context(), result.Conversation.ID, f.user.ID)
+			return err == nil && c.Title != ""
+		})
+	}
 	return &result
 }
 

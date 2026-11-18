@@ -215,6 +215,7 @@ class Api {
     List<Attachment> attachments = const [],
     String? editOf,
     bool think = false,
+    bool isPrivate = false,
   }) async {
     final d = await _req('POST', '/api/chat', body: {
       'conversation_id': ?conversationId,
@@ -224,6 +225,7 @@ class Api {
       'attachments': attachments.map((a) => {'file_id': a.fileId}).toList(),
       'edit_of': ?editOf,
       'think': think,
+      if (isPrivate) 'private': true,
     });
     return SendResult.fromJson((d as Map).cast());
   }
@@ -272,10 +274,15 @@ class Api {
   }
 
   // ---- files ----
-  Future<Attachment> upload(Uint8List bytes, String filename, {void Function(double)? onProgress}) async {
+  Future<Attachment> upload(Uint8List bytes, String filename, {bool isPrivate = false, void Function(double)? onProgress}) async {
     final form = FormData.fromMap({'file': MultipartFile.fromBytes(bytes, filename: filename)});
     try {
-      final r = await dio.post('/api/files', data: form, onSendProgress: (a, b) => onProgress?.call(b > 0 ? a / b : 0));
+      final r = await dio.post(
+        '/api/files',
+        data: form,
+        queryParameters: isPrivate ? const {'private': '1'} : null,
+        onSendProgress: (a, b) => onProgress?.call(b > 0 ? a / b : 0),
+      );
       final d = (r.data as Map).cast<String, dynamic>();
       return Attachment(fileId: d['id'], mime: d['mime'], width: d['width'] ?? 0, height: d['height'] ?? 0);
     } catch (e) {

@@ -127,10 +127,13 @@
   "model_id": "m-gpt-6.1-terra",
   "title": "体检报告指标解读",
   "pinned": false,
+  "private": false,
   "created_at": 1763280100000,
   "updated_at": 1763280150000
 }
 ```
+
+- `private`：是否为「隐私对话」（无痕 / 临时聊天，默认 `false`；创建后不可更改，详见 `docs/proposal-v4-private-chat.md`）。
 
 ### 2.5 `Message`（消息）与 `Attachment`（图片附件）
 
@@ -174,7 +177,9 @@
 
   **图片编号与改图**：一段对话里的所有图片（用户发的照片和小暖画的图）按时间顺序统一编号「图1」「图2」…，服务端会把编号写进发给模型的历史。模型调用 `generate_image` 时填 `image: "图N"` 就是在那张图上修改：服务端把原图（长边不超过 2048px 的 JPEG）发给画图模型的 `/v1/images/edits`（OpenRouter 则放进 chat 请求）。画图模型不支持编辑、而原图是小暖画的时，改用「原提示词 + 修改要求」重新生成一张。
 
-  **文件清理**：服务端每小时清理一次没有任何消息引用、且创建超过 24 小时的文件（删除的对话、被编辑或重新生成掉的消息、上传后没发出去的图片、管理员的测试图），以及磁盘上已没有对应记录的文件（例如被删除用户的文件）。
+  **文件清理**：
+  - **隐私对话文件**：删除隐私对话（`DELETE /api/conversations/{id}`）时，其消息关联且无其他引用的图片记录与磁盘文件会**立即同步删除**；服务端每 **10 分钟**巡检一次，自动清理超过 **2 小时**未活动的过期隐私对话及其文件，以及上传时标记了 `private=1` 但超过 **15 分钟**仍未被消息引用的孤儿文件。
+  - **普通对话文件**：服务端每小时清理一次没有任何消息引用、且创建超过 **24 小时**的文件（删除的对话、被编辑或重新生成掉的消息、上传后没发出去的图片、管理员的测试图），以及磁盘上已没有对应记录的文件（例如被删除用户的文件）。
 
 ---
 
@@ -550,7 +555,7 @@ data: {"message":{"id":"01933c90-1210-7000-8000-000000000012","conversation_id":
 
 ### 7.1 获取会话列表（游标分页 + 全文搜索）
 
-按 `updated_at` 倒序返回当前用户的会话（置顶分组由客户端根据 `pinned` 字段自行归类展示）。
+按 `updated_at` 倒序返回当前用户的非隐私会话（`private == false`；隐私对话绝不会出现在会话列表与全文搜索结果中。置顶分组由客户端根据 `pinned` 字段自行归类展示）。
 
 - **方法与路径**：`GET /api/conversations`
 - **鉴权要求**：需登录
@@ -586,10 +591,12 @@ data: {"message":{"id":"01933c90-1210-7000-8000-000000000012","conversation_id":
   {
     "assistant_id": "builtin-health",
     "model_id": "m-gpt-6.1-terra",
-    "title": "自定义标题"
+    "title": "自定义标题",
+    "private": false
   }
   ```
   - `title` 超过 60 个字符会自动截断。
+  - `private`：可选布尔值，设为 `true` 时创建隐私对话（强制 `pinned: false`）。
 - **成功响应** (`201 Created`)：返回 [`Conversation`](#24-conversation会话) 对象。
 - **错误码**：`404 not_found`（指定的 `assistant_id` 不存在或不可见）
 
@@ -661,7 +668,7 @@ data: {"message":{"id":"01933c90-1210-7000-8000-000000000012","conversation_id":
 
 ### 7.5 删除会话
 
-若该会话当前有正在进行的生成任务，服务端会先取消该任务并等待其收尾，再级联删除会话与旗下全部消息。
+若该会话当前有正在进行的生成任务，服务端会先取消该任务并等待其收尾，再级联删除会话与旗下全部消息。若该会话为**隐私对话（`private: true`）**，还会同步删除其消息中关联的无引用 `files` 记录并立即移除磁盘上的图片文件。
 
 - **方法与路径**：`DELETE /api/conversations/{id}`
 - **鉴权要求**：需登录
@@ -706,7 +713,8 @@ data: {"message":{"id":"01933c90-1210-7000-8000-000000000012","conversation_id":
       { "file_id": "01933c8f-9900-7000-8000-000000000009" }
     ],
     "edit_of": "",
-    "think": false
+    "think": false,
+    "private": false
   }
   ```
   - `conversation_id`：为空时自动新建会话；非空时追加到已有会话。
@@ -716,6 +724,7 @@ data: {"message":{"id":"01933c90-1210-7000-8000-000000000012","conversation_id":
   - `attachments`：可选图片列表，单次最多 **9** 张；请求时只需传 `file_id`（必须先通过 `POST /api/files` 上传且属于当前用户），服务端会自动补全 `mime`、`width`、`height`。
   - `edit_of`：可选，编辑重发功能——传入本会话中某条已有 `user` 消息的 `id`，服务端会在同一事务内删除该消息及其后的所有消息，再追加本次新消息。
   - `think`：是否开启深度思考模式（仅当所选模型配置了 `think_effort` 时生效）。
+  - `private`：可选，是否为「隐私对话」。新建会话时传入 `true` 则创建隐私会话（不进历史与搜索、不自动生成标题、不读取也不写入任何跨模型记忆、AI 画图自动标为隐私文件）；若向已有普通会话传入 `"private": true`，服务端返回 `400 private_mismatch`。已有隐私会话后续轮次即使省略 `private` 仍保持隐私模式。
 - **成功响应** (`200 OK`)：
   ```json
   {
@@ -835,9 +844,9 @@ data: {"message":{"id":"01933c90-1210-7000-8000-000000000012","conversation_id":
 
 仅支持 **JPG、PNG、WebP、GIF** 图片（服务端通过文件内容魔数 `http.DetectContentType` 校验并解析宽高，不依赖扩展名），单文件上限 **20 MB**。
 
-- **方法与路径**：`POST /api/files`
+- **方法与路径**：`POST /api/files`（隐私对话上传可附带查询参数 `?private=1`，标记为短期隐私文件）
 - **鉴权要求**：需登录
-- **请求格式**：`multipart/form-data`，表单字段名为 `file`
+- **请求格式**：`multipart/form-data`，表单字段名为 `file`（可选字段 `private=1`）
 - **成功响应** (`201 Created`)：
   ```json
   {
@@ -858,7 +867,7 @@ data: {"message":{"id":"01933c90-1210-7000-8000-000000000012","conversation_id":
 
 ### 8.2 读取图片
 
-仅允许上传该图片的用户本人读取；响应头带 `Cache-Control: private, max-age=31536000, immutable` 供客户端强缓存。
+仅允许上传该图片的用户本人读取；普通图片响应头带 `Cache-Control: private, max-age=31536000, immutable` 供客户端强缓存，隐私图片（`private: true`）返回 `Cache-Control: private, no-store`。
 
 - **方法与路径**：`GET /api/files/{id}`
 - **鉴权要求**：需登录（可使用 `?access_token=<token>`）

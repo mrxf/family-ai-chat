@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
@@ -66,6 +67,7 @@ class ChatState {
   final String? assistantId;
   final String? modelId;
   final bool think;
+  final bool isPrivate;
   final List<Message> messages;
 
   /// Messages before this index are laid out upward from the scroll anchor,
@@ -83,6 +85,7 @@ class ChatState {
     this.assistantId,
     this.modelId,
     this.think = false,
+    this.isPrivate = false,
     this.messages = const [],
     this.anchor = 0,
     this.loading = false,
@@ -100,6 +103,7 @@ class ChatState {
     String? assistantId,
     Object? modelId = _keep,
     bool? think,
+    bool? isPrivate,
     List<Message>? messages,
     int? anchor,
     bool? loading,
@@ -113,6 +117,7 @@ class ChatState {
         assistantId: assistantId ?? this.assistantId,
         modelId: modelId == _keep ? this.modelId : modelId as String?,
         think: think ?? this.think,
+        isPrivate: isPrivate ?? this.isPrivate,
         messages: messages ?? this.messages,
         anchor: anchor ?? this.anchor,
         loading: loading ?? this.loading,
@@ -129,6 +134,7 @@ const _keep = Object();
 /// before the server answered is honoured even if the user navigates away.
 class _Op {
   bool stopRequested = false;
+  bool abandoned = false;
 }
 
 class ChatController extends Notifier<ChatState> {
@@ -153,7 +159,10 @@ class ChatController extends Notifier<ChatState> {
 
   @override
   ChatState build() {
+    final sessionNotifier = ref.read(sessionProvider.notifier);
+    sessionNotifier.registerBeforeLogout(_onBeforeLogout);
     ref.onDispose(() {
+      sessionNotifier.registerBeforeLogout(null);
       _detach();
       notices.close();
     });
@@ -168,7 +177,43 @@ class ChatController extends Notifier<ChatState> {
   Api? get _apiOrNull => ref.read(sessionProvider).api;
   ConversationsNotifier get _convs => ref.read(conversationsProvider.notifier);
 
+  Future<void> _cleanupPrivateState({Api? apiOverride, bool waitDelete = false}) async {
+    if (!state.isPrivate) return;
+    _op
+      ?..stopRequested = true
+      ..abandoned = true;
+    final paths = <String>{
+      for (final m in state.messages)
+        for (final a in m.attachments)
+          if (a.localPath != null && a.localPath!.isNotEmpty) a.localPath!,
+      for (final list in _failedImages.values)
+        for (final img in list)
+          if (img.path.isNotEmpty) img.path,
+    };
+    for (final p in paths) {
+      unawaited(File(p).delete().catchError((_) => File(p)));
+    }
+    final cid = state.conversationId;
+    final api = apiOverride ?? _apiOrNull;
+    if (cid != null && api != null) {
+      final fut = api.deleteConversation(cid).catchError((_) {});
+      if (waitDelete) await fut;
+    }
+  }
+
+  Future<void> _onBeforeLogout(Api api) async {
+    if (!state.isPrivate) return;
+    await _cleanupPrivateState(apiOverride: api, waitDelete: true);
+    _nav++;
+    _rev++;
+    _detach();
+    _failedImages.clear();
+    live.value = LiveText.empty;
+    state = const ChatState();
+  }
+
   void _reset(ChatState next) {
+    unawaited(_cleanupPrivateState());
     _nav++;
     _rev++;
     _detach();
@@ -179,8 +224,15 @@ class ChatController extends Notifier<ChatState> {
 
   // ---------------- navigation ----------------
 
-  void newChat({String? assistantId}) {
-    _reset(ChatState(assistantId: assistantId, think: state.think, epoch: state.epoch + 1));
+  void newChat({String? assistantId, bool isPrivate = false}) {
+    _reset(ChatState(assistantId: assistantId, isPrivate: isPrivate, think: state.think, epoch: state.epoch + 1));
+  }
+
+  void exitPrivateChat() {
+    if (!state.isPrivate) return;
+    final hadActivity = state.messages.isNotEmpty || state.conversationId != null || state.busy;
+    newChat();
+    if (hadActivity) notices.add('隐私对话已清除');
   }
 
   Future<void> open(String id) async {
@@ -232,7 +284,7 @@ class ChatController extends Notifier<ChatState> {
       if (nav != _nav || state.conversationId != id) return;
       state = state.copyWith(loading: false);
       if (e.status == 404) {
-        notices.add('这个对话已经被删除了');
+        notices.add(state.isPrivate ? '隐私对话已过期自动清除' : '这个对话已经被删除了');
         newChat();
       } else if (state.messages.isEmpty) {
         notices.add(e.message);
@@ -291,6 +343,7 @@ class ChatController extends Notifier<ChatState> {
     final assistantId = convId == null ? state.assistantId : null;
     final modelId = state.modelId;
     final think = state.think;
+    final isPrivate = state.isPrivate;
     final original = (messages: state.messages, anchor: state.anchor);
     final op = _op = _Op();
     _rev++;
@@ -321,9 +374,11 @@ class ChatController extends Notifier<ChatState> {
     try {
       final uploaded = <Attachment>[...keepAttachments];
       for (final img in images) {
-        final a = await api.upload(img.bytes, 'photo.jpg');
+        if (isPrivate && op.abandoned) return;
+        final a = await api.upload(img.bytes, 'photo.jpg', isPrivate: isPrivate);
         uploaded.add(Attachment(fileId: a.fileId, mime: a.mime, width: a.width, height: a.height, localPath: img.path));
       }
+      if (isPrivate && op.abandoned) return;
       final res = await api.send(
         conversationId: convId,
         assistantId: assistantId,
@@ -332,10 +387,19 @@ class ChatController extends Notifier<ChatState> {
         attachments: uploaded,
         editOf: editOf,
         think: think,
+        isPrivate: isPrivate,
       );
       if (op.stopRequested) unawaited(api.cancel(res.assistant.id).catchError((_) {}));
-      if (identical(_apiOrNull, api)) _convs.upsertTop(res.conversation.copyWith(updatedAt: DateTime.now().millisecondsSinceEpoch));
-      if (!current()) return; // user navigated away; the reply is safe on the server
+      final privConv = isPrivate || res.conversation.isPrivate;
+      if (!privConv && identical(_apiOrNull, api)) {
+        _convs.upsertTop(res.conversation.copyWith(updatedAt: DateTime.now().millisecondsSinceEpoch));
+      }
+      if (!current()) {
+        if (privConv && convId == null) {
+          unawaited(api.deleteConversation(res.conversation.id).catchError((_) {}));
+        }
+        return; // user navigated away; normal chats remain safe on the server
+      }
       final serverUser = res.userMessage!;
       // Keep local file paths so images don't flash while switching to network URLs.
       final mergedUser = serverUser.copyWith(attachments: [
@@ -351,6 +415,7 @@ class ChatController extends Notifier<ChatState> {
       ]);
       state = state.copyWith(
         conversationId: res.conversation.id,
+        isPrivate: privConv,
         messages: [
           for (final m in state.messages)
             if (m.id == localUser.id) mergedUser else if (m.id == localAsst.id) res.assistant else m,
@@ -479,9 +544,11 @@ class ChatController extends Notifier<ChatState> {
             case 'attachments':
               live.value = live.value.copyWith(attachments: _attachments(ev.data['attachments']));
             case 'title':
-              final cid = '${ev.data['conversation_id']}';
-              final title = '${ev.data['title']}';
-              _convs.patchLocal(cid, (c) => c.copyWith(title: title));
+              if (!state.isPrivate) {
+                final cid = '${ev.data['conversation_id']}';
+                final title = '${ev.data['title']}';
+                _convs.patchLocal(cid, (c) => c.copyWith(title: title));
+              }
             case 'done':
               final m = ev.data['message'];
               _finish(id, m is Map ? Message.fromJson(m.cast()) : null);
@@ -517,7 +584,7 @@ class ChatController extends Notifier<ChatState> {
     state = state.copyWith(messages: msgs, activeId: null);
     _streamCancel = null;
     final cid = state.conversationId;
-    if (cid != null) _convs.touch(cid);
+    if (!state.isPrivate && cid != null) _convs.touch(cid);
     // A limited user's "pictures left today" changes with each drawing.
     final boot = ref.read(sessionProvider).boot;
     if ((finalMsg?.attachments.isNotEmpty ?? false) && boot != null && boot.imagesLeft >= 0) {
@@ -527,6 +594,7 @@ class ChatController extends Notifier<ChatState> {
   }
 
   void _persist() {
+    if (state.isPrivate) return;
     final id = state.conversationId;
     if (id == null) return;
     final keep = state.messages.where((m) => !m.id.startsWith('local-')).toList();

@@ -205,7 +205,7 @@ func (s *Store) MemoryMessages(ctx context.Context, conv, cursor string) ([]*Mes
 	return out, rows.Err()
 }
 func (s *Store) MemoryCandidates(ctx context.Context, before int64) ([]*Conversation, error) {
-	rows, err := s.query(ctx, `SELECT `+prefixCols(convCols, "c.")+` FROM conversations c WHERE c.updated_at<=? AND EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id=c.id AND m.id>c.memory_cursor) AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id=c.id AND m.status='streaming') ORDER BY c.updated_at,c.id`, before)
+	rows, err := s.query(ctx, `SELECT `+prefixCols(convCols, "c.")+` FROM conversations c WHERE c.private=0 AND c.updated_at<=? AND EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id=c.id AND m.id>c.memory_cursor) AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id=c.id AND m.status='streaming') ORDER BY c.updated_at,c.id`, before)
 	if err != nil {
 		return nil, err
 	}
@@ -234,8 +234,12 @@ func (s *Store) ApplyMemoryExtraction(ctx context.Context, snap MemorySnapshot, 
 		enabled := settings["memory_enabled"] != false
 		var assistant *string
 		var cursor string
-		if err := tx.queryRow(ctx, `SELECT memory_cursor, assistant_id FROM conversations WHERE id=? AND user_id=?`+s.forUpdate(), snap.ConversationID, snap.UserID).Scan(&cursor, &assistant); err != nil {
+		var isPrivate bool
+		if err := tx.queryRow(ctx, `SELECT memory_cursor, assistant_id, private FROM conversations WHERE id=? AND user_id=?`+s.forUpdate(), snap.ConversationID, snap.UserID).Scan(&cursor, &assistant, &isPrivate); err != nil {
 			return notFound(err)
+		}
+		if isPrivate {
+			return nil
 		}
 		if assistant != nil {
 			var use bool

@@ -64,8 +64,19 @@ class _WelcomeState extends ConsumerState<Welcome> {
     final boot = ref.watch(sessionProvider).boot;
     if (boot == null) return const SizedBox();
     final assistantId = ref.watch(chatProvider.select((s) => s.assistantId));
+    final isPrivate = ref.watch(chatProvider.select((s) => s.isPrivate));
     final assistant = boot.assistant(assistantId);
     final name = boot.user.displayName;
+
+    if (isPrivate) {
+      return _PrivateWelcome(
+        assistant: assistant,
+        assistants: boot.assistants,
+        hasModels: boot.models.isNotEmpty,
+        isAdmin: boot.user.isAdmin,
+        onSuggestion: widget.onSuggestion,
+      );
+    }
 
     final List<(String, String)> suggestions = assistant != null
         ? [for (final s in assistant.suggestions) ('', s)]
@@ -195,15 +206,190 @@ class _SuggestionCard extends StatelessWidget {
   }
 }
 
-class _AssistantStrip extends ConsumerWidget {
-  const _AssistantStrip({required this.assistants});
+class _PrivateWelcome extends ConsumerWidget {
+  const _PrivateWelcome({
+    required this.assistant,
+    required this.assistants,
+    required this.hasModels,
+    required this.isAdmin,
+    required this.onSuggestion,
+  });
+
+  final Assistant? assistant;
   final List<Assistant> assistants;
+  final bool hasModels, isAdmin;
+  final void Function(String text) onSuggestion;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final p = context.pal;
+    final a = assistant;
+    return LayoutBuilder(builder: (context, c) {
+      return SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: c.maxHeight - 32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 8),
+              Center(
+                child: a == null
+                    ? Container(
+                        width: 88,
+                        height: 88,
+                        decoration: BoxDecoration(
+                          color: p.privateSoft,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: p.privateAccent.withValues(alpha: 0.25), width: 1.5),
+                        ),
+                        child: Icon(Icons.visibility_off_rounded, size: 40, color: p.privateAccent),
+                      )
+                    : Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Avatar(label: a.name, emoji: a.avatar, size: 88),
+                          Positioned(
+                            right: -2,
+                            bottom: -2,
+                            child: Container(
+                              width: 30,
+                              height: 30,
+                              decoration: BoxDecoration(
+                                color: p.privateAccent,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: p.bg, width: 2.5),
+                              ),
+                              child: const Icon(Icons.visibility_off_rounded, size: 15, color: Colors.white),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                a == null ? '隐私对话' : '隐私对话 · ${a.name}',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 25, fontWeight: FontWeight.w700, letterSpacing: 0.3, color: p.text),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                a == null ? '放心问，关闭后自动清除不留痕' : (a.greeting.isNotEmpty ? a.greeting : a.description),
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 16, color: p.muted, height: 1.5),
+              ),
+              if (!hasModels) ...[
+                const SizedBox(height: 22),
+                _NoModels(isAdmin: isAdmin),
+              ],
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                decoration: BoxDecoration(
+                  color: p.privateSoft,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: p.privateAccent.withValues(alpha: 0.2)),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _PrivatePoint(
+                      icon: Icons.history_toggle_off_rounded,
+                      title: '不进聊天记录',
+                      body: '不会出现在左侧历史列表和搜索结果里',
+                    ),
+                    SizedBox(height: 14),
+                    _PrivatePoint(
+                      icon: Icons.favorite_border_rounded,
+                      title: '不读取也不写入记忆',
+                      body: '不参考以往记忆，小暖也不会记住这次聊的事',
+                    ),
+                    SizedBox(height: 14),
+                    _PrivatePoint(
+                      icon: Icons.auto_delete_outlined,
+                      title: '关闭即清理',
+                      body: '退出或切换对话后，消息和图片立即删除',
+                    ),
+                  ],
+                ),
+              ),
+              if (a != null) ...[
+                if (a.suggestions.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  for (final s in a.suggestions)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _SuggestionCard(emoji: '', text: s, onTap: () => onSuggestion(s)),
+                    ),
+                ],
+                Center(
+                  child: TextButton.icon(
+                    onPressed: () => ref.read(chatProvider.notifier).newChat(isPrivate: true),
+                    icon: Icon(Icons.restart_alt_rounded, size: 18, color: p.privateAccent),
+                    label: Text('切回通用隐私对话', style: TextStyle(color: p.privateAccent, fontSize: 15)),
+                  ),
+                ),
+              ],
+              if (a == null && assistants.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 10),
+                  child: Text('找专门的助手（仍在隐私对话中）', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: p.muted)),
+                ),
+                _AssistantStrip(assistants: assistants, isPrivate: true),
+              ],
+            ],
+          ),
+        ),
+      );
+    });
+  }
+}
+
+class _PrivatePoint extends StatelessWidget {
+  const _PrivatePoint({required this.icon, required this.title, required this.body});
+  final IconData icon;
+  final String title, body;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(icon, size: 21, color: p.privateAccent),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600, color: p.text)),
+              const SizedBox(height: 2),
+              Text(body, style: TextStyle(fontSize: 14, color: p.muted, height: 1.4)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AssistantStrip extends ConsumerWidget {
+  const _AssistantStrip({required this.assistants, this.isPrivate = false});
+  final List<Assistant> assistants;
+  final bool isPrivate;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final p = context.pal;
+    final h = MediaQuery.textScalerOf(context).scale(112).clamp(128.0, 168.0);
     return SizedBox(
-      height: 128,
+      height: h,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         clipBehavior: Clip.none,
@@ -213,9 +399,9 @@ class _AssistantStrip extends ConsumerWidget {
           final a = assistants[i];
           return Pressable(
             scale: 0.97,
-            onTap: () => ref.read(chatProvider.notifier).newChat(assistantId: a.id),
+            onTap: () => ref.read(chatProvider.notifier).newChat(assistantId: a.id, isPrivate: isPrivate),
             child: Container(
-              width: 132,
+              width: 136,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(color: p.surfaceAlt, borderRadius: BorderRadius.circular(20)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -223,7 +409,9 @@ class _AssistantStrip extends ConsumerWidget {
                 const SizedBox(height: 10),
                 Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 3),
-                Text(a.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: p.muted, height: 1.35)),
+                Flexible(
+                  child: Text(a.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: p.muted, height: 1.35)),
+                ),
               ]),
             ),
           );

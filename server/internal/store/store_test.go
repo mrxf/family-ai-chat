@@ -79,7 +79,7 @@ func TestMigrationsRepeatableAndPersistData(t *testing.T) {
 		}
 	}
 	var n int
-	if err := s.queryRow(t.Context(), "SELECT count(*) FROM schema_migrations").Scan(&n); err != nil || n != 6 {
+	if err := s.queryRow(t.Context(), "SELECT count(*) FROM schema_migrations").Scan(&n); err != nil || n != 7 {
 		t.Errorf("migration count=%d err=%v", n, err)
 	}
 	if err := s.Close(); err != nil {
@@ -288,5 +288,81 @@ func TestListConversationsSearch(t *testing.T) {
 	titleOnly, err := s.ListConversations(t.Context(), ConversationQuery{UserID: u.ID, Search: "标题"})
 	if err != nil || len(titleOnly) != 1 || titleOnly[0].Snippet != "" {
 		t.Errorf("title-only match should have empty snippet: %+v err=%v", titleOnly, err)
+	}
+}
+
+func TestPrivateConversationStoreInvariants(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	u := testUser(t, s, "private_tester")
+
+	normal := &Conversation{UserID: u.ID, Title: "周年礼物参考"}
+	if err := s.CreateConversation(ctx, normal); err != nil {
+		t.Fatal(err)
+	}
+	priv := &Conversation{UserID: u.ID, Title: "周年礼物惊喜项链", Pinned: true, Private: true}
+	if err := s.CreateConversation(ctx, priv); err != nil {
+		t.Fatal(err)
+	}
+	if priv.Pinned {
+		t.Fatal("private conversation must not be created pinned")
+	}
+	pin := true
+	updated, err := s.UpdateConversation(ctx, priv.ID, u.ID, ConversationPatch{Pinned: &pin})
+	if err != nil || updated.Pinned {
+		t.Fatalf("private conversation must ignore pin=true: %+v err=%v", updated, err)
+	}
+
+	privFile := &File{UserID: u.ID, Mime: "image/jpeg", Path: "/tmp/priv_ring.jpg", Private: true}
+	if err := s.CreateFile(ctx, privFile); err != nil {
+		t.Fatal(err)
+	}
+	msg := &Message{Role: "user", Content: "记住我要买黄金项链", Status: StatusDone, Attachments: []Attachment{{FileID: privFile.ID, Mime: "image/jpeg"}}}
+	if err := s.ApplyTurn(ctx, Turn{ConversationID: priv.ID, Append: []*Message{msg}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Excluded from normal list and search.
+	list, err := s.ListConversations(ctx, ConversationQuery{UserID: u.ID})
+	if err != nil || len(list) != 1 || list[0].ID != normal.ID {
+		t.Fatalf("list=%+v err=%v", list, err)
+	}
+	search, err := s.ListConversations(ctx, ConversationQuery{UserID: u.ID, Search: "项链"})
+	if err != nil || len(search) != 0 {
+		t.Fatalf("search leaked private conversation: %+v err=%v", search, err)
+	}
+
+	// Excluded from memory candidates and blocked in ApplyMemoryExtraction.
+	cands, err := s.MemoryCandidates(ctx, Now()+60_000)
+	if err != nil || len(cands) != 0 {
+		t.Fatalf("MemoryCandidates=%+v err=%v", cands, err)
+	}
+	err = s.ApplyMemoryExtraction(ctx, MemorySnapshot{
+		ConversationID: priv.ID,
+		UserID:         u.ID,
+		Cursor:         "",
+		Messages:       []*Message{msg},
+	}, []MemoryChange{{Op: "add", Memory: &Memory{UserID: u.ID, Category: "ongoing", Content: "用户在挑项链", Pinned: true}}}, "聊了买项链")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mems, err := s.ListMemories(ctx, u.ID)
+	if err != nil || len(mems) != 0 {
+		t.Fatalf("ApplyMemoryExtraction wrote memories for private chat: %+v err=%v", mems, err)
+	}
+
+	// ExpiredPrivateConversations finds it once cutoff is past updated_at.
+	expired, err := s.ExpiredPrivateConversations(ctx, Now()+60_000)
+	if err != nil || len(expired) != 1 || expired[0].ID != priv.ID {
+		t.Fatalf("ExpiredPrivateConversations=%+v err=%v", expired, err)
+	}
+
+	// DeleteConversationCleanup deletes the private conversation AND its unreferenced file row.
+	paths, err := s.DeleteConversationCleanup(ctx, priv.ID, u.ID)
+	if err != nil || len(paths) != 1 || paths[0] != privFile.Path {
+		t.Fatalf("DeleteConversationCleanup paths=%v err=%v", paths, err)
+	}
+	if _, err := s.GetFile(ctx, privFile.ID, u.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected private file row deleted, got err=%v", err)
 	}
 }

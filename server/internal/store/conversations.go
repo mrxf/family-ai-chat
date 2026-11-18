@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"strings"
 	"unicode"
@@ -14,16 +15,17 @@ type Conversation struct {
 	ModelID     *string `json:"model_id"`
 	Title       string  `json:"title"`
 	Pinned      bool    `json:"pinned"`
+	Private     bool    `json:"private"`
 	CreatedAt   int64   `json:"created_at"`
 	UpdatedAt   int64   `json:"updated_at"`
 	Snippet     string  `json:"snippet,omitempty"`
 }
 
-const convCols = `id, user_id, assistant_id, model_id, title, pinned, created_at, updated_at`
+const convCols = `id, user_id, assistant_id, model_id, title, pinned, private, created_at, updated_at`
 
 func scanConv(row interface{ Scan(...any) error }) (*Conversation, error) {
 	var c Conversation
-	if err := row.Scan(&c.ID, &c.UserID, &c.AssistantID, &c.ModelID, &c.Title, &c.Pinned, &c.CreatedAt, &c.UpdatedAt); err != nil {
+	if err := row.Scan(&c.ID, &c.UserID, &c.AssistantID, &c.ModelID, &c.Title, &c.Pinned, &c.Private, &c.CreatedAt, &c.UpdatedAt); err != nil {
 		return nil, notFound(err)
 	}
 	return &c, nil
@@ -34,9 +36,12 @@ func (s *Store) CreateConversation(ctx context.Context, c *Conversation) error {
 	if c.ID == "" {
 		c.ID = NewID()
 	}
+	if c.Private {
+		c.Pinned = false
+	}
 	c.CreatedAt, c.UpdatedAt = now, now
-	_, err := s.exec(ctx, `INSERT INTO conversations (`+convCols+`) VALUES (?,?,?,?,?,?,?,?)`,
-		c.ID, c.UserID, c.AssistantID, c.ModelID, c.Title, c.Pinned, c.CreatedAt, c.UpdatedAt)
+	_, err := s.exec(ctx, `INSERT INTO conversations (`+convCols+`) VALUES (?,?,?,?,?,?,?,?,?)`,
+		c.ID, c.UserID, c.AssistantID, c.ModelID, c.Title, c.Pinned, c.Private, c.CreatedAt, c.UpdatedAt)
 	if isUnique(err) {
 		return ErrConflict
 	}
@@ -70,7 +75,7 @@ func (s *Store) ListConversations(ctx context.Context, q ConversationQuery) ([]*
 		selectCols += `, COALESCE((SELECT m.content FROM messages m WHERE m.conversation_id = c.id AND m.content ` + s.like() + ` ? ESCAPE '\' ORDER BY m.id DESC LIMIT 1), '')`
 		args = append(args, like)
 	}
-	where := []string{"c.user_id = ?"}
+	where := []string{"c.user_id = ?", "c.private = 0"}
 	args = append(args, q.UserID)
 	if q.Before > 0 {
 		where = append(where, "c.updated_at < ?")
@@ -100,7 +105,7 @@ func (s *Store) ListConversations(ctx context.Context, q ConversationQuery) ([]*
 		}
 		var c Conversation
 		var body string
-		if err := rows.Scan(&c.ID, &c.UserID, &c.AssistantID, &c.ModelID, &c.Title, &c.Pinned, &c.CreatedAt, &c.UpdatedAt, &body); err != nil {
+		if err := rows.Scan(&c.ID, &c.UserID, &c.AssistantID, &c.ModelID, &c.Title, &c.Pinned, &c.Private, &c.CreatedAt, &c.UpdatedAt, &body); err != nil {
 			return nil, notFound(err)
 		}
 		c.Snippet = makeSnippet(body, search)
@@ -186,7 +191,7 @@ func (s *Store) UpdateConversation(ctx context.Context, id, userID string, p Con
 		args = append(args, *p.Title)
 	}
 	if p.Pinned != nil {
-		sets = append(sets, "pinned = ?")
+		sets = append(sets, "pinned = CASE WHEN private = 1 THEN 0 ELSE ? END")
 		args = append(args, *p.Pinned)
 	}
 	if p.ModelID != nil {
@@ -222,17 +227,95 @@ func (s *Store) TouchConversation(ctx context.Context, id string) error {
 }
 
 func (s *Store) DeleteConversation(ctx context.Context, id, userID string) error {
-	return s.tx(ctx, func(tx *Tx) error {
+	_, err := s.DeleteConversationCleanup(ctx, id, userID)
+	return err
+}
+
+// DeleteConversationCleanup deletes a conversation and, when it is a private
+// conversation, also deletes any unreferenced file rows from its messages in the
+// same transaction and returns their on-disk paths for immediate removal.
+func (s *Store) DeleteConversationCleanup(ctx context.Context, id, userID string) ([]string, error) {
+	var paths []string
+	err := s.tx(ctx, func(tx *Tx) error {
 		// Match extraction/turn locking so an episode cannot appear between deletes.
 		var lockedID string
-		if err := tx.queryRow(ctx, `SELECT id FROM conversations WHERE id=? AND user_id=?`+s.forUpdate(), id, userID).Scan(&lockedID); err != nil {
+		var isPrivate bool
+		if err := tx.queryRow(ctx, `SELECT id, private FROM conversations WHERE id=? AND user_id=?`+s.forUpdate(), id, userID).Scan(&lockedID, &isPrivate); err != nil {
 			return notFound(err)
+		}
+		var fileIDs []string
+		if isPrivate {
+			rows, err := tx.query(ctx, `SELECT attachments FROM messages WHERE conversation_id = ? AND attachments <> '[]'`, id)
+			if err != nil {
+				return err
+			}
+			var rawAtts []string
+			for rows.Next() {
+				var raw string
+				if err := rows.Scan(&raw); err != nil {
+					rows.Close()
+					return err
+				}
+				rawAtts = append(rawAtts, raw)
+			}
+			if err := rows.Err(); err != nil {
+				rows.Close()
+				return err
+			}
+			rows.Close()
+			seen := map[string]bool{}
+			for _, raw := range rawAtts {
+				var atts []Attachment
+				_ = json.Unmarshal([]byte(raw), &atts)
+				for _, a := range atts {
+					if a.FileID != "" && !seen[a.FileID] {
+						seen[a.FileID] = true
+						fileIDs = append(fileIDs, a.FileID)
+					}
+				}
+			}
 		}
 		if _, err := tx.exec(ctx, `DELETE FROM memories WHERE source_conv_id = ? AND user_id = ? AND category = 'episode'`, id, userID); err != nil {
 			return err
 		}
-		return affected(tx.exec(ctx, `DELETE FROM conversations WHERE id = ? AND user_id = ?`, id, userID))
+		if err := affected(tx.exec(ctx, `DELETE FROM conversations WHERE id = ? AND user_id = ?`, id, userID)); err != nil {
+			return err
+		}
+		for _, fid := range fileIDs {
+			var p string
+			err := tx.queryRow(ctx, `SELECT path FROM files WHERE id = ? AND user_id = ? AND id NOT IN (`+s.referencedFileIDsSQL()+`)`, fid, userID).Scan(&p)
+			if err == sql.ErrNoRows {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			if _, err := tx.exec(ctx, `DELETE FROM files WHERE id = ?`, fid); err != nil {
+				return err
+			}
+			paths = append(paths, p)
+		}
+		return nil
 	})
+	return paths, err
+}
+
+// ExpiredPrivateConversations lists private conversations untouched before the given unix ms.
+func (s *Store) ExpiredPrivateConversations(ctx context.Context, before int64) ([]*Conversation, error) {
+	rows, err := s.query(ctx, `SELECT `+convCols+` FROM conversations WHERE private = 1 AND updated_at < ? ORDER BY updated_at ASC LIMIT 200`, before)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []*Conversation{}
+	for rows.Next() {
+		c, err := scanConv(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 func nullable(s string) any {
@@ -435,6 +518,7 @@ type File struct {
 	SHA256    string `json:"sha256"`
 	Width     int    `json:"width"`
 	Height    int    `json:"height"`
+	Private   bool   `json:"private,omitempty"`
 	Path      string `json:"-"`
 	CreatedAt int64  `json:"created_at"`
 }
@@ -444,15 +528,15 @@ func (s *Store) CreateFile(ctx context.Context, f *File) error {
 		f.ID = NewID()
 	}
 	f.CreatedAt = Now()
-	_, err := s.exec(ctx, `INSERT INTO files (id, user_id, mime, size, sha256, width, height, path, created_at) VALUES (?,?,?,?,?,?,?,?,?)`,
-		f.ID, f.UserID, f.Mime, f.Size, f.SHA256, f.Width, f.Height, f.Path, f.CreatedAt)
+	_, err := s.exec(ctx, `INSERT INTO files (id, user_id, mime, size, sha256, width, height, private, path, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+		f.ID, f.UserID, f.Mime, f.Size, f.SHA256, f.Width, f.Height, f.Private, f.Path, f.CreatedAt)
 	return err
 }
 
 func (s *Store) GetFile(ctx context.Context, id, userID string) (*File, error) {
 	var f File
-	err := s.queryRow(ctx, `SELECT id, user_id, mime, size, sha256, width, height, path, created_at FROM files WHERE id = ? AND user_id = ?`, id, userID).
-		Scan(&f.ID, &f.UserID, &f.Mime, &f.Size, &f.SHA256, &f.Width, &f.Height, &f.Path, &f.CreatedAt)
+	err := s.queryRow(ctx, `SELECT id, user_id, mime, size, sha256, width, height, private, path, created_at FROM files WHERE id = ? AND user_id = ?`, id, userID).
+		Scan(&f.ID, &f.UserID, &f.Mime, &f.Size, &f.SHA256, &f.Width, &f.Height, &f.Private, &f.Path, &f.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}

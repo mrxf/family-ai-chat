@@ -105,6 +105,14 @@ func populateCopyStore(t *testing.T, s *Store) {
 	if err := s.CreateFile(ctx, f); err != nil {
 		t.Fatal(err)
 	}
+	pf := &File{UserID: u.ID, Mime: "image/jpeg", Size: 64, Path: "files/private.jpg", SHA256: "def", Width: 8, Height: 8, Private: true}
+	if err := s.CreateFile(ctx, pf); err != nil {
+		t.Fatal(err)
+	}
+	pc := &Conversation{UserID: u.ID, ModelID: &m.ID, Private: true}
+	if err := s.CreateConversation(ctx, pc); err != nil {
+		t.Fatal(err)
+	}
 	var ms []*Message
 	for i := 0; i < 503; i++ {
 		ms = append(ms, &Message{Role: "assistant", Content: "你好 ? ' \\ 中文", Status: StatusDone, ModelID: &m.ID, Attachments: []Attachment{{FileID: f.ID, Mime: f.Mime}}})

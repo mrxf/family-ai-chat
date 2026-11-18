@@ -109,6 +109,24 @@ func run() error {
 		}
 	}()
 	go func() {
+		sweepPrivate := func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			if c, f, err := svc.CleanupPrivate(ctx, chat.PrivateConvTTL, chat.PrivateFileGrace); err != nil {
+				log.Warn("private cleanup", "conversations", c, "files", f, "err", err)
+			} else if c > 0 || f > 0 {
+				log.Info("private cleanup", "conversations", c, "files", f)
+			}
+		}
+		time.Sleep(15 * time.Second)
+		sweepPrivate()
+		t := time.NewTicker(10 * time.Minute)
+		defer t.Stop()
+		for range t.C {
+			sweepPrivate()
+		}
+	}()
+	go func() {
 		sweep := func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()

@@ -57,7 +57,9 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sum := sha256.Sum256(data)
-	f := &store.File{ID: store.NewID(), UserID: u.ID, Mime: mime, Size: int64(len(data)), SHA256: hex.EncodeToString(sum[:]), Width: cfg.Width, Height: cfg.Height}
+	qPrivate := r.URL.Query().Get("private")
+	isPrivate := qPrivate == "1" || qPrivate == "true" || r.FormValue("private") == "1" || r.FormValue("private") == "true"
+	f := &store.File{ID: store.NewID(), UserID: u.ID, Mime: mime, Size: int64(len(data)), SHA256: hex.EncodeToString(sum[:]), Width: cfg.Width, Height: cfg.Height, Private: isPrivate}
 	dir := filepath.Join(s.Cfg.DataDir, "files", time.Now().Format("2006-01"))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		s.writeStoreErr(w, r, err)
@@ -83,7 +85,11 @@ func (s *Server) getFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", f.Mime)
-	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	if f.Private {
+		w.Header().Set("Cache-Control", "private, no-store")
+	} else {
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	}
 	http.ServeFile(w, r, f.Path)
 }
 

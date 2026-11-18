@@ -154,12 +154,13 @@ func (s *Service) markToolsRejected(m *store.Model) { s.noTools.Store(toolKey(m)
 
 // toolTurn carries the state of one reply's tool use.
 type toolTurn struct {
-	user   *store.User
-	convID string
-	asstID string
-	run    *Run
-	images int
-	cost   float64
+	user    *store.User
+	convID  string
+	asstID  string
+	run     *Run
+	private bool
+	images  int
+	cost    float64
 }
 
 // runTools executes the calls of one round (pictures are drawn in parallel)
@@ -254,7 +255,7 @@ func (s *Service) runTools(ctx context.Context, t *toolTurn, calls []llm.ToolCal
 		go func() {
 			defer wg.Done()
 			started := time.Now()
-			att, cost, redrawn, err := s.drawImage(ctx, t.user.ID, im, ip, j)
+			att, cost, redrawn, err := s.drawImage(ctx, t.user.ID, t.private, im, ip, j)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -304,7 +305,7 @@ type drawJob struct {
 // drawImage generates one picture and stores it as a file owned by userID.
 // redrawn reports that the model could not edit, so the picture was drawn anew
 // from the source's prompt plus the requested change.
-func (s *Service) drawImage(ctx context.Context, userID string, im *store.Model, ip *store.Provider, j drawJob) (att store.Attachment, cost float64, redrawn bool, err error) {
+func (s *Service) drawImage(ctx context.Context, userID string, private bool, im *store.Model, ip *store.Provider, j drawJob) (att store.Attachment, cost float64, redrawn bool, err error) {
 	ctx, cancel := context.WithTimeout(ctx, imageTimeout)
 	defer cancel()
 	req := llm.ImageRequest{Model: im.UpstreamModel, Prompt: j.prompt, Size: j.size}
@@ -336,7 +337,7 @@ func (s *Service) drawImage(ctx context.Context, userID string, im *store.Model,
 	if err != nil {
 		return att, 0, false, err
 	}
-	f, err := s.SaveImage(ctx, userID, res.Data)
+	f, err := s.saveImage(ctx, userID, res.Data, private)
 	if err != nil {
 		return att, 0, false, err
 	}
@@ -514,6 +515,10 @@ func (s *Service) ImagesLeftToday(ctx context.Context, u *store.User) int {
 // SaveImage stores a generated picture as a JPEG file owned by userID
 // (upstreams return multi-megabyte PNGs; JPEG is a fraction of that).
 func (s *Service) SaveImage(ctx context.Context, userID string, data []byte) (*store.File, error) {
+	return s.saveImage(ctx, userID, data, false)
+}
+
+func (s *Service) saveImage(ctx context.Context, userID string, data []byte, private bool) (*store.File, error) {
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("decode generated image: %w", err)
@@ -529,7 +534,7 @@ func (s *Service) SaveImage(ctx context.Context, userID string, data []byte) (*s
 	}
 	out := buf.Bytes()
 	sum := sha256.Sum256(out)
-	f := &store.File{ID: store.NewID(), UserID: userID, Mime: "image/jpeg", Size: int64(len(out)), SHA256: hex.EncodeToString(sum[:]), Width: b.Dx(), Height: b.Dy()}
+	f := &store.File{ID: store.NewID(), UserID: userID, Mime: "image/jpeg", Size: int64(len(out)), SHA256: hex.EncodeToString(sum[:]), Width: b.Dx(), Height: b.Dy(), Private: private}
 	dir := filepath.Join(s.DataDir, "files", time.Now().Format("2006-01"))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err

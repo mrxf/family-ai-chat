@@ -97,3 +97,95 @@ func TestEmbeddingTimeoutFallsBackAndChatSurvivesStoreFailure(t *testing.T) {
 		t.Fatal(req, err)
 	}
 }
+
+func TestPrivateConversationSkipsMemoryInjectEmbedAndCleanup(t *testing.T) {
+	s, u, _ := contextFixture(t)
+	ms := []*store.Memory{
+		{UserID: u.ID, Category: "health", Content: "用户服用氨氯地平", Pinned: true},
+		{UserID: u.ID, Category: "episode", Content: "2026-11-02 聊过按摩椅", Pinned: false},
+	}
+	if err := s.Store.CreateMemories(t.Context(), ms); err != nil {
+		t.Fatal(err)
+	}
+
+	embedCalls := 0
+	client := llm.NewClient("", "https://fake.invalid", "")
+	client.HTTP = &http.Client{Transport: memoryTransport(func(r *http.Request) (*http.Response, error) {
+		embedCalls++
+		return nil, context.Canceled
+	})}
+	s.Memory.(*memory.Service).Resolve = func(context.Context, string) (*store.Model, *llm.Client, error) {
+		return &store.Model{ID: "embed", UpstreamModel: "embed"}, client, nil
+	}
+
+	priv := &store.Conversation{UserID: u.ID, Private: true}
+	if err := s.Store.CreateConversation(t.Context(), priv); err != nil {
+		t.Fatal(err)
+	}
+	imgPath := filepath.Join(s.DataDir, "priv.jpg")
+	if err := os.WriteFile(imgPath, []byte("secret-bytes"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	privFile := &store.File{UserID: u.ID, Mime: "image/jpeg", Path: imgPath, Private: true}
+	if err := s.Store.CreateFile(t.Context(), privFile); err != nil {
+		t.Fatal(err)
+	}
+	id := contextHistory(t, s, priv, &store.Message{
+		Role:        "user",
+		Content:     "按摩椅推荐一下，记住我喜欢深灰色",
+		Status:      store.StatusDone,
+		Attachments: []store.Attachment{{FileID: privFile.ID, Mime: "image/jpeg"}},
+	})
+	req, err := s.buildRequest(t.Context(), u, priv, id, &store.Model{UpstreamModel: "fake", Vision: true, ContextWindow: 128000}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if embedCalls != 0 {
+		t.Fatalf("expected zero embedding calls for private chat, got %d", embedCalls)
+	}
+	sys := req.Messages[0].Content
+	if strings.Contains(sys, "用户服用氨氯地平") || strings.Contains(sys, u.DisplayName) || !strings.Contains(sys, "隐私对话模式") {
+		t.Fatalf("unexpected private system prompt: %s", sys)
+	}
+	if strings.Contains(req.Messages[1].Parts[1].Text, "可能相关的往事") || strings.Contains(req.Messages[1].Parts[1].Text, "按摩椅；") {
+		t.Fatalf("unexpected recall note in private chat: %+v", req.Messages[1])
+	}
+
+	// Fresh private chat (< TTL) must NOT be deleted by CleanupPrivate.
+	if cCount, fCount, err := s.CleanupPrivate(t.Context(), 2*time.Hour, 15*time.Minute); err != nil || cCount != 0 || fCount != 0 {
+		t.Fatalf("fresh private chat cleaned prematurely: convs=%d files=%d err=%v", cCount, fCount, err)
+	}
+
+	// Orphan private file older than grace is removed; normal orphan file stays for 24h cleanup.
+	orphanPrivPath := filepath.Join(s.DataDir, "orphan_priv.jpg")
+	orphanNormPath := filepath.Join(s.DataDir, "orphan_norm.jpg")
+	_ = os.WriteFile(orphanPrivPath, []byte("p"), 0600)
+	_ = os.WriteFile(orphanNormPath, []byte("n"), 0600)
+	op := &store.File{UserID: u.ID, Mime: "image/jpeg", Path: orphanPrivPath, Private: true}
+	on := &store.File{UserID: u.ID, Mime: "image/jpeg", Path: orphanNormPath, Private: false}
+	if err := s.Store.CreateFile(t.Context(), op); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Store.CreateFile(t.Context(), on); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Millisecond)
+
+	// With zero TTL/grace, both the idle private conversation (+ its attachment) and the orphan private file are purged.
+	cCount, fCount, err := s.CleanupPrivate(t.Context(), 0, 0)
+	if err != nil || cCount != 1 || fCount != 2 {
+		t.Fatalf("CleanupPrivate: convs=%d files=%d err=%v", cCount, fCount, err)
+	}
+	if _, err := os.Stat(imgPath); !os.IsNotExist(err) {
+		t.Fatalf("expected private conversation file removed from disk, err=%v", err)
+	}
+	if _, err := os.Stat(orphanPrivPath); !os.IsNotExist(err) {
+		t.Fatalf("expected orphan private file removed from disk, err=%v", err)
+	}
+	if _, err := os.Stat(orphanNormPath); err != nil {
+		t.Fatalf("normal orphan file should wait for FileGrace, err=%v", err)
+	}
+	if _, err := s.Store.GetConversation(t.Context(), priv.ID, u.ID); err != store.ErrNotFound {
+		t.Fatalf("expected private conversation deleted, got err=%v", err)
+	}
+}

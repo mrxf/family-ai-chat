@@ -48,6 +48,17 @@ class ComposerState extends ConsumerState<Composer> {
     ref.read(chatProvider.notifier).send(text);
   }
 
+  /// Clears unsent text and removes any locally compressed draft images.
+  void clearDraft() {
+    for (final img in _images) {
+      if (img.path.isNotEmpty) {
+        File(img.path).delete().catchError((_) => File(img.path));
+      }
+    }
+    _ctrl.clear();
+    if (_images.isNotEmpty && mounted) setState(() => _images.clear());
+  }
+
   void _send() {
     final text = _ctrl.text.trim();
     if (text.isEmpty && _images.isEmpty) return;
@@ -117,6 +128,12 @@ class ComposerState extends ConsumerState<Composer> {
 
   @override
   Widget build(BuildContext context) {
+    // Wipe unsent text & picked images whenever navigating out of a private session.
+    ref.listen(chatProvider.select((s) => (s.isPrivate, s.epoch)), (prev, next) {
+      if (prev != null && prev.$1 && prev != next) {
+        clearDraft();
+      }
+    });
     final p = context.pal;
     final chat = ref.watch(chatProvider);
     final boot = ref.watch(sessionProvider).boot;
@@ -129,7 +146,7 @@ class ComposerState extends ConsumerState<Composer> {
       decoration: BoxDecoration(
         color: p.surface,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: p.line),
+        border: Border.all(color: chat.isPrivate ? p.privateAccent.withValues(alpha: 0.35) : p.line),
         boxShadow: [BoxShadow(color: p.shadow, blurRadius: 24, offset: const Offset(0, 6))],
       ),
       child: Column(
@@ -179,7 +196,9 @@ class ComposerState extends ConsumerState<Composer> {
             onSubmitted: (_) => _send(),
             style: const TextStyle(fontSize: 17, height: 1.45),
             decoration: InputDecoration(
-              hintText: _images.isEmpty ? '有什么问题尽管问我…' : '想问这张图片什么？',
+              hintText: chat.isPrivate
+                  ? (_images.isEmpty ? '在隐私对话中提问…' : '想问这张图片什么？（离开后清除）')
+                  : (_images.isEmpty ? '有什么问题尽管问我…' : '想问这张图片什么？'),
               filled: false,
               border: InputBorder.none,
               enabledBorder: InputBorder.none,
@@ -202,7 +221,13 @@ class ComposerState extends ConsumerState<Composer> {
                   if (_images.isNotEmpty) const SizedBox(width: 8),
                 ],
                 if (!showMic || _images.isNotEmpty)
-                  _SendButton(busy: chat.busy, enabled: canSend, onSend: _send, onStop: () => ref.read(chatProvider.notifier).stop()),
+                  _SendButton(
+                    busy: chat.busy,
+                    enabled: canSend,
+                    isPrivate: chat.isPrivate,
+                    onSend: _send,
+                    onStop: () => ref.read(chatProvider.notifier).stop(),
+                  ),
               ],
             ),
           ),
@@ -266,13 +291,15 @@ class _ThinkChip extends StatelessWidget {
 }
 
 class _SendButton extends StatelessWidget {
-  const _SendButton({required this.busy, required this.enabled, required this.onSend, required this.onStop});
-  final bool busy, enabled;
+  const _SendButton({required this.busy, required this.enabled, this.isPrivate = false, required this.onSend, required this.onStop});
+  final bool busy, enabled, isPrivate;
   final VoidCallback onSend, onStop;
 
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
+    final grad = isPrivate ? Palette.privateGradient : Palette.brandGradient;
+    final glow = isPrivate ? p.privateAccent : Palette.brand;
     final child = busy
         ? Container(
             key: const ValueKey('stop'),
@@ -287,10 +314,10 @@ class _SendButton extends StatelessWidget {
             width: 46,
             height: 46,
             decoration: BoxDecoration(
-              gradient: enabled ? Palette.brandGradient : null,
+              gradient: enabled ? grad : null,
               color: enabled ? null : p.line,
               shape: BoxShape.circle,
-              boxShadow: enabled ? [BoxShadow(color: Palette.brand.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 4))] : null,
+              boxShadow: enabled ? [BoxShadow(color: glow.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 4))] : null,
             ),
             child: Icon(Icons.arrow_upward_rounded, color: enabled ? Colors.white : p.faint, size: 26),
           );

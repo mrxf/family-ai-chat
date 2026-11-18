@@ -19,13 +19,14 @@ import (
 
 // Errors returned to the API layer.
 var (
-	ErrBusy          = errors.New("too many concurrent generations")
-	ErrConvBusy      = errors.New("conversation is already generating")
-	ErrNoModel       = errors.New("no model available")
-	ErrEmptyMessage  = errors.New("empty message")
-	ErrNothingToRedo = errors.New("nothing to regenerate")
-	errShutdown      = errors.New("server shutting down")
-	errUserCancel    = errors.New("cancelled by user")
+	ErrBusy            = errors.New("too many concurrent generations")
+	ErrConvBusy        = errors.New("conversation is already generating")
+	ErrNoModel         = errors.New("no model available")
+	ErrEmptyMessage    = errors.New("empty message")
+	ErrNothingToRedo   = errors.New("nothing to regenerate")
+	ErrPrivateMismatch = errors.New("conversation privacy mismatch")
+	errShutdown        = errors.New("server shutting down")
+	errUserCancel      = errors.New("cancelled by user")
 )
 
 const (
@@ -75,6 +76,7 @@ type SendInput struct {
 	Attachments    []store.Attachment
 	EditOf         string // replace this user message and everything after it
 	Think          bool   // deep thinking mode
+	Private        bool   // ephemeral / private chat (no history, no memory, immediate file cleanup)
 }
 
 type SendResult struct {
@@ -103,7 +105,7 @@ func (s *Service) Send(ctx context.Context, user *store.User, in SendInput) (*Se
 	var conv *store.Conversation
 	var err error
 	if in.ConversationID == "" {
-		conv = &store.Conversation{UserID: user.ID}
+		conv = &store.Conversation{UserID: user.ID, Private: in.Private}
 		if in.AssistantID != "" {
 			a, err := s.Store.GetAssistant(ctx, in.AssistantID, user.ID)
 			if err != nil {
@@ -121,6 +123,9 @@ func (s *Service) Send(ctx context.Context, user *store.User, in SendInput) (*Se
 		conv, err = s.Store.GetConversation(ctx, in.ConversationID, user.ID)
 		if err != nil {
 			return nil, err
+		}
+		if in.Private && !conv.Private {
+			return nil, ErrPrivateMismatch
 		}
 		if s.Hub.ActiveInConversation(conv.ID) != nil {
 			return nil, ErrConvBusy
@@ -368,13 +373,13 @@ type FinalEvent struct {
 
 func (s *Service) startRun(user *store.User, conv *store.Conversation, asst *store.Message, model *store.Model, provider *store.Provider, think bool) {
 	run := &Run{MessageID: asst.ID, ConversationID: conv.ID, UserID: user.ID}
-	needTitle := conv.Title == ""
+	needTitle := conv.Title == "" && !conv.Private
 	s.Hub.start(run, func(ctx context.Context) {
 		started := time.Now()
 		msg := *asst
 		var firstToken time.Duration
 		var usage llm.Usage
-		turn := &toolTurn{user: user, convID: conv.ID, asstID: asst.ID, run: run}
+		turn := &toolTurn{user: user, convID: conv.ID, asstID: asst.ID, run: run, private: conv.Private}
 
 		if needTitle {
 			go s.generateTitle(conv.ID, user.ID, model, provider, run)
@@ -507,7 +512,7 @@ func (s *Service) startRun(user *store.User, conv *store.Conversation, asst *sto
 		defer cancel()
 		if err := s.Store.FinishMessage(pctx, &msg); err != nil {
 			s.Log.Error("persist message", "message_id", msg.ID, "err", err)
-		} else if msg.Status == store.StatusDone && s.MemoryWorker != nil {
+		} else if msg.Status == store.StatusDone && !conv.Private && s.MemoryWorker != nil {
 			if history, err := s.Store.ListMessages(pctx, conv.ID, msg.ID, 1); err == nil && len(history) > 0 && memory.Trigger(history[0].Content) {
 				s.MemoryWorker.Kick(conv.ID, 5*time.Second)
 			}
@@ -647,6 +652,11 @@ const basePrompt = `你是「小暖」，一位耐心、温暖、可靠的 AI �
 - 如果用户描述的情况疑似电信诈骗（如陌生人要求转账、索要验证码、冒充公检法或客服、高回报投资等），要明确、直接地提醒用户注意防骗。
 - 不确定的事情就说不确定，不要编造。`
 
+const privatePrompt = `
+
+# 隐私对话模式
+本次对话为「隐私对话」，对话结束后记录与图片会自动清除，系统不会读取也不会保存任何跨对话记忆。如果用户请你在以后的对话里「记住」某件事，请温和说明当前是隐私对话、关闭后不会留存；需要长期记住的内容可以退出隐私对话后再说，或在「设置 → 小暖记住的事」里手动添加。`
+
 func (s *Service) systemPrompt(ctx context.Context, user *store.User, conv *store.Conversation, canDraw bool, core ...string) string {
 	var b strings.Builder
 	b.WriteString(basePrompt)
@@ -658,11 +668,15 @@ func (s *Service) systemPrompt(ctx context.Context, user *store.User, conv *stor
 	}
 	now := time.Now().In(shanghai)
 	fmt.Fprintf(&b, "\n\n当前日期：%s（%s）。", now.Format("2006年1月2日"), weekdays[now.Weekday()])
-	if user.DisplayName != "" {
-		fmt.Fprintf(&b, "\n正在和你对话的用户称呼是「%s」。", user.DisplayName)
-	}
-	if len(core) > 0 {
-		b.WriteString(core[0])
+	if conv.Private {
+		b.WriteString(privatePrompt)
+	} else {
+		if user.DisplayName != "" {
+			fmt.Fprintf(&b, "\n正在和你对话的用户称呼是「%s」。", user.DisplayName)
+		}
+		if len(core) > 0 {
+			b.WriteString(core[0])
+		}
 	}
 	return b.String()
 }
@@ -719,7 +733,7 @@ func (s *Service) buildRequest(ctx context.Context, user *store.User, conv *stor
 		}
 	}
 	mem := memory.Context{}
-	if s.Memory != nil {
+	if s.Memory != nil && !conv.Private {
 		mem = s.Memory.Inject(ctx, user, conv.AssistantID, query)
 	}
 	sys := s.systemPrompt(ctx, user, conv, canDraw, mem.Core)

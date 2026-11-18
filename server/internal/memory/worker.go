@@ -166,6 +166,9 @@ func (w *Worker) scan(immediate map[string]bool) {
 // Process drains a conversation in chronological segments. The scheduler owns the
 // per-user lock; callers using Process directly must serialize the same user.
 func (w *Worker) Process(ctx context.Context, c *store.Conversation) error {
+	if c.Private {
+		return nil
+	}
 	for {
 		u, err := w.service.Store.GetUser(ctx, c.UserID)
 		if err != nil {

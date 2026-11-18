@@ -67,6 +67,11 @@ class Session {
 
 class SessionNotifier extends Notifier<Session> {
   DateTime _lastRefresh = DateTime.now();
+  Future<void> Function(Api api)? _beforeLogout;
+
+  /// Allows ChatController to wipe an active private conversation while the
+  /// session token is still valid, right before `/api/auth/logout` revokes it.
+  void registerBeforeLogout(Future<void> Function(Api api)? fn) => _beforeLogout = fn;
 
   @override
   Session build() {
@@ -162,6 +167,9 @@ class SessionNotifier extends Notifier<Session> {
     if (state.status != SessionStatus.loggedIn) return;
     final api = state.api;
     if (remote && api != null) {
+      try {
+        await _beforeLogout?.call(api);
+      } catch (_) {}
       try {
         await api.logout();
       } catch (_) {}

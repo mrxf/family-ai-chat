@@ -65,9 +65,11 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
     if (boot == null) return const Scaffold();
     final model = boot.effectiveModel(chat.modelId, chat.assistantId);
     final assistant = boot.assistant(chat.assistantId);
-    final title = chat.conversationId == null
-        ? (assistant?.name ?? '小暖')
-        : ref.watch(_titleProvider(chat.conversationId!)) ?? (assistant?.name ?? '小暖');
+    final title = chat.isPrivate
+        ? (assistant == null ? '隐私对话' : '隐私对话 · ${assistant.name}')
+        : chat.conversationId == null
+            ? (assistant?.name ?? '小暖')
+            : ref.watch(_titleProvider(chat.conversationId!)) ?? (assistant?.name ?? '小暖');
 
     return Scaffold(
       drawer: const HistoryDrawer(),
@@ -92,7 +94,28 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 250),
-              child: Text(title, key: ValueKey(title), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17.5, fontWeight: FontWeight.w600)),
+              child: Row(
+                key: ValueKey('${chat.isPrivate}-$title'),
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (chat.isPrivate) ...[
+                    Icon(Icons.visibility_off_rounded, size: 17, color: p.privateAccent),
+                    const SizedBox(width: 5),
+                  ],
+                  Flexible(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 17.5,
+                        fontWeight: FontWeight.w600,
+                        color: chat.isPrivate ? p.privateAccent : p.text,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
             if (model != null)
               Row(mainAxisSize: MainAxisSize.min, children: [
@@ -102,18 +125,61 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
           ]),
         ),
         actions: [
-          IconButton(
-            tooltip: '新对话',
-            icon: const Icon(Icons.add_comment_outlined, size: 25),
-            onPressed: chat.conversationId == null && chat.assistantId == null ? null : () => ref.read(chatProvider.notifier).newChat(),
-          ),
-          const SizedBox(width: 4),
+          if (chat.isPrivate)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Tooltip(
+                message: '退出隐私对话',
+                child: Pressable(
+                  onTap: () {
+                    FocusScope.of(context).unfocus();
+                    _composerKey.currentState?.clearDraft();
+                    ref.read(chatProvider.notifier).exitPrivateChat();
+                  },
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 44, minWidth: 68),
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: p.privateSoft,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: p.privateAccent.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.close_rounded, size: 17, color: p.privateAccent),
+                          const SizedBox(width: 3),
+                          Text('退出', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.privateAccent)),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else ...[
+            IconButton(
+              tooltip: '隐私对话',
+              icon: const Icon(Icons.visibility_off_outlined, size: 23),
+              onPressed: () => ref.read(chatProvider.notifier).newChat(
+                    isPrivate: true,
+                    assistantId: chat.conversationId == null ? chat.assistantId : null,
+                  ),
+            ),
+            IconButton(
+              tooltip: '新对话',
+              icon: const Icon(Icons.add_comment_outlined, size: 25),
+              onPressed: chat.conversationId == null && chat.assistantId == null ? null : () => ref.read(chatProvider.notifier).newChat(),
+            ),
+            const SizedBox(width: 4),
+          ],
         ],
       ),
       body: SafeArea(
         top: false,
         child: Column(
           children: [
+            if (chat.isPrivate && !chat.isEmpty && !chat.loading) const _PrivateBanner(),
             Expanded(
               child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
@@ -132,6 +198,41 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
             Composer(key: _composerKey),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PrivateBanner extends StatelessWidget {
+  const _PrivateBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+      decoration: BoxDecoration(
+        color: p.privateSoft,
+        border: Border(
+          top: BorderSide(color: p.privateAccent.withValues(alpha: 0.14)),
+          bottom: BorderSide(color: p.privateAccent.withValues(alpha: 0.14)),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.visibility_off_outlined, size: 15, color: p.privateAccent),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              '隐私对话中 · 离开后记录与图片自动清除，小暖不会记住',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 13, color: p.privateAccent, fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
       ),
     );
   }

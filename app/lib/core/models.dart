@@ -192,7 +192,7 @@ Map<MemoryCategory, List<Memory>> groupMemories(Iterable<Memory> memories) {
 class Conversation {
   final String id, title, snippet;
   final String? assistantId, modelId;
-  final bool pinned;
+  final bool pinned, isPrivate;
   final int createdAt, updatedAt;
   const Conversation({
     required this.id,
@@ -201,6 +201,7 @@ class Conversation {
     this.assistantId,
     this.modelId,
     required this.pinned,
+    this.isPrivate = false,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -211,11 +212,20 @@ class Conversation {
         assistantId: _strN(j['assistant_id']),
         modelId: _strN(j['model_id']),
         pinned: j['pinned'] == true,
+        isPrivate: j['private'] == true,
         createdAt: _int(j['created_at']),
         updatedAt: _int(j['updated_at']),
       );
-  Map<String, dynamic> toJson() =>
-      {'id': id, 'title': title, 'assistant_id': assistantId, 'model_id': modelId, 'pinned': pinned, 'created_at': createdAt, 'updated_at': updatedAt};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'assistant_id': assistantId,
+        'model_id': modelId,
+        'pinned': pinned,
+        if (isPrivate) 'private': true,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+      };
 
   Conversation copyWith({String? title, String? snippet, bool? pinned, int? updatedAt, String? modelId}) => Conversation(
         id: id,
@@ -224,6 +234,7 @@ class Conversation {
         assistantId: assistantId,
         modelId: modelId ?? this.modelId,
         pinned: pinned ?? this.pinned,
+        isPrivate: isPrivate,
         createdAt: createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );

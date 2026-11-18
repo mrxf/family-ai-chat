@@ -206,6 +206,8 @@ func (s *Server) writeStoreErr(w http.ResponseWriter, r *http.Request, err error
 		writeErr(w, 400, "empty", "消息不能为空")
 	case errors.Is(err, chat.ErrNothingToRedo):
 		writeErr(w, 400, "nothing", "没有可以重新生成的回答")
+	case errors.Is(err, chat.ErrPrivateMismatch):
+		writeErr(w, 400, "private_mismatch", "不能把隐私消息发到普通对话中")
 	default:
 		s.Log.Error("request failed", "path", r.URL.Path, "err", err)
 		writeErr(w, 500, "internal", "服务器出了点问题，请稍后再试")

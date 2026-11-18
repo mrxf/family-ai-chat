@@ -35,6 +35,7 @@ class ConversationsNotifier extends Notifier<ConvListState> {
 
   Future<void> _init() async {
     final cached = await ref.read(storageProvider).readCache('conversations');
+    if (!ref.mounted) return;
     if (cached is List && !state.loaded) {
       state = state.copyWith(items: cached.map((e) => Conversation.fromJson((e as Map).cast())).toList());
     }
@@ -44,17 +45,18 @@ class ConversationsNotifier extends Notifier<ConvListState> {
   Api? get _api => ref.read(sessionProvider).api;
 
   Future<void> refresh() async {
+    if (!ref.mounted) return;
     final api = _api;
     if (api == null) return;
     state = state.copyWith(loading: true);
     try {
       final items = await api.conversations(limit: _page);
-      if (!identical(_api, api)) return;
+      if (!ref.mounted || !identical(_api, api)) return;
       _nextBefore = items.isEmpty ? null : items.last.updatedAt;
       state = ConvListState(items: items, hasMore: items.length >= _page, loaded: true);
       _persist();
     } catch (_) {
-      if (identical(_api, api)) state = state.copyWith(loading: false);
+      if (ref.mounted && identical(_api, api)) state = state.copyWith(loading: false);
     }
   }
 

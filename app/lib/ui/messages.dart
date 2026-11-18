@@ -194,9 +194,10 @@ class _FadeInState extends State<_FadeIn> {
 /// Placeholder while a picture is being drawn: a soft shimmering card with
 /// the mascot and how long it has been, so a 30-second wait feels alive.
 class DrawingCard extends StatefulWidget {
-  const DrawingCard({super.key, required this.label, this.since});
+  const DrawingCard({super.key, required this.label, this.since, this.isPrivate = false});
   final String label;
   final DateTime? since;
+  final bool isPrivate;
 
   @override
   State<DrawingCard> createState() => _DrawingCardState();
@@ -241,7 +242,10 @@ class _DrawingCardState extends State<DrawingCard> with SingleTickerProviderStat
                 const SizedBox(height: 6),
                 Text(secs < 3 ? '一般要半分钟左右' : '已经 $secs 秒，一般要半分钟左右', style: TextStyle(fontSize: 13, color: p.muted)),
                 const SizedBox(height: 2),
-                Text('离开这个页面也没关系，画好会留在这里', style: TextStyle(fontSize: 12, color: p.faint)),
+                Text(
+                  widget.isPrivate ? '隐私对话关闭后会清除，画好后可保存到相册' : '离开这个页面也没关系，画好会留在这里',
+                  style: TextStyle(fontSize: 12, color: p.faint),
+                ),
               ]),
             );
           },
@@ -379,6 +383,7 @@ class _AssistantMessageState extends ConsumerState<AssistantMessage> {
   @override
   Widget build(BuildContext context) {
     final activeId = ref.watch(chatProvider.select((s) => s.activeId));
+    final isPrivate = ref.watch(chatProvider.select((s) => s.isPrivate));
     final controller = ref.read(chatProvider.notifier);
     final isLive = activeId == widget.message.id;
     if (isLive) _wasLive = true;
@@ -408,7 +413,7 @@ class _AssistantMessageState extends ConsumerState<AssistantMessage> {
                   padding: EdgeInsets.only(top: content.isEmpty ? 2 : 10, bottom: 4),
                   child: Wrap(spacing: 8, runSpacing: 8, children: [
                     if (drawn.isNotEmpty) ImageGrid(attachments: drawn, large: true),
-                    if (drawing) DrawingCard(label: live.activity, since: live.activitySince),
+                    if (drawing) DrawingCard(label: live.activity, since: live.activitySince, isPrivate: isPrivate),
                   ]),
                 ),
               if (!isLive) _Footer(message: m, isLast: widget.isLast),

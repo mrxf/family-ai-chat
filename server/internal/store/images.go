@@ -15,15 +15,28 @@ func (s *Store) ImagesSince(ctx context.Context, userID string, since int64) (in
 	return n, err
 }
 
+func (s *Store) referencedFileIDsSQL() string {
+	if s.pg {
+		return `SELECT j.value ->> 'file_id' FROM messages m, jsonb_array_elements(m.attachments::jsonb) j WHERE j.value ->> 'file_id' IS NOT NULL`
+	}
+	return `SELECT json_extract(j.value, '$.file_id') FROM messages m, json_each(m.attachments) j WHERE m.attachments <> '[]' AND json_extract(j.value, '$.file_id') IS NOT NULL`
+}
+
 // OrphanFiles lists files created before the given unix ms that no message
 // refers to any more (conversation deleted, message edited away or regenerated,
 // upload never sent, admin's test pictures).
 func (s *Store) OrphanFiles(ctx context.Context, before int64) ([]*File, error) {
-	refs := `SELECT json_extract(j.value, '$.file_id') FROM messages m, json_each(m.attachments) j WHERE m.attachments <> '[]' AND json_extract(j.value, '$.file_id') IS NOT NULL`
-	if s.pg {
-		refs = `SELECT j.value ->> 'file_id' FROM messages m, jsonb_array_elements(m.attachments::jsonb) j WHERE j.value ->> 'file_id' IS NOT NULL`
-	}
-	rows, err := s.query(ctx, `SELECT id, user_id, path FROM files WHERE created_at < ? AND id NOT IN (`+refs+`)`, before)
+	return s.orphanFilesWhere(ctx, `created_at < ?`, before)
+}
+
+// OrphanPrivateFiles lists private files created before the given unix ms that
+// no message refers to (e.g. uploaded in private mode and never sent).
+func (s *Store) OrphanPrivateFiles(ctx context.Context, before int64) ([]*File, error) {
+	return s.orphanFilesWhere(ctx, `private = 1 AND created_at < ?`, before)
+}
+
+func (s *Store) orphanFilesWhere(ctx context.Context, cond string, before int64) ([]*File, error) {
+	rows, err := s.query(ctx, `SELECT id, user_id, path FROM files WHERE `+cond+` AND id NOT IN (`+s.referencedFileIDsSQL()+`)`, before)
 	if err != nil {
 		return nil, err
 	}

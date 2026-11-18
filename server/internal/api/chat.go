@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -308,11 +309,12 @@ func (s *Server) createConversation(w http.ResponseWriter, r *http.Request) {
 		AssistantID string `json:"assistant_id"`
 		ModelID     string `json:"model_id"`
 		Title       string `json:"title"`
+		Private     bool   `json:"private"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	c := &store.Conversation{UserID: u.ID, Title: truncate(strings.TrimSpace(in.Title), 60)}
+	c := &store.Conversation{UserID: u.ID, Title: truncate(strings.TrimSpace(in.Title), 60), Private: in.Private}
 	if in.AssistantID != "" {
 		if _, err := s.Store.GetAssistant(r.Context(), in.AssistantID, u.ID); err != nil {
 			s.writeStoreErr(w, r, err)
@@ -405,11 +407,10 @@ func (s *Server) updateConversation(w http.ResponseWriter, r *http.Request) {
 func (s *Server) deleteConversation(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	u := currentUser(r)
-	if run := s.Chat.Hub.ActiveInConversation(id); run != nil && run.UserID == u.ID {
-		run.Cancel(fmt.Errorf("conversation deleted"))
-		<-run.Done()
-	}
-	if err := s.Store.DeleteConversation(r.Context(), id, u.ID); err != nil {
+	// Detached timeout so closing the app mid-delete still finishes wiping a private chat.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := s.Chat.DeleteConversation(ctx, id, u.ID); err != nil {
 		s.writeStoreErr(w, r, err)
 		return
 	}
@@ -427,6 +428,7 @@ func (s *Server) send(w http.ResponseWriter, r *http.Request) {
 		Attachments    []store.Attachment `json:"attachments"`
 		EditOf         string             `json:"edit_of"`
 		Think          bool               `json:"think"`
+		Private        bool               `json:"private"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -441,7 +443,7 @@ func (s *Server) send(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.Chat.Send(r.Context(), currentUser(r), chat.SendInput{
 		ConversationID: in.ConversationID, AssistantID: in.AssistantID, ModelID: in.ModelID,
-		Content: in.Content, Attachments: in.Attachments, EditOf: in.EditOf, Think: in.Think,
+		Content: in.Content, Attachments: in.Attachments, EditOf: in.EditOf, Think: in.Think, Private: in.Private,
 	})
 	if err != nil {
 		s.writeStoreErr(w, r, err)
