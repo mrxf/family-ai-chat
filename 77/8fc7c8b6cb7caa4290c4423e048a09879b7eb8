@@ -1,0 +1,68 @@
+app/lib/core/admin_models.dart
+  h_8f297825d1fe21 56,58,67-69,88-90,112,114,121-122,141-142,165,171,247-248,259-262,268-286
+app/lib/core/models.dart
+  h_8f297825d1fe21 5-6,197,205,217,228,235,241,330,339,351,364-365,381-382,390-397,409-410,420-441,444-447
+app/lib/state/chat.dart
+  h_8f297825d1fe21 70-72,91,110,125,259-264,271-272,300-301,362-365,454,573-579,587-597,643-647
+app/lib/ui/admin/common.dart
+  h_8f297825d1fe21 378-379,397-398,417-418
+app/lib/ui/admin/model_edit_page.dart
+  h_8f297825d1fe21 35,57,69,89,98,348-401
+app/lib/ui/admin/models_page.dart
+  h_8f297825d1fe21 7,68-72,94-97,116-154,306,308,316-371,391,399,438-446,533-541,604-610
+app/lib/ui/admin/upstream_picker_page.dart
+  h_8f297825d1fe21 56-62,67-70,91-185
+app/lib/ui/home_page.dart
+  h_8f297825d1fe21 6,125-126,185-196,314-320
+app/lib/ui/messages.dart
+  h_8f297825d1fe21 492-495,527-533
+app/lib/ui/sheets.dart
+  h_8f297825d1fe21 172-175,190,208-215,220
+app/test/auto_mode_test.dart
+  h_8f297825d1fe21 1-312
+docs/api.md
+  h_8f297825d1fe21 1241-1260
+server/internal/api/admin.go
+  h_8f297825d1fe21 14,133-148,156-158,172-178,185-204,212-214,217-226,228-245,248-266,271,274
+server/internal/api/admin_catalog.go
+  h_8f297825d1fe21 329-352,359,369,401,439-440,487,538
+server/internal/api/auto_test.go
+  h_8f297825d1fe21 1-254
+server/internal/api/chat.go
+  h_8f297825d1fe21 76,88-89,328-334,405-427,547-559,588-591
+server/internal/api/helpers_test.go
+  h_8f297825d1fe21 139,180,182-185,521
+server/internal/chat/hub.go
+  h_8f297825d1fe21 31,44,81-87,132-133
+server/internal/chat/router.go
+  h_8f297825d1fe21 1-669
+server/internal/chat/service.go
+  h_8f297825d1fe21 64-66,74-76,115,117-119,127,130-143,159-175,180,186-188,191-192,198-203,207,223,235-251,255-256,258-263,266-267,271-276,280,445-524,530-532,534-536,545-601,663-672,678-680,790-819,824-830
+server/internal/llm/catalog.go
+  h_8f297825d1fe21 130-146,245-249,258-262,281-290,314-315,318-319,321,337-343,347,353,382-383,387
+server/internal/llm/profiles.go
+  h_8f297825d1fe21 1-812
+server/internal/llm/profiles_test.go
+  h_8f297825d1fe21 1-95
+server/internal/store/catalog.go
+  h_8f297825d1fe21 36,114,118,145,147,150
+server/internal/store/conversations.go
+  h_8f297825d1fe21 16,25,29,44-45,109,184,203-206
+server/internal/store/migrations/postgres/009_auto_mode.sql
+  h_8f297825d1fe21 1-4
+server/internal/store/migrations/sqlite/009_auto_mode.sql
+  h_8f297825d1fe21 1-4
+server/internal/store/store_test.go
+  h_8f297825d1fe21 82,369-400
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "778fc7c8b6cb7caa4290c4423e048a09879b7eb8",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
