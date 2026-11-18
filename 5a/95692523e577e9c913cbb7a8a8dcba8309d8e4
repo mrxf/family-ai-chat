@@ -1,0 +1,26 @@
+app/pubspec.yaml
+  h_8f297825d1fe21 19
+scripts/release.sh
+  s_66c4d16a373824::t_0b0a35143129a4 59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "5a95692523e577e9c913cbb7a8a8dcba8309d8e4",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  },
+  "sessions": {
+    "s_66c4d16a373824": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c31b29bd-b65d-455b-a4ef-8072ea51a77d",
+        "model": "unknown"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
