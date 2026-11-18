@@ -157,6 +157,10 @@ class ChatController extends Notifier<ChatState> {
   _Op? _op;
   final Map<String, List<PickedImage>> _failedImages = {};
 
+  /// Model explicitly chosen by the user during this app session; carried across
+  /// conversation switches and cleared on logout/account switch (and app restart).
+  String? _sessionModelId;
+
   @override
   ChatState build() {
     final sessionNotifier = ref.read(sessionProvider.notifier);
@@ -168,7 +172,10 @@ class ChatController extends Notifier<ChatState> {
     });
     // Account switched or logged out: forget everything from the old session.
     ref.listen(sessionProvider.select((s) => s.api), (prev, next) {
-      if (!identical(prev, next)) _reset(const ChatState());
+      if (!identical(prev, next)) {
+        _sessionModelId = null;
+        _reset(const ChatState());
+      }
     });
     return const ChatState();
   }
@@ -202,6 +209,7 @@ class ChatController extends Notifier<ChatState> {
   }
 
   Future<void> _onBeforeLogout(Api api) async {
+    _sessionModelId = null;
     if (!state.isPrivate) return;
     await _cleanupPrivateState(apiOverride: api, waitDelete: true);
     _nav++;
@@ -225,7 +233,13 @@ class ChatController extends Notifier<ChatState> {
   // ---------------- navigation ----------------
 
   void newChat({String? assistantId, bool isPrivate = false}) {
-    _reset(ChatState(assistantId: assistantId, isPrivate: isPrivate, think: state.think, epoch: state.epoch + 1));
+    _reset(ChatState(
+      assistantId: assistantId,
+      modelId: _sessionModelId,
+      isPrivate: isPrivate,
+      think: state.think,
+      epoch: state.epoch + 1,
+    ));
   }
 
   void exitPrivateChat() {
@@ -241,7 +255,7 @@ class ChatController extends Notifier<ChatState> {
     _reset(ChatState(
       conversationId: id,
       assistantId: conv?.assistantId,
-      modelId: conv?.modelId,
+      modelId: _sessionModelId ?? conv?.modelId,
       think: state.think,
       loading: true,
       epoch: state.epoch + 1,
@@ -269,7 +283,7 @@ class ChatController extends Notifier<ChatState> {
         messages: merged,
         anchor: active != null ? _lastUserIndex(merged) : _keepAnchor(merged),
         assistantId: d.conversation.assistantId,
-        modelId: d.conversation.modelId,
+        modelId: _sessionModelId ?? d.conversation.modelId,
         hasMore: merged.length > d.messages.length ? state.hasMore : d.hasMore,
         loading: false,
         activeId: active,
@@ -328,7 +342,10 @@ class ChatController extends Notifier<ChatState> {
 
   // ---------------- options ----------------
 
-  void setModel(String? modelId) => state = state.copyWith(modelId: modelId);
+  void setModel(String? modelId) {
+    _sessionModelId = modelId;
+    state = state.copyWith(modelId: modelId);
+  }
   void setThink(bool v) => state = state.copyWith(think: v);
 
   // ---------------- sending ----------------
@@ -469,13 +486,17 @@ class ChatController extends Notifier<ChatState> {
     final api = _api;
     final nav = _nav;
     final original = (messages: state.messages, anchor: state.anchor, modelId: state.modelId);
+    final prevSessionModelId = _sessionModelId;
     final op = _op = _Op();
     _rev++;
     var base = state.messages;
     if (base.last.role == 'assistant') base = base.sublist(0, base.length - 1);
     final placeholder = Message(id: 'local-a-${DateTime.now().microsecondsSinceEpoch}', conversationId: convId, role: 'assistant', status: MsgStatus.streaming);
     live.value = LiveText.empty;
-    if (modelId != null) state = state.copyWith(modelId: modelId);
+    if (modelId != null) {
+      _sessionModelId = modelId;
+      state = state.copyWith(modelId: modelId);
+    }
     final think = state.think;
     final useModel = state.modelId;
     state = state.copyWith(messages: [...base, placeholder], anchor: _lastUserIndex(base), activeId: placeholder.id);
@@ -488,6 +509,7 @@ class ChatController extends Notifier<ChatState> {
       unawaited(_attach(res.assistant.id));
     } catch (e) {
       if (!current()) return;
+      _sessionModelId = prevSessionModelId;
       state = state.copyWith(messages: original.messages, anchor: original.anchor, modelId: original.modelId, activeId: null);
       notices.add(ApiError.from(e).message);
     } finally {

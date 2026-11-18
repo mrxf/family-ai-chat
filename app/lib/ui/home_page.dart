@@ -56,8 +56,14 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
     }
   }
 
+  void _unfocusComposer() {
+    _composerKey.currentState?.unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.listen(chatProvider.select((s) => s.epoch), (_, _) => _unfocusComposer());
     final p = context.pal;
     final chat = ref.watch(chatProvider);
     final boot = ref.watch(sessionProvider).boot;
@@ -74,13 +80,16 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
     return Scaffold(
       drawer: const HistoryDrawer(),
       drawerEdgeDragWidth: MediaQuery.sizeOf(context).width * 0.25,
+      onDrawerChanged: (opened) {
+        if (opened) _unfocusComposer();
+      },
       appBar: AppBar(
         leading: Builder(
           builder: (ctx) => IconButton(
             tooltip: '聊天记录',
             icon: const Icon(Icons.menu_rounded, size: 27),
             onPressed: () {
-              FocusScope.of(context).unfocus();
+              _unfocusComposer();
               Scaffold.of(ctx).openDrawer();
             },
           ),

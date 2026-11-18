@@ -48,6 +48,9 @@ class ComposerState extends ConsumerState<Composer> {
     ref.read(chatProvider.notifier).send(text);
   }
 
+  /// Dismisses focus and soft keyboard from the input field.
+  void unfocus() => _focus.unfocus();
+
   /// Clears unsent text and removes any locally compressed draft images.
   void clearDraft() {
     for (final img in _images) {

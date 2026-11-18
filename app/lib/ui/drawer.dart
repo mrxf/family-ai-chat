@@ -14,6 +14,7 @@ class HistoryDrawer extends ConsumerWidget {
   const HistoryDrawer({super.key});
 
   void _open(BuildContext context, WidgetRef ref, Conversation c) {
+    FocusManager.instance.primaryFocus?.unfocus();
     Navigator.pop(context);
     ref.read(chatProvider.notifier).open(c.id);
   }
@@ -21,6 +22,7 @@ class HistoryDrawer extends ConsumerWidget {
   Future<void> _openSearch(BuildContext context, WidgetRef ref) async {
     final convId = await openSearchPage(context);
     if (convId != null && context.mounted) {
+      FocusManager.instance.primaryFocus?.unfocus();
       Navigator.pop(context);
       ref.read(chatProvider.notifier).open(convId);
     }
