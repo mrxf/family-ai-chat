@@ -3,6 +3,7 @@ import 'package:family_chat/core/api.dart';
 import 'package:family_chat/core/models.dart';
 import 'package:family_chat/state/catalog.dart';
 import 'package:family_chat/state/session.dart';
+import 'package:family_chat/ui/admin/common.dart';
 import 'package:family_chat/ui/admin/model_edit_page.dart';
 import 'package:family_chat/ui/admin/models_page.dart';
 import 'package:family_chat/ui/memories_page.dart';
@@ -435,9 +436,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('聊天').last);
+    await tester.tap(find.text('聊天'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('保存修改'));
     await tester.pumpAndSettle();
@@ -457,7 +456,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('向量（记忆检索）'), findsOneWidget);
+    expect(find.text('向量检索'), findsOneWidget);
+    expect(tester.widget<Choice<String>>(find.byType(Choice<String>)).value, 'embedding');
+    expect(find.text('供记忆检索使用，不出现在家人的模型列表里'), findsOneWidget);
     expect(find.text('能看图片'), findsNothing);
     expect(find.text('会用工具'), findsNothing);
     expect(find.text('思考设置'), findsNothing);
