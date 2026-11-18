@@ -8,21 +8,15 @@ import (
 	"strings"
 	"testing"
 
+	"nuan/internal/memory"
 	"nuan/internal/store"
+	"nuan/internal/store/storetest"
 )
 
 func contextFixture(t *testing.T) (*Service, *store.User, *store.Conversation) {
 	t.Helper()
 	dir := t.TempDir()
-	st, err := store.Open(filepath.Join(dir, "test.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := st.Close(); err != nil {
-			t.Error(err)
-		}
-	})
+	st := storetest.Open(t)
 	u := &store.User{Username: "owner", DisplayName: "家人", Role: "member"}
 	if err := st.CreateUser(t.Context(), u); err != nil {
 		t.Fatal(err)
@@ -31,7 +25,10 @@ func contextFixture(t *testing.T) (*Service, *store.User, *store.Conversation) {
 	if err := st.CreateConversation(t.Context(), c); err != nil {
 		t.Fatal(err)
 	}
-	return NewService(st, dir, slog.New(slog.NewTextHandler(io.Discard, nil))), u, c
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := NewService(st, dir, log)
+	svc.Memory = memory.New(st, svc.ResolveMemoryModel, log)
+	return svc, u, c
 }
 
 func contextHistory(t *testing.T, s *Service, c *store.Conversation, ms ...*store.Message) string {
@@ -74,7 +71,7 @@ func TestBuildRequestKeepsOnlyFourRecentImageMessages(t *testing.T) {
 				t.Errorf("old images retained: %+v", m)
 			}
 		} else {
-			if len(m.Parts) != 3 || m.Parts[0].Type != "image_url" || m.Parts[1].Type != "image_url" || m.Parts[0].ImageURL.URL != "data:image/png;base64,dGVzdCBpbWFnZSBieXRlcw==" || m.Parts[2].Text != history[i].Content {
+			if len(m.Parts) != 3 || m.Parts[0].Type != "image_url" || m.Parts[1].Type != "image_url" || m.Parts[0].ImageURL.URL != "data:image/png;base64,dGVzdCBpbWFnZSBieXRlcw==" || !strings.HasSuffix(m.Parts[2].Text, history[i].Content) {
 				t.Errorf("recent image message=%+v", m)
 			}
 		}
@@ -104,15 +101,15 @@ func TestBuildRequestTrimsBudgetAndDropsLeadingAssistant(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The older user cannot fit. Its now-leading assistant must also be discarded.
-	if len(req.Messages) != 2 || req.Messages[1].Role != "user" || req.Messages[1].Content != latest.Content || req.MaxTokens != reserve {
+	if len(req.Messages) != 2 || req.Messages[1].Role != "user" || !strings.HasSuffix(req.Messages[1].Content, latest.Content) || req.MaxTokens != reserve {
 		t.Fatalf("trimmed request=%+v", req)
 	}
-	if !strings.Contains(req.Messages[0].Content, u.DisplayName) || !strings.Contains(req.Messages[0].Content, "当前时间") {
+	if !strings.Contains(req.Messages[0].Content, u.DisplayName) || !strings.Contains(req.Messages[0].Content, "当前日期") {
 		t.Fatalf("missing user/time system context: %s", req.Messages[0].Content)
 	}
 	model.ContextWindow = 1
 	req, err = s.buildRequest(t.Context(), u, c, id, model, false)
-	if err != nil || len(req.Messages) != 2 || req.Messages[1].Content != latest.Content {
+	if err != nil || len(req.Messages) != 2 || !strings.HasSuffix(req.Messages[1].Content, latest.Content) {
 		t.Fatalf("newest user must survive small budget: %+v err=%v", req, err)
 	}
 }
@@ -135,7 +132,7 @@ func TestBuildRequestSkipsFailedAndEmptyAssistantMessages(t *testing.T) {
 		t.Fatalf("messages=%+v", req.Messages)
 	}
 	for i, want := range []string{"first", "second", "useful partial", "latest"} {
-		if req.Messages[i+1].Content != want {
+		if !strings.HasSuffix(req.Messages[i+1].Content, want) {
 			t.Fatalf("message %d=%+v want %q", i+1, req.Messages[i+1], want)
 		}
 	}

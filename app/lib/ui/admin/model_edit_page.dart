@@ -42,6 +42,8 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
   bool _vision = false, _enabled = true, _tools = true;
   String _kind = 'chat';
   bool get _image => _kind == 'image';
+  bool get _chat => _kind == 'chat';
+  bool get _embedding => _kind == 'embedding';
   bool _loaded = false, _dirty = false, _saving = false, _advanced = false;
   ModelTestResult? _test;
   bool? _testingThink; // null = not testing
@@ -92,16 +94,16 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
     'display_name': _name.text.trim(),
     'description': _desc.text.trim(),
     'upstream_model': _upstream.text.trim(),
-    'default_effort': _daily.text.trim(),
-    'think_effort': _think.text.trim(),
-    'context_window': int.tryParse(_context.text.trim()) ?? 128000,
-    'max_output': int.tryParse(_maxOut.text.trim()) ?? 0,
+    'default_effort': _chat ? _daily.text.trim() : '',
+    'think_effort': _chat ? _think.text.trim() : '',
+    'context_window': _embedding ? 0 : (int.tryParse(_context.text.trim()) ?? 128000),
+    'max_output': _chat ? (int.tryParse(_maxOut.text.trim()) ?? 0) : 0,
     'input_price': double.tryParse(_inPrice.text.trim()) ?? 0,
     'output_price': double.tryParse(_outPrice.text.trim()) ?? 0,
-    'vision': _vision,
-    'tools': _tools,
+    'vision': _chat && _vision,
+    'tools': _chat && _tools,
     'enabled': _enabled,
-    if (_isNew) 'kind': _kind,
+    'kind': _kind,
   };
 
   /// Saves; returns the saved model id, or null on failure.
@@ -249,15 +251,28 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
                 ],
               ),
 
-            if (_isNew) ...[
-              const SectionHeader('模型类型'),
-              Choice<String>(value: _kind, options: const [('chat', '聊天'), ('image', '画图')], onChanged: (v) => setState(() => _kind = v)),
-            ],
+            const SectionHeader('模型类型'),
+            DropdownButtonFormField<String>(
+              initialValue: _kind,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: '类型'),
+              items: const [
+                DropdownMenuItem(value: 'chat', child: Text('聊天')),
+                DropdownMenuItem(value: 'image', child: Text('画图')),
+                DropdownMenuItem(value: 'embedding', child: Text('向量（记忆检索）')),
+              ],
+              onChanged: _saving || _testingThink != null ? null : (v) => setState(() {
+                _kind = v!;
+                if (!_embedding && (int.tryParse(_context.text) ?? 0) < 1024) _context.text = '128000';
+                _dirty = true;
+                _test = null;
+              }),
+            ),
 
             // ---- what the family sees ----
-            SectionHeader(_image ? '基本信息' : '家人看到的'),
-            _field(_name, '显示名称', hint: _image ? '例如：GPT Image' : '例如：GPT-5 Mini', maxLength: 40),
-            if (!_image) ...[const SizedBox(height: 12), _field(_desc, '一句话介绍', hint: '例如：反应快，适合日常问答', maxLength: 60)],
+            SectionHeader(_chat ? '家人看到的' : '基本信息'),
+            _field(_name, '显示名称', hint: _embedding ? '例如：BGE M3' : (_image ? '例如：GPT Image' : '例如：GPT-5 Mini'), maxLength: 40),
+            if (_chat) ...[const SizedBox(height: 12), _field(_desc, '一句话介绍', hint: '例如：反应快，适合日常问答', maxLength: 60)],
             const SizedBox(height: 12),
             GroupCard(
               children: [
@@ -267,10 +282,10 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
                     _enabled = v;
                     _dirty = true;
                   }),
-                  title: _image ? '启用' : '给家人使用',
-                  desc: _image ? '关掉后不会再用它画图' : '关掉后家人在模型列表里看不到它',
+                  title: _chat ? '给家人使用' : '启用',
+                  desc: _embedding ? '供记忆检索使用，不出现在家人的模型列表里' : (_image ? '关掉后不会再用它画图' : '关掉后家人在模型列表里看不到它'),
                 ),
-                if (!_image) ...[
+                if (_chat) ...[
                   SwitchRow(
                     value: _vision,
                     onChanged: (v) => setState(() {
@@ -294,7 +309,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
             ),
 
             // ---- thinking ----
-            if (!_image) ...[
+            if (_chat) ...[
               const SectionHeader('思考设置', subtitle: '模型先想一想再回答，更准但更慢、更贵'),
               GroupCard(
                 padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
@@ -361,7 +376,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
 
             // ---- test ----
             if (!_isNew) ...[
-              SectionHeader('试一下', subtitle: _image ? '真的画一张小图，确认能正常出图（大约半分钟，会产生一点费用）' : '用现在的设置真的发一句话，确认能正常回答'),
+              SectionHeader('试一下', subtitle: _embedding ? '发送一小段文字，确认能用于记忆检索' : (_image ? '真的画一张小图，确认能正常出图（大约半分钟，会产生一点费用）' : '用现在的设置真的发一句话，确认能正常回答')),
               GroupCard(
                 padding: const EdgeInsets.all(14),
                 children: [
@@ -370,8 +385,8 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
                     children: [
                       Row(
                         children: [
-                          Expanded(child: _testButton(false, _image ? '画一张试试' : '测试回答')),
-                          if (!_image && _think.text.trim().isNotEmpty) ...[const SizedBox(width: 10), Expanded(child: _testButton(true, '测试深度思考'))],
+                          Expanded(child: _testButton(false, _embedding ? '测试记忆检索' : (_image ? '画一张试试' : '测试回答'))),
+                          if (_chat && _think.text.trim().isNotEmpty) ...[const SizedBox(width: 10), Expanded(child: _testButton(true, '测试深度思考'))],
                         ],
                       ),
                       AnimatedSize(
@@ -384,14 +399,14 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
                                     ? _imageResult(_test!)
                                     : ResultBanner(
                                         ok: _test!.ok,
-                                        title: _test!.ok ? '回答正常' : '出错了',
+                                        title: _test!.ok ? (_embedding ? '记忆检索正常' : '回答正常') : '出错了',
                                         lines: _test!.ok
                                             ? [
                                                 '「${_test!.reply.isEmpty ? '（没有文字）' : _test!.reply}」',
-                                                '首字 ${(_test!.firstTokenMs / 1000).toStringAsFixed(1)} 秒，总共 ${(_test!.durationMs / 1000).toStringAsFixed(1)} 秒'
+                                                if (_chat) '首字 ${(_test!.firstTokenMs / 1000).toStringAsFixed(1)} 秒，总共 ${(_test!.durationMs / 1000).toStringAsFixed(1)} 秒'
                                                     '${_test!.reasoning ? '，有思考过程' : ''}${_test!.cost > 0 ? '，花费 ${fmtUsd(_test!.cost)}' : ''}',
                                               ]
-                                            : [_test!.message, if (_test!.effort.isNotEmpty) '如果提示参数不支持，试试把思考档位改成「不发送」或「稍想一下」。'],
+                                            : [_test!.message, if (_chat && _test!.effort.isNotEmpty) '如果提示参数不支持，试试把思考档位改成「不发送」或「稍想一下」。'],
                                       ),
                               ),
                       ),
@@ -404,7 +419,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
             // ---- technical ----
             const SectionHeader('技术参数'),
             _field(_upstream, '上游模型 ID', hint: '例如 openai/gpt-5-mini', mono: true, helper: '必须和供应商那边的名字完全一致'),
-            if (!_image) ...[
+            if (_chat) ...[
               const SizedBox(height: 16),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 4),
@@ -489,7 +504,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
       icon: running
           ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
           : Icon(think ? Icons.lightbulb_outline_rounded : Icons.play_arrow_rounded),
-      label: Text(running ? (_image ? '正在画…' : '等待回答…') : label),
+      label: Text(running ? (_embedding ? '正在测试…' : (_image ? '正在画…' : '等待回答…')) : label),
     );
   }
 

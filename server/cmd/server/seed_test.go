@@ -3,20 +3,15 @@ package main
 import (
 	"io"
 	"log/slog"
-	"path/filepath"
 	"testing"
 
 	"nuan/internal/auth"
 	"nuan/internal/config"
-	"nuan/internal/store"
+	"nuan/internal/store/storetest"
 )
 
 func TestSeedWithoutPasswordLeavesSetupModeAndPreservesExistingData(t *testing.T) {
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
+	st := storetest.Open(t)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	// No password: the server starts in first-run setup mode with no users.
 	if err := seed(t.Context(), st, config.Config{}, log); err != nil {
@@ -48,6 +43,11 @@ func TestSeedWithoutPasswordLeavesSetupModeAndPreservesExistingData(t *testing.T
 	as, err := st.ListAssistants(t.Context(), u.ID)
 	if err != nil || len(as) != len(builtinAssistants()) {
 		t.Fatalf("assistants=%d err=%v", len(as), err)
+	}
+	for _, a := range as {
+		if a.UseMemory != (a.ID != "builtin-translate") {
+			t.Fatalf("assistant %s use_memory=%v", a.ID, a.UseMemory)
+		}
 	}
 	// Re-running with different bootstrap settings must preserve operator edits.
 	ps[0].Name = "edited provider"
@@ -90,11 +90,7 @@ func TestSeedWithoutPasswordLeavesSetupModeAndPreservesExistingData(t *testing.T
 }
 
 func TestSeedImportsEnvProviderOnlyOnce(t *testing.T) {
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
+	st := storetest.Open(t)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg := config.Config{AdminUsername: "admin", AdminPassword: "test-password", UpstreamURL: "http://127.0.0.1:1", UpstreamKey: "k", Models: "gpt-6.1-terra,gpt-6.1-sol"}
 	if err := seed(t.Context(), st, cfg, log); err != nil {

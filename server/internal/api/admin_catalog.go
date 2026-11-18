@@ -337,7 +337,7 @@ func (s *Server) adminListModels(w http.ResponseWriter, r *http.Request) {
 
 type modelInput struct {
 	ProviderID    *string  `json:"provider_id"`
-	Kind          *string  `json:"kind"` // only honoured when creating
+	Kind          *string  `json:"kind"`
 	Tools         *bool    `json:"tools"`
 	UpstreamModel *string  `json:"upstream_model"`
 	DisplayName   *string  `json:"display_name"`
@@ -353,11 +353,11 @@ type modelInput struct {
 	Sort          *int     `json:"sort"`
 }
 
-// newModel is a fresh model of the requested kind (chat unless "image").
+// newModel is a fresh model of the requested kind.
 func newModel(kind *string) *store.Model {
 	m := &store.Model{Kind: store.KindChat, Enabled: true, Tools: true, ContextWindow: llm.MaxSuggestedContext}
-	if kind != nil && *kind == store.KindImage {
-		m.Kind, m.Tools = store.KindImage, false
+	if kind != nil {
+		m.Kind, m.Tools = *kind, *kind == store.KindChat
 	}
 	return m
 }
@@ -368,6 +368,7 @@ func (in *modelInput) apply(m *store.Model) (code, msg string) {
 			*dst = strings.TrimSpace(*v)
 		}
 	}
+	set(&m.Kind, in.Kind)
 	set(&m.ProviderID, in.ProviderID)
 	set(&m.UpstreamModel, in.UpstreamModel)
 	set(&m.DisplayName, in.DisplayName)
@@ -401,7 +402,7 @@ func (in *modelInput) apply(m *store.Model) (code, msg string) {
 	if m.DisplayName == "" {
 		m.DisplayName = llm.PrettyName(m.UpstreamModel)
 	}
-	if m.Kind != store.KindChat && m.Kind != store.KindImage {
+	if m.Kind != store.KindChat && m.Kind != store.KindImage && m.Kind != store.KindEmbedding {
 		return "bad_model", "模型类型不正确"
 	}
 	switch {
@@ -409,7 +410,7 @@ func (in *modelInput) apply(m *store.Model) (code, msg string) {
 		return "bad_model", "请填写上游模型名"
 	case utf8.RuneCountInString(m.DisplayName) > 40 || utf8.RuneCountInString(m.Description) > 60:
 		return "bad_model", "名称最多 40 个字，简介最多 60 个字"
-	case m.ContextWindow < 1024:
+	case m.Kind != store.KindEmbedding && m.ContextWindow < 1024:
 		return "bad_model", "上下文长度至少 1024"
 	case m.MaxOutput < 0 || m.InputPrice < 0 || m.OutputPrice < 0:
 		return "bad_model", "数值不能是负数"
@@ -572,6 +573,23 @@ func (s *Server) adminTestModel(w http.ResponseWriter, r *http.Request) {
 	}
 	if m.Kind == store.KindImage {
 		s.testImageModel(w, r, m, p)
+		return
+	}
+	if m.Kind == store.KindEmbedding {
+		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		defer cancel()
+		start := time.Now()
+		vectors, usage, err := s.Chat.Client(p).Embed(ctx, m.UpstreamModel, []string{"小暖记忆测试"})
+		out := map[string]any{"ok": err == nil, "duration_ms": time.Since(start).Milliseconds(), "reasoning": false, "effort": "", "first_token_ms": 0}
+		if err != nil {
+			out["message"] = providerError(err)
+		} else {
+			out["reply"] = fmt.Sprintf("向量维度 %d", len(vectors[0]))
+			if usage != nil {
+				out["prompt_tokens"], out["completion_tokens"], out["cost"] = usage.PromptTokens, usage.CompletionTokens, usage.Cost
+			}
+		}
+		writeJSON(w, 200, out)
 		return
 	}
 	req := llm.Request{

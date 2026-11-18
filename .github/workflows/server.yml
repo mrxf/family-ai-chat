@@ -34,6 +34,21 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: nuan
+          POSTGRES_PASSWORD: nuan
+          POSTGRES_DB: nuan
+          POSTGRES_INITDB_ARGS: "--locale=C.UTF-8 --encoding=UTF8"
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nuan -d nuan"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: server
@@ -49,6 +64,11 @@ jobs:
         run: |
           go vet ./...
           go test -race ./...
+
+      - name: Test Postgres
+        env:
+          NUAN_TEST_PG_URL: postgres://nuan:nuan@127.0.0.1:5432/nuan?sslmode=disable
+        run: go test ./...
 
       - name: Cross-compile check
         run: |

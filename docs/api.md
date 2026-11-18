@@ -1093,7 +1093,7 @@ data: {"message":{"id":"01933c90-1210-7000-8000-000000000012","conversation_id":
     - `context_window`：默认 `128000`（用于裁剪历史消息 Token 预算）。
     - `max_output`：默认 `0`（`0` 表示请求上游时不传 `max_tokens`，上下文预算按预留 `8192` 估算）。
     - `enabled`：默认 `true`。
-    - `kind`：仅创建时有效。`"chat"`（默认，家人聊天用）或 `"image"`（画图模型：不出现在家人的模型列表，只供聊天模型通过 `generate_image` 工具调用；价格按画图接口返回的 token 用量估算）。
+    - `kind`：创建和修改均有效，支持 `"embedding"`（向量检索，详见第 10 节）、`"chat"`（默认，家人聊天用）或 `"image"`（画图模型：不出现在家人的模型列表，只供聊天模型通过 `generate_image` 工具调用；价格按画图接口返回的 token 用量估算）。
     - `tools`：聊天模型是否会用工具（画图），默认 `true`。上游拒绝 `tools` 参数时服务端会自动去掉工具重试，并记住到该模型下次被修改为止。
   - 新增第一个 `kind: "image"` 模型且尚未设置 `image_model_id` 时，自动把它设为画图模型。
 - **成功响应** (`200 OK`)：返回完整 `Model` 对象。
@@ -1140,7 +1140,7 @@ data: {"message":{"id":"01933c90-1210-7000-8000-000000000012","conversation_id":
 #### (2) 更新全局设置
 
 - **方法与路径**：`PUT /api/admin/settings`
-- **请求体**（识别上面四个键，可只传其中几个，其余键忽略）：
+- **请求体**（识别上面的设置键及第 10 节的记忆设置，可只传其中几个，其余键忽略）：
   ```json
   {
     "default_model_id": "m-gpt-6.1-terra",
@@ -1170,3 +1170,46 @@ data: {"message":{"id":"01933c90-1210-7000-8000-000000000012","conversation_id":
     ]
   }
   ```
+
+### 10. 跨模型共享记忆
+
+以下接口需要登录，只处理当前用户的记忆；管理员也没有读取其他用户记忆的接口。
+记忆对象为：
+
+```json
+{"id":"…","category":"health","content":"用户有高血压。","source":"auto","source_conv_id":null,"pinned":true,"is_new":true,"created_at":1794930000000,"updated_at":1794930000000}
+```
+
+`category` 为 `health | family | profile | preference | ongoing | episode`，`source` 为 `auto | manual | import`。
+`is_new` 表示自动记忆创建不足 3 天。仅返回 active 记忆，不暴露向量、关键词、内部状态。
+
+| 方法 | 路径 | 请求体 | 成功响应 |
+|---|---|---|---|
+| GET | `/api/memories` | — | `200 {"memories":[Memory…],"total":N,"new":M,"enabled":true}` |
+| POST | `/api/memories` | `{"category":"health","content":"…"}` | `201 Memory`，source 为 manual |
+| PATCH | `/api/memories/{id}` | `{"category"?:"…","content"?:"…"}` | `200 Memory` |
+| DELETE | `/api/memories/{id}` | — | `204` |
+| DELETE | `/api/memories` | — | `204`，清空本人全部记忆 |
+| POST | `/api/memories/import/preview` | `{"text":"…"}` | `200 {"items":[{"category":"health","content":"…"}]}`，不入库 |
+| POST | `/api/memories/import` | `{"items":[{"category":"health","content":"…"}]}` | `200 {"memories":[Memory…]}`，source 为 import |
+
+列表按 health、family、profile、preference、ongoing、episode 排序，同分类按创建时间倒序。
+手工添加、修改、导入的 content 去首尾空白后须为 1–200 字；预览 text 最多 8000 字；导入最多 200 条，导入不接受 episode 分类。
+无效输入返回 `400 bad_memory`；别人的或已删除的记忆返回 `404 not_found`。预览上游失败返回 `502 memory_preview_failed`。
+编辑会清空旧向量，由后台重算；删除对话只连带删除该对话的 episode，已抽取的事实保留。
+
+`PATCH /api/me` 的 `settings` 现在按顶层键合并，值为 `null` 时删除对应键。例如：
+
+```json
+{"settings":{"memory_enabled":false,"obsolete_key":null}}
+```
+
+`memory_enabled` 缺省为 true，false 时聊天不注入或检索记忆，后台只推进抽取游标。
+角色对象新增 `use_memory`（bool），创建角色默认 true，翻译官内置角色为 false；创建和修改角色均可设置此字段。
+
+`GET/PUT /api/admin/settings` 新增 `memory_model_id`（chat）和 `embedding_model_id`（embedding），空字符串表示未设置。
+抽取模型按 memory → title → 默认聊天模型选择，向量未配置或失败时退回关键词检索。
+`Model.kind` 支持 `chat | image | embedding`，创建和修改模型均可设置；embedding 不要求上下文窗口至少 1024。
+`GET /api/models` 仍只提供可用 chat 模型；上游模型推荐新增 `kind`，向量模型为 embedding。
+`POST /api/admin/models/{id}/test` 对 embedding 调用 `/embeddings`，成功沿用测试响应格式，`reply` 为 `向量维度 1024` 等。
+不可用或类型不匹配的记忆设置会在设置修复时清空；切换向量模型后后台每批 32 条重算旧向量。

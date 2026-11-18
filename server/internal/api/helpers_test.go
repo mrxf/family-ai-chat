@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -25,7 +24,9 @@ import (
 	"nuan/internal/auth"
 	"nuan/internal/chat"
 	"nuan/internal/llm"
+	"nuan/internal/memory"
 	"nuan/internal/store"
+	"nuan/internal/store/storetest"
 )
 
 // Opt in only where the sandbox prohibits binding localhost sockets. net.Pipe
@@ -110,13 +111,13 @@ func (r upstreamRequest) prompt() string {
 		}
 		var text string
 		if json.Unmarshal(r.Messages[i].Content, &text) == nil {
-			return text
+			return withoutSystemNote(text)
 		}
 		var parts []struct{ Type, Text string }
 		if json.Unmarshal(r.Messages[i].Content, &parts) == nil {
 			for _, p := range parts {
 				if p.Type == "text" {
-					return p.Text
+					return withoutSystemNote(p.Text)
 				}
 			}
 		}
@@ -124,7 +125,18 @@ func (r upstreamRequest) prompt() string {
 	return ""
 }
 
+func withoutSystemNote(text string) string {
+	if strings.HasPrefix(text, "（系统附注，不是用户说的话") {
+		if i := strings.Index(text, "）\n"); i >= 0 {
+			return text[i+len("）\n"):]
+		}
+	}
+	return text
+}
+
 type fakeUpstream struct {
+	extraction string
+
 	server    *httptest.Server
 	mu        sync.Mutex
 	plans     map[string]upstreamPlan
@@ -146,6 +158,10 @@ func newFakeUpstream(t *testing.T) *fakeUpstream {
 			fmt.Fprint(w, `{"data":[{"id":"fake","created":1},{"id":"gpt-6.1-terra","created":3},{"id":"text-embedding-3-small","created":2},{"id":"gpt-4o-2024-08-06","created":4}]}`)
 			return
 		}
+		if r.URL.Path == "/v1/embeddings" {
+			fmt.Fprint(w, `{"data":[{"index":0,"embedding":[1,0,0]}],"usage":{"prompt_tokens":2}}`)
+			return
+		}
 		if r.URL.Path != "/v1/chat/completions" || r.Method != "POST" || r.Header.Get("Authorization") != "Bearer local-test-key" {
 			t.Errorf("unexpected upstream request: %s %s", r.Method, r.URL)
 			http.Error(w, "bad request", 400)
@@ -158,6 +174,13 @@ func newFakeUpstream(t *testing.T) *fakeUpstream {
 			return
 		}
 		if !req.Stream {
+			u.mu.Lock()
+			extraction := u.extraction
+			u.mu.Unlock()
+			if extraction != "" && len(req.Messages) > 0 && strings.Contains(string(req.Messages[0].Content), "记忆整理员") {
+				_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": extraction}}}})
+				return
+			}
 			u.mu.Lock()
 			titleSteps := u.plans[req.prompt()].titleSteps
 			u.mu.Unlock()
@@ -267,15 +290,7 @@ var passwordErr error
 func newAPIFixture(t *testing.T) *apiFixture {
 	t.Helper()
 	dir := t.TempDir()
-	st, err := store.Open(filepath.Join(dir, "test.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := st.Close(); err != nil {
-			t.Error(err)
-		}
-	})
+	st := storetest.Open(t)
 	passwordOnce.Do(func() { passwordHash, passwordErr = auth.HashPassword("test-password") })
 	if passwordErr != nil {
 		t.Fatal(passwordErr)
@@ -308,6 +323,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc := chat.NewService(st, dir, log)
+	svc.Memory = memory.New(st, svc.ResolveMemoryModel, log)
 	s := New(Config{DataDir: dir}, st, svc, log)
 	f := &apiFixture{t: t, st: st, svc: svc, api: s, http: newHTTPTestServer(s.Routes()), up: up, user: u, model: m}
 	f.http.Client().Timeout = 4 * time.Second
@@ -317,7 +333,8 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		svc.Shutdown(ctx)
 		f.http.Close()
 	})
-	f.token, err = s.Sessions.Create(t.Context(), u.ID, "test")
+	token, err := s.Sessions.Create(t.Context(), u.ID, "test")
+	f.token = token
 	if err != nil {
 		t.Fatal(err)
 	}

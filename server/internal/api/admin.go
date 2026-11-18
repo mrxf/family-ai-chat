@@ -128,7 +128,7 @@ func (s *Server) adminDeleteUser(w http.ResponseWriter, r *http.Request) {
 
 // ---- settings & usage ----
 
-var settingKeys = []string{"default_model_id", "fallback_model_id", "title_model_id", "image_model_id", "image_daily_limit"}
+var settingKeys = []string{"default_model_id", "fallback_model_id", "title_model_id", "image_model_id", "image_daily_limit", "memory_model_id", "embedding_model_id"}
 
 func (s *Server) adminGetSettings(w http.ResponseWriter, r *http.Request) {
 	out := map[string]string{}
@@ -174,7 +174,14 @@ func (s *Server) adminPutSettings(w http.ResponseWriter, r *http.Request) {
 				writeErr(w, 400, "bad_model", "模型不存在")
 				return
 			}
-			if (k == "image_model_id") != (m.Kind == store.KindImage) {
+			want := store.KindChat
+			if k == "image_model_id" {
+				want = store.KindImage
+			}
+			if k == "embedding_model_id" {
+				want = store.KindEmbedding
+			}
+			if m.Kind != want {
 				writeErr(w, 400, "bad_model", "这里不能选这种模型（画图模型和聊天模型不能混用）")
 				return
 			}

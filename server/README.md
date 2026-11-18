@@ -223,6 +223,54 @@ docker compose -f deploy/docker-compose.yml logs -f
 docker compose -f deploy/docker-compose.yml down
 ```
 
+### 使用 Postgres
+
+不配置 `NUAN_DB_URL` 时仍使用 `$NUAN_DATA_DIR/nuan.db`；配置 Postgres URL 后，所有业务数据存入 Postgres，图片和 APK 仍在数据目录。启动日志只打印数据库种类。已有 Postgres 请使用 `C` / `C.UTF-8` 排序规则初始化，以保持 UUID 字符串排序和翻页一致。
+
+Compose 的 Postgres 使用 `pgvector/pgvector:pg17`，仅在 `pg` profile 启动，数据存放在 `nuan-pg` 命名卷，无宿主机端口。于 `server/.env` 配置：
+
+```dotenv
+NUAN_PG_PASSWORD=replace-with-password
+NUAN_DB_URL=postgres://nuan:replace-with-password@postgres:5432/nuan?sslmode=disable
+```
+
+密码中的特殊字符须在 URL 中编码。新安装可直接运行：
+
+```bash
+cd server/deploy
+docker compose --env-file ../.env --profile pg up -d
+```
+
+切换已有安装前，先备份 SQLite 和文件目录，在本地用数据副本演练。迁移时停止读写两端数据库的应用；以下命令从 `server/deploy` 运行，先只启动 Postgres，等待其健康后复制：
+
+```bash
+docker compose --env-file ../.env stop nuan
+docker compose --env-file ../.env --profile pg up -d postgres
+docker compose --env-file ../.env ps postgres
+# Export the same NUAN_DB_URL from ../.env in the host shell.
+export NUAN_DB_URL='postgres://nuan:replace-with-password@postgres:5432/nuan?sslmode=disable'
+docker compose --env-file ../.env run --rm nuan migrate-db --from /data/nuan.db --to "$NUAN_DB_URL"
+docker compose --env-file ../.env --profile pg up -d
+```
+
+也可直接使用二进制：
+
+```bash
+nuan-server migrate-db --from /path/to/nuan.db --to "$NUAN_DB_URL"
+# Reverse direction; use a new SQLite path.
+nuan-server migrate-db --from "$NUAN_DB_URL" --to /path/to/restored.db
+```
+
+两端会先升级到最新结构；目标 `users` 非空时拒绝复制，`--force` 会清空目标全部业务表。复制及逐表行数校验在目标的同一事务内完成，失败回滚业务数据，结构升级保留。命令只迁移数据库，文件需另外复制。备份 Postgres 请使用 `pg_dump`，并同时备份数据目录中的文件。
+
+本地或 CI 验证同一套数据库测试（每个测试使用独立 schema）：
+
+```bash
+cd server
+go test ./...
+NUAN_TEST_PG_URL='postgres://nuan:nuan@127.0.0.1:55432/nuan?sslmode=disable' go test ./...
+```
+
 ---
 
 ## 反向代理与 HTTPS 配置（SSE 关键注意事项）
@@ -287,6 +335,7 @@ chat.example.com {
 | 变量名 | 默认值 | 必填 | 说明 |
 | :--- | :--- | :--- | :--- |
 | `NUAN_ADDR` | `:8080` | 否 | HTTP 监听地址，如 `:8080` 或 `127.0.0.1:8080` |
+| `NUAN_DB_URL` | 无（空） | 否 | `postgres://` / `postgresql://` 使用 Postgres；为空时使用 SQLite |
 | `NUAN_DATA_DIR` | `./data` | 否 | 数据持久化目录（存放 `nuan.db`、`files/`、`app/`） |
 | `NUAN_LOG_FORMAT` | `text` | 否 | 标准输出日志格式：`text`（适合本地阅读）或 `json`（适合容器/采集） |
 | `NUAN_ADMIN_USERNAME` | `admin` | 否 | **仅首次启动**（`users` 表为空时）创建的管理员登录用户名 |
@@ -459,7 +508,7 @@ curl -sS https://chat.example.com/api/app/version
 
 ## 备份与恢复
 
-所有状态均位于 `NUAN_DATA_DIR`（SQLite 数据库 `nuan.db`、聊天图片 `files/`、安装包 `app/`）。
+使用 SQLite 时，所有状态均位于 `NUAN_DATA_DIR`（数据库 `nuan.db`、聊天图片 `files/`、安装包 `app/`）。使用 Postgres 时，另需备份 Postgres 数据库。
 
 ### 方案 A：停服冷备（最简单稳妥）
 

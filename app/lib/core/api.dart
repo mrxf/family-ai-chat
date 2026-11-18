@@ -145,6 +145,20 @@ class Api {
 
   Future<User> updateMe(Map<String, dynamic> patch) async => User.fromJson((await _req('PATCH', '/api/me', body: patch) as Map).cast());
 
+  // ---- personal memories ----
+  Future<MemoriesResult> memories() async => MemoriesResult.fromJson((await _req('GET', '/api/memories') as Map).cast());
+  Future<Memory> createMemory(MemoryDraft item) async => Memory.fromJson((await _req('POST', '/api/memories', body: item.toJson()) as Map).cast());
+  Future<Memory> updateMemory(String id, {MemoryCategory? category, String? content}) async => Memory.fromJson((await _req('PATCH', '/api/memories/${Uri.encodeComponent(id)}', body: {
+    if (category != null) 'category': category.name,
+    if (content != null) 'content': memoryToStorage(content),
+  }) as Map).cast());
+  Future<void> deleteMemory(String id) => _req('DELETE', '/api/memories/${Uri.encodeComponent(id)}');
+  Future<void> clearMemories() => _req('DELETE', '/api/memories');
+  Future<List<MemoryDraft>> previewMemoryImport(String text) async =>
+      _list((await _req('POST', '/api/memories/import/preview', body: {'text': text}))['items'], MemoryDraft.fromJson);
+  Future<List<Memory>> importMemories(List<MemoryDraft> items) async =>
+      _list((await _req('POST', '/api/memories/import', body: {'items': items.map((i) => i.toJson()).toList()}))['memories'], Memory.fromJson);
+
   // ---- conversations ----
   Future<List<Conversation>> conversations({int? before, String? q, int limit = 50}) async {
     final d = await _req('GET', '/api/conversations', query: {

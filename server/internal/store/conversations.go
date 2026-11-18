@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"strings"
 	"unicode"
@@ -36,7 +35,7 @@ func (s *Store) CreateConversation(ctx context.Context, c *Conversation) error {
 		c.ID = NewID()
 	}
 	c.CreatedAt, c.UpdatedAt = now, now
-	_, err := s.w.ExecContext(ctx, `INSERT INTO conversations (`+convCols+`) VALUES (?,?,?,?,?,?,?,?)`,
+	_, err := s.exec(ctx, `INSERT INTO conversations (`+convCols+`) VALUES (?,?,?,?,?,?,?,?)`,
 		c.ID, c.UserID, c.AssistantID, c.ModelID, c.Title, c.Pinned, c.CreatedAt, c.UpdatedAt)
 	if isUnique(err) {
 		return ErrConflict
@@ -46,7 +45,7 @@ func (s *Store) CreateConversation(ctx context.Context, c *Conversation) error {
 
 // GetConversation returns the conversation only if it belongs to userID.
 func (s *Store) GetConversation(ctx context.Context, id, userID string) (*Conversation, error) {
-	return scanConv(s.r.QueryRowContext(ctx, `SELECT `+convCols+` FROM conversations WHERE id = ? AND user_id = ?`, id, userID))
+	return scanConv(s.queryRow(ctx, `SELECT `+convCols+` FROM conversations WHERE id = ? AND user_id = ?`, id, userID))
 }
 
 type ConversationQuery struct {
@@ -68,7 +67,7 @@ func (s *Store) ListConversations(ctx context.Context, q ConversationQuery) ([]*
 	args := []any{}
 	if search != "" {
 		like := "%" + escapeLike(search) + "%"
-		selectCols += `, COALESCE((SELECT m.content FROM messages m WHERE m.conversation_id = c.id AND m.content LIKE ? ESCAPE '\' ORDER BY m.id DESC LIMIT 1), '')`
+		selectCols += `, COALESCE((SELECT m.content FROM messages m WHERE m.conversation_id = c.id AND m.content ` + s.like() + ` ? ESCAPE '\' ORDER BY m.id DESC LIMIT 1), '')`
 		args = append(args, like)
 	}
 	where := []string{"c.user_id = ?"}
@@ -79,11 +78,11 @@ func (s *Store) ListConversations(ctx context.Context, q ConversationQuery) ([]*
 	}
 	if search != "" {
 		like := "%" + escapeLike(search) + "%"
-		where = append(where, `(c.title LIKE ? ESCAPE '\' OR EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.content LIKE ? ESCAPE '\'))`)
+		where = append(where, `(c.title `+s.like()+` ? ESCAPE '\' OR EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.content `+s.like()+` ? ESCAPE '\'))`)
 		args = append(args, like, like)
 	}
 	args = append(args, q.Limit)
-	rows, err := s.r.QueryContext(ctx, `SELECT `+selectCols+` FROM conversations c
+	rows, err := s.query(ctx, `SELECT `+selectCols+` FROM conversations c
 		WHERE `+strings.Join(where, " AND ")+` ORDER BY c.updated_at DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
@@ -200,7 +199,7 @@ func (s *Store) UpdateConversation(ctx context.Context, id, userID string, p Con
 	}
 	if len(sets) > 0 {
 		args = append(args, id, userID)
-		if err := affected(s.w.ExecContext(ctx, `UPDATE conversations SET `+strings.Join(sets, ", ")+` WHERE id = ? AND user_id = ?`, args...)); err != nil {
+		if err := affected(s.exec(ctx, `UPDATE conversations SET `+strings.Join(sets, ", ")+` WHERE id = ? AND user_id = ?`, args...)); err != nil {
 			return nil, err
 		}
 	}
@@ -209,7 +208,7 @@ func (s *Store) UpdateConversation(ctx context.Context, id, userID string, p Con
 
 // SetConversationTitle sets the title only if it is still empty (auto titles never overwrite user edits).
 func (s *Store) SetConversationTitle(ctx context.Context, id, title string) (bool, error) {
-	res, err := s.w.ExecContext(ctx, `UPDATE conversations SET title = ? WHERE id = ? AND title = ''`, title, id)
+	res, err := s.exec(ctx, `UPDATE conversations SET title = ? WHERE id = ? AND title = ''`, title, id)
 	if err != nil {
 		return false, err
 	}
@@ -218,12 +217,22 @@ func (s *Store) SetConversationTitle(ctx context.Context, id, title string) (boo
 }
 
 func (s *Store) TouchConversation(ctx context.Context, id string) error {
-	_, err := s.w.ExecContext(ctx, `UPDATE conversations SET updated_at = ? WHERE id = ?`, Now(), id)
+	_, err := s.exec(ctx, `UPDATE conversations SET updated_at = ? WHERE id = ?`, Now(), id)
 	return err
 }
 
 func (s *Store) DeleteConversation(ctx context.Context, id, userID string) error {
-	return affected(s.w.ExecContext(ctx, `DELETE FROM conversations WHERE id = ? AND user_id = ?`, id, userID))
+	return s.tx(ctx, func(tx *Tx) error {
+		// Match extraction/turn locking so an episode cannot appear between deletes.
+		var lockedID string
+		if err := tx.queryRow(ctx, `SELECT id FROM conversations WHERE id=? AND user_id=?`+s.forUpdate(), id, userID).Scan(&lockedID); err != nil {
+			return notFound(err)
+		}
+		if _, err := tx.exec(ctx, `DELETE FROM memories WHERE source_conv_id = ? AND user_id = ? AND category = 'episode'`, id, userID); err != nil {
+			return err
+		}
+		return affected(tx.exec(ctx, `DELETE FROM conversations WHERE id = ? AND user_id = ?`, id, userID))
+	})
 }
 
 func nullable(s string) any {
@@ -287,7 +296,7 @@ func scanMsg(row interface{ Scan(...any) error }) (*Message, error) {
 	return &m, nil
 }
 
-func insertMsg(ctx context.Context, tx *sql.Tx, m *Message) error {
+func insertMsg(ctx context.Context, tx *Tx, m *Message) error {
 	now := Now()
 	if m.ID == "" {
 		m.ID = NewID()
@@ -300,7 +309,7 @@ func insertMsg(ctx context.Context, tx *sql.Tx, m *Message) error {
 		m.Attachments = []Attachment{}
 	}
 	att, _ := json.Marshal(m.Attachments)
-	_, err := tx.ExecContext(ctx, `INSERT INTO messages (`+msgCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	_, err := tx.exec(ctx, `INSERT INTO messages (`+msgCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		m.ID, m.ConversationID, m.Role, m.Content, m.Reasoning, string(att), m.Status, m.Error, m.ModelID,
 		m.PromptTokens, m.CompletionTokens, m.FirstTokenMs, m.DurationMs, m.CreatedAt, m.UpdatedAt)
 	if isUnique(err) {
@@ -319,9 +328,16 @@ type Turn struct {
 
 // ApplyTurn performs a Turn atomically and bumps the conversation's updated_at.
 func (s *Store) ApplyTurn(ctx context.Context, t Turn) error {
-	return s.tx(ctx, func(tx *sql.Tx) error {
+	return s.tx(ctx, func(tx *Tx) error {
+		// Serialize edits and appends to the same conversation before touching history.
+		if s.pg {
+			var id string
+			if err := tx.queryRow(ctx, `SELECT id FROM conversations WHERE id = ? FOR UPDATE`, t.ConversationID).Scan(&id); err != nil {
+				return notFound(err)
+			}
+		}
 		if t.TruncateFrom != "" {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM messages WHERE conversation_id = ? AND id >= ?`, t.ConversationID, t.TruncateFrom); err != nil {
+			if _, err := tx.exec(ctx, `DELETE FROM messages WHERE conversation_id = ? AND id >= ?`, t.ConversationID, t.TruncateFrom); err != nil {
 				return err
 			}
 		}
@@ -331,18 +347,18 @@ func (s *Store) ApplyTurn(ctx context.Context, t Turn) error {
 				return err
 			}
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE conversations SET updated_at = ? WHERE id = ?`, Now(), t.ConversationID)
+		_, err := tx.exec(ctx, `UPDATE conversations SET updated_at = ? WHERE id = ?`, Now(), t.ConversationID)
 		return err
 	})
 }
 
 func (s *Store) GetMessage(ctx context.Context, id string) (*Message, error) {
-	return scanMsg(s.r.QueryRowContext(ctx, `SELECT `+msgCols+` FROM messages WHERE id = ?`, id))
+	return scanMsg(s.queryRow(ctx, `SELECT `+msgCols+` FROM messages WHERE id = ?`, id))
 }
 
 // GetMessageForUser returns a message only if its conversation belongs to userID.
 func (s *Store) GetMessageForUser(ctx context.Context, id, userID string) (*Message, error) {
-	return scanMsg(s.r.QueryRowContext(ctx, `SELECT `+prefixCols(msgCols, "m.")+` FROM messages m
+	return scanMsg(s.queryRow(ctx, `SELECT `+prefixCols(msgCols, "m.")+` FROM messages m
 		JOIN conversations c ON c.id = m.conversation_id WHERE m.id = ? AND c.user_id = ?`, id, userID))
 }
 
@@ -359,7 +375,7 @@ func (s *Store) ListMessages(ctx context.Context, convID, before string, limit i
 	}
 	q += ` ORDER BY id DESC LIMIT ?`
 	args = append(args, limit)
-	rows, err := s.r.QueryContext(ctx, q, args...)
+	rows, err := s.query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -386,7 +402,7 @@ func (s *Store) FinishMessage(ctx context.Context, m *Message) error {
 		m.Attachments = []Attachment{}
 	}
 	att, _ := json.Marshal(m.Attachments)
-	_, err := s.w.ExecContext(ctx, `UPDATE messages SET content=?, reasoning=?, attachments=?, status=?, error=?, model_id=?, prompt_tokens=?, completion_tokens=?,
+	_, err := s.exec(ctx, `UPDATE messages SET content=?, reasoning=?, attachments=?, status=?, error=?, model_id=?, prompt_tokens=?, completion_tokens=?,
 		first_token_ms=?, duration_ms=?, cost=?, updated_at=? WHERE id=?`,
 		m.Content, m.Reasoning, string(att), m.Status, m.Error, m.ModelID, m.PromptTokens, m.CompletionTokens, m.FirstTokenMs, m.DurationMs, m.Cost, m.UpdatedAt, m.ID)
 	return err
@@ -396,13 +412,13 @@ func (s *Store) FinishMessage(ctx context.Context, m *Message) error {
 // so they survive a restart in the middle of the reply.
 func (s *Store) SetAttachments(ctx context.Context, messageID string, atts []Attachment) error {
 	att, _ := json.Marshal(atts)
-	_, err := s.w.ExecContext(ctx, `UPDATE messages SET attachments=?, updated_at=? WHERE id=?`, string(att), Now(), messageID)
+	_, err := s.exec(ctx, `UPDATE messages SET attachments=?, updated_at=? WHERE id=?`, string(att), Now(), messageID)
 	return err
 }
 
 // MarkInterrupted flags messages left in "streaming" state by a previous process.
 func (s *Store) MarkInterrupted(ctx context.Context) (int64, error) {
-	res, err := s.w.ExecContext(ctx, `UPDATE messages SET status = ?, updated_at = ? WHERE status = ?`, StatusInterrupted, Now(), StatusStreaming)
+	res, err := s.exec(ctx, `UPDATE messages SET status = ?, updated_at = ? WHERE status = ?`, StatusInterrupted, Now(), StatusStreaming)
 	if err != nil {
 		return 0, err
 	}
@@ -428,14 +444,14 @@ func (s *Store) CreateFile(ctx context.Context, f *File) error {
 		f.ID = NewID()
 	}
 	f.CreatedAt = Now()
-	_, err := s.w.ExecContext(ctx, `INSERT INTO files (id, user_id, mime, size, sha256, width, height, path, created_at) VALUES (?,?,?,?,?,?,?,?,?)`,
+	_, err := s.exec(ctx, `INSERT INTO files (id, user_id, mime, size, sha256, width, height, path, created_at) VALUES (?,?,?,?,?,?,?,?,?)`,
 		f.ID, f.UserID, f.Mime, f.Size, f.SHA256, f.Width, f.Height, f.Path, f.CreatedAt)
 	return err
 }
 
 func (s *Store) GetFile(ctx context.Context, id, userID string) (*File, error) {
 	var f File
-	err := s.r.QueryRowContext(ctx, `SELECT id, user_id, mime, size, sha256, width, height, path, created_at FROM files WHERE id = ? AND user_id = ?`, id, userID).
+	err := s.queryRow(ctx, `SELECT id, user_id, mime, size, sha256, width, height, path, created_at FROM files WHERE id = ? AND user_id = ?`, id, userID).
 		Scan(&f.ID, &f.UserID, &f.Mime, &f.Size, &f.SHA256, &f.Width, &f.Height, &f.Path, &f.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)
@@ -465,7 +481,7 @@ type ModelUsageRow struct {
 
 // UsageSince aggregates assistant message usage per user since the given unix ms.
 func (s *Store) UsageSince(ctx context.Context, since int64) ([]UsageRow, error) {
-	rows, err := s.r.QueryContext(ctx, `SELECT c.user_id, COUNT(*), COALESCE(SUM(m.prompt_tokens),0), COALESCE(SUM(m.completion_tokens),0), COALESCE(SUM(m.cost),0)
+	rows, err := s.query(ctx, `SELECT c.user_id, COUNT(*), COALESCE(SUM(m.prompt_tokens),0), COALESCE(SUM(m.completion_tokens),0), COALESCE(SUM(m.cost),0)
 		FROM messages m JOIN conversations c ON c.id = m.conversation_id
 		WHERE m.role = 'assistant' AND m.created_at >= ? GROUP BY c.user_id ORDER BY 5 DESC, 4 DESC`, since)
 	if err != nil {
@@ -486,11 +502,11 @@ func (s *Store) UsageSince(ctx context.Context, since int64) ([]UsageRow, error)
 // ModelUsageSince aggregates assistant message usage per model since the given unix ms.
 // Conversations are not joined: deleted users' messages are gone with their conversations anyway.
 func (s *Store) ModelUsageSince(ctx context.Context, since int64) ([]ModelUsageRow, error) {
-	rows, err := s.r.QueryContext(ctx, `SELECT COALESCE(md.id, ''), COALESCE(md.display_name, ''), COUNT(*),
+	rows, err := s.query(ctx, `SELECT COALESCE(md.id, ''), COALESCE(md.display_name, ''), COUNT(*),
 		COALESCE(SUM(m.prompt_tokens),0), COALESCE(SUM(m.completion_tokens),0), COALESCE(SUM(m.cost),0)
 		FROM messages m LEFT JOIN models md ON md.id = m.model_id
 		WHERE m.role = 'assistant' AND m.created_at >= ?
-		GROUP BY COALESCE(md.id, '') ORDER BY 6 DESC, 5 DESC`, since)
+		GROUP BY COALESCE(md.id, ''), COALESCE(md.display_name, '') ORDER BY 6 DESC, 5 DESC`, since)
 	if err != nil {
 		return nil, err
 	}

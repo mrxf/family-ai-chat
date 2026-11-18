@@ -9,20 +9,16 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"nuan/internal/store"
+	"nuan/internal/store/storetest"
 )
 
 func TestSaveImageFlattensTransparencyOnWhite(t *testing.T) {
 	dir := t.TempDir()
-	st, err := store.Open(filepath.Join(dir, "t.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
+	st := storetest.Open(t)
 	u := &store.User{Username: "u", DisplayName: "u", Role: "member", PasswordHash: "x"}
 	if err := st.CreateUser(t.Context(), u); err != nil {
 		t.Fatal(err)

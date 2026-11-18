@@ -321,12 +321,12 @@ func TestUploadedImageAndReasoningEffortReachUpstream(t *testing.T) {
 				if err := json.Unmarshal(last.Content, &parts); err != nil {
 					t.Fatal(err)
 				}
-				if len(parts) != 2 || parts[0].Type != "image_url" || parts[0].ImageURL == nil || parts[0].ImageURL.URL != "data:image/png;base64,"+base64.StdEncoding.EncodeToString(png) || parts[1].Text != prompt {
+				if len(parts) != 2 || parts[0].Type != "image_url" || parts[0].ImageURL == nil || parts[0].ImageURL.URL != "data:image/png;base64,"+base64.StdEncoding.EncodeToString(png) || withoutSystemNote(parts[1].Text) != prompt {
 					t.Fatalf("vision parts=%s", last.Content)
 				}
 			} else {
 				var text string
-				if err := json.Unmarshal(last.Content, &text); err != nil || text != key || bytes.Contains(last.Content, []byte("image_url")) {
+				if err := json.Unmarshal(last.Content, &text); err != nil || withoutSystemNote(text) != key || bytes.Contains(last.Content, []byte("image_url")) {
 					t.Fatalf("nonvision content=%s err=%v", last.Content, err)
 				}
 			}

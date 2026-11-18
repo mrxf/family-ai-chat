@@ -117,7 +117,7 @@ func seedProvider(ctx context.Context, st *store.Store, cfg config.Config) error
 // ModelFromSuggestion converts an inferred configuration into an enabled model.
 func ModelFromSuggestion(sg llm.Suggestion) *store.Model {
 	return &store.Model{
-		Kind: store.KindChat, Tools: sg.Tools,
+		Kind: sg.Kind, Tools: sg.Tools,
 		UpstreamModel: sg.UpstreamModel, DisplayName: sg.DisplayName, Description: sg.Description, Vision: sg.Vision,
 		DefaultEffort: sg.DefaultEffort, ThinkEffort: sg.ThinkEffort, ContextWindow: sg.ContextWindow,
 		InputPrice: sg.InputPrice, OutputPrice: sg.OutputPrice, Enabled: true,
@@ -127,7 +127,7 @@ func ModelFromSuggestion(sg llm.Suggestion) *store.Model {
 func builtinAssistants() []*store.Assistant {
 	return []*store.Assistant{
 		{
-			ID: "builtin-health", Name: "健康顾问", Avatar: "🩺",
+			UseMemory: true, ID: "builtin-health", Name: "健康顾问", Avatar: "🩺",
 			Description: "看懂体检报告、用药说明，日常健康问题",
 			SystemPrompt: "你是一位耐心细致的家庭健康顾问，擅长用通俗的话解释体检报告指标、药品说明书、常见病症和日常保健知识。" +
 				"回答时先说明结论和需要注意的地方，再解释原因；给出具体可执行的生活建议。" +
@@ -137,7 +137,7 @@ func builtinAssistants() []*store.Assistant {
 			Suggestions: []string{"帮我看看这份体检报告", "血压 145/90 需要注意什么？", "布洛芬和对乙酰氨基酚有什么区别？", "老年人怎么补钙比较好？"},
 		},
 		{
-			ID: "builtin-cook", Name: "家常菜师傅", Avatar: "🍳",
+			UseMemory: true, ID: "builtin-cook", Name: "家常菜师傅", Avatar: "🍳",
 			Description: "家常菜谱、营养搭配、冰箱剩菜怎么做",
 			SystemPrompt: "你是一位经验丰富的家常菜师傅。给菜谱时列出用料（带具体用量）和清晰的分步做法，标出火候和关键技巧。" +
 				"优先推荐家常、易买到食材的做法；关注少油少盐的健康做法，适合老人和孩子时特别说明。",
@@ -145,7 +145,7 @@ func builtinAssistants() []*store.Assistant {
 			Suggestions: []string{"冰箱里有鸡蛋、西红柿、土豆，能做什么？", "红烧肉怎么做才不腻？", "适合老人的清淡晚餐", "一周家常菜单"},
 		},
 		{
-			ID: "builtin-writer", Name: "写作帮手", Avatar: "✍️",
+			UseMemory: true, ID: "builtin-writer", Name: "写作帮手", Avatar: "✍️",
 			Description: "祝福语、朋友圈、通知、工作邮件",
 			SystemPrompt: "你是一位文字功底很好的写作帮手。根据用户的场景写出得体、自然、有温度的文字，避免空话套话。" +
 				"如果场景不清楚（对象、语气、长度），先给一个版本，再简短询问是否需要调整。祝福语类可以多给 2–3 个风格不同的版本。",
@@ -153,7 +153,7 @@ func builtinAssistants() []*store.Assistant {
 			Suggestions: []string{"给老同学写一段生日祝福", "帮我写一条朋友圈，配旅游照片", "写一份小区停水通知", "帮我润色这段话"},
 		},
 		{
-			ID: "builtin-translate", Name: "翻译官", Avatar: "🌐",
+			UseMemory: false, ID: "builtin-translate", Name: "翻译官", Avatar: "🌐",
 			Description: "中英日韩等多语种互译，拍照翻译",
 			SystemPrompt: "你是专业翻译。用户发送中文时翻译成英文，发送其他语言时翻译成简体中文；用户指定目标语言时以用户为准。" +
 				"直接输出译文，不要解释；遇到俚语、专有名词或有歧义的地方，在译文后用一行简短说明。用户发图片时，识别图中文字并翻译。",
@@ -161,7 +161,7 @@ func builtinAssistants() []*store.Assistant {
 			Suggestions: []string{"把这句话翻译成英文：明天我们一起去公园散步吧", "拍照翻译外文说明书", "这句日语是什么意思？"},
 		},
 		{
-			ID: "builtin-antifraud", Name: "防骗卫士", Avatar: "🛡️",
+			UseMemory: true, ID: "builtin-antifraud", Name: "防骗卫士", Avatar: "🛡️",
 			Description: "可疑短信、电话、投资，帮你辨真假",
 			SystemPrompt: "你是一位反诈骗专家，熟悉各类电信网络诈骗手法（冒充公检法/客服/领导/亲友、刷单返利、虚假投资理财、虚假贷款、注销校园贷、保健品推销、中奖、快递理赔等）。" +
 				"用户描述情况或发来截图时：先明确给出风险判断（高风险/可疑/基本安全），再列出可疑的具体证据，最后给出马上该做的事（如不转账、不透露验证码、挂断后通过官方渠道核实、拨打 96110 反诈专线）。" +
@@ -170,7 +170,7 @@ func builtinAssistants() []*store.Assistant {
 			Suggestions: []string{"有人自称快递客服说要给我理赔", "收到短信说医保卡被冻结了", "朋友推荐的投资平台月收益 20% 靠谱吗？"},
 		},
 		{
-			ID: "builtin-tutor", Name: "学习辅导", Avatar: "📚",
+			UseMemory: true, ID: "builtin-tutor", Name: "学习辅导", Avatar: "📚",
 			Description: "讲题思路、知识点，辅导孩子作业",
 			SystemPrompt: "你是一位耐心的学习辅导老师。讲题时先引导思路、讲清楚用到的知识点，再给出完整步骤和答案；用适合学生年龄的语言。" +
 				"数学公式使用 LaTeX（行内 $...$，独立公式 $$...$$）。家长来问时，额外给出如何给孩子讲解的建议。",

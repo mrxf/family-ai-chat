@@ -77,6 +77,13 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/bootstrap", s.bootstrap)
 			r.Get("/me", s.me)
 			r.Patch("/me", s.updateMe)
+			r.Get("/memories", s.listMemories)
+			r.Post("/memories", s.createMemory)
+			r.Patch("/memories/{id}", s.updateMemory)
+			r.Delete("/memories/{id}", s.deleteMemory)
+			r.Delete("/memories", s.clearMemories)
+			r.Post("/memories/import/preview", s.previewMemories)
+			r.Post("/memories/import", s.importMemories)
 
 			r.Get("/models", s.listModels)
 			r.Get("/assistants", s.listAssistants)

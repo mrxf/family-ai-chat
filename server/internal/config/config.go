@@ -8,6 +8,7 @@ import (
 )
 
 type Config struct {
+	DBURL     string // NUAN_DB_URL, empty selects SQLite
 	Addr      string // NUAN_ADDR, default :8080
 	DataDir   string // NUAN_DATA_DIR, default ./data
 	LogFormat string // NUAN_LOG_FORMAT: text | json
@@ -28,6 +29,7 @@ type Config struct {
 func Load() Config {
 	loadDotEnv(".env")
 	return Config{
+		DBURL:         os.Getenv("NUAN_DB_URL"),
 		Addr:          env("NUAN_ADDR", ":8080"),
 		DataDir:       env("NUAN_DATA_DIR", "./data"),
 		LogFormat:     env("NUAN_LOG_FORMAT", "text"),

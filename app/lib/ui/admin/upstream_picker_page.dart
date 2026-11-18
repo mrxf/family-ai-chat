@@ -136,10 +136,11 @@ class _UpstreamPickerPageState extends ConsumerState<UpstreamPickerPage> {
   Widget _list(BuildContext context, List<UpstreamItem> all) {
     final p = context.pal;
     final shown = all.where(_match).toList();
-    final rec = shown.where((e) => e.chat && e.recommended).toList();
-    final chat = shown.where((e) => e.chat && !e.recommended).toList();
-    final images = shown.where((e) => !e.chat && e.image).toList();
-    final others = shown.where((e) => !e.chat && !e.image).toList();
+    final rec = shown.where((e) => e.isChat && e.recommended).toList();
+    final chat = shown.where((e) => e.isChat && !e.recommended).toList();
+    final images = shown.where((e) => e.isImage).toList();
+    final embeddings = shown.where((e) => e.isEmbedding).toList();
+    final others = shown.where((e) => !e.isChat && !e.isImage && !e.isEmbedding).toList();
     final searching = _search.text.trim().isNotEmpty;
 
     final rows = <Widget>[];
@@ -162,13 +163,14 @@ class _UpstreamPickerPageState extends ConsumerState<UpstreamPickerPage> {
     group('推荐', rec, subtitle: '主流的新模型，参数已经帮你调好');
     group(rec.isEmpty ? '对话模型' : '其他对话模型', chat);
     group('画图模型', images, subtitle: '加一个就够了：家人说「帮我画…」时，聊天模型会自动调用它');
+    group('向量模型', embeddings, subtitle: '供记忆检索使用，添加后到「记忆检索模型」中指定');
     if (others.isNotEmpty) {
       if (_showOthers || searching) {
-        group('其他模型', others, subtitle: '向量、语音、视频等，不能用来聊天，一般不需要添加');
+        group('其他模型', others, subtitle: '语音、视频等，不能用来聊天，一般不需要添加');
       } else {
         rows.add(Padding(
           padding: const EdgeInsets.only(top: 16),
-          child: TextButton(onPressed: () => setState(() => _showOthers = true), child: Text('显示其他 ${others.length} 个模型（向量、语音、视频等）')),
+          child: TextButton(onPressed: () => setState(() => _showOthers = true), child: Text('显示其他 ${others.length} 个模型（语音、视频等）')),
         ));
       }
     }
@@ -276,11 +278,15 @@ class _ItemTile extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(it.upstreamModel, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: p.muted, fontFamily: 'monospace')),
                   ],
-                  if (it.chat) ...[
+                  if (it.isChat) ...[
                     const SizedBox(height: 7),
                     Wrap(spacing: 6, runSpacing: 6, children: modelTags(context, vision: it.vision, think: it.think, inPrice: it.inputPrice, outPrice: it.outputPrice)),
                   ],
-                  if (it.image) ...[
+                  if (it.isEmbedding) ...[
+                    const SizedBox(height: 7),
+                    Tag('向量（记忆检索）', icon: Icons.manage_search_rounded, color: p.accent),
+                  ],
+                  if (it.isImage) ...[
                     const SizedBox(height: 7),
                     const Tag('画图', icon: Icons.palette_outlined, color: Color(0xFFDB2777)),
                   ],

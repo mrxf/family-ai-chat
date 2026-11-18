@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
+	"nuan/internal/store/storetest/testdb"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,7 +12,7 @@ import (
 
 func testStore(t *testing.T) *Store {
 	t.Helper()
-	s, err := Open(filepath.Join(t.TempDir(), "test.sqlite"))
+	s, err := Open(testdb.DSN(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func messageIDs(ms []*Message) []string {
 }
 
 func TestMigrationsRepeatableAndPersistData(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "test.sqlite")
+	path := testdb.DSN(t)
 	s, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ func TestMigrationsRepeatableAndPersistData(t *testing.T) {
 		}
 	}
 	var n int
-	if err := s.r.QueryRowContext(t.Context(), "SELECT count(*) FROM schema_migrations").Scan(&n); err != nil || n != 5 {
+	if err := s.queryRow(t.Context(), "SELECT count(*) FROM schema_migrations").Scan(&n); err != nil || n != 6 {
 		t.Errorf("migration count=%d err=%v", n, err)
 	}
 	if err := s.Close(); err != nil {

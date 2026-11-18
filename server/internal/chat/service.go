@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"nuan/internal/llm"
+	"nuan/internal/memory"
 	"nuan/internal/store"
 )
 
@@ -32,11 +33,22 @@ const (
 	maxImageMessages = 4 // only the most recent N user messages keep their images
 )
 
+type MemoryService interface {
+	Inject(context.Context, *store.User, *string, string) memory.Context
+	Preview(context.Context, string) ([]memory.ImportItem, error)
+}
+type MemoryWorker interface {
+	Kick(string, time.Duration)
+	Shutdown(context.Context)
+}
+
 type Service struct {
-	Store   *store.Store
-	Hub     *Hub
-	Log     *slog.Logger
-	DataDir string
+	Store        *store.Store
+	Hub          *Hub
+	Log          *slog.Logger
+	DataDir      string
+	Memory       MemoryService
+	MemoryWorker MemoryWorker
 
 	clientsMu sync.Mutex
 	clients   map[string]*llm.Client // by provider id + updated_at
@@ -195,7 +207,46 @@ func (s *Service) Cancel(userID, messageID string) bool {
 	return true
 }
 
-func (s *Service) Shutdown(ctx context.Context) { s.Hub.Shutdown(ctx, errShutdown) }
+func (s *Service) Shutdown(ctx context.Context) {
+	s.Hub.Shutdown(ctx, errShutdown)
+	if s.MemoryWorker != nil {
+		s.MemoryWorker.Shutdown(ctx)
+	}
+}
+
+// ResolveMemoryModel supplies model/client selection to the independent memory service.
+func (s *Service) ResolveMemoryModel(ctx context.Context, kind string) (*store.Model, *llm.Client, error) {
+	keys := []string{"memory_model_id", "title_model_id", "default_model_id"}
+	want := store.KindChat
+	if kind == "embedding" {
+		keys = []string{"embedding_model_id"}
+		want = store.KindEmbedding
+	}
+	for _, k := range keys {
+		id, err := s.Store.GetSetting(ctx, k)
+		if err != nil {
+			return nil, nil, err
+		}
+		if m, p, ok := s.usableAny(ctx, id); ok && m.Kind == want {
+			return m, s.client(p), nil
+		}
+	}
+	if kind != "embedding" {
+		ms, err := s.Store.ListModels(ctx, true)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(ms) > 0 {
+			if m, p, ok := s.usableAny(ctx, ms[0].ID); ok {
+				return m, s.client(p), nil
+			}
+		}
+	}
+	if kind == "embedding" {
+		return nil, nil, nil
+	}
+	return nil, nil, ErrNoModel
+}
 
 // resolveModel picks the model: conversation override → assistant → global default → first enabled.
 // When the new message carries images and the pick cannot see them, a vision model is used
@@ -371,14 +422,14 @@ func (s *Service) startRun(user *store.User, conv *store.Conversation, asst *sto
 			roundStart := run.contentLen()
 			produced = false
 			var res *llm.Result
-			res, err = s.streamWithRetry(ctx, s.client(provider), req, onEvent)
+			res, err = s.streamWithRetry(ctx, s.client(provider), req.Request, onEvent)
 			// Upstream rejects tools: answer without them rather than fail.
 			if err != nil && !produced && len(req.Tools) > 0 && isBadRequest(err) && ctx.Err() == nil {
 				s.Log.Warn("upstream rejected tools, retrying without", "message_id", asst.ID, "model", model.UpstreamModel, "err", err)
 				s.markToolsRejected(model)
 				tools, req.Tools = nil, nil
-				req.Messages[0].Content = s.systemPrompt(ctx, user, conv, false)
-				res, err = s.streamWithRetry(ctx, s.client(provider), req, onEvent)
+				req.Messages[0].Content = s.systemPrompt(ctx, user, conv, false, req.core)
+				res, err = s.streamWithRetry(ctx, s.client(provider), req.Request, onEvent)
 			}
 			// Nothing reached the user yet: let the fallback model answer instead of showing an error.
 			if err != nil && round == 0 && firstToken == 0 && ctx.Err() == nil {
@@ -391,7 +442,7 @@ func (s *Service) startRun(user *store.User, conv *store.Conversation, asst *sto
 						msg.ModelID = &fm.ID
 						req.ReasoningEffort = effortFor(fm, think)
 						req.Tools = tools
-						res, err = s.streamWithRetry(ctx, s.client(fp), req, onEvent)
+						res, err = s.streamWithRetry(ctx, s.client(fp), req.Request, onEvent)
 					}
 				}
 			}
@@ -453,6 +504,10 @@ func (s *Service) startRun(user *store.User, conv *store.Conversation, asst *sto
 		defer cancel()
 		if err := s.Store.FinishMessage(pctx, &msg); err != nil {
 			s.Log.Error("persist message", "message_id", msg.ID, "err", err)
+		} else if msg.Status == store.StatusDone && s.MemoryWorker != nil {
+			if history, err := s.Store.ListMessages(pctx, conv.ID, msg.ID, 1); err == nil && len(history) > 0 && memory.Trigger(history[0].Content) {
+				s.MemoryWorker.Kick(conv.ID, 5*time.Second)
+			}
 		}
 		_ = s.Store.TouchConversation(pctx, conv.ID)
 		s.Log.Info("generation finished", "message_id", msg.ID, "model", model.UpstreamModel, "status", msg.Status,
@@ -508,7 +563,7 @@ func (s *Service) RepairSettings(ctx context.Context) error {
 			}
 		}
 	}
-	for _, k := range []string{"fallback_model_id", "title_model_id", "image_model_id"} {
+	for _, k := range []string{"fallback_model_id", "title_model_id", "image_model_id", "memory_model_id", "embedding_model_id"} {
 		v, err := s.Store.GetSetting(ctx, k)
 		if err != nil {
 			return err
@@ -517,6 +572,9 @@ func (s *Service) RepairSettings(ctx context.Context) error {
 		want := store.KindChat
 		if k == "image_model_id" {
 			want = store.KindImage
+		}
+		if k == "embedding_model_id" {
+			want = store.KindEmbedding
 		}
 		if v != "" && (!ok || m.Kind != want) {
 			if err := s.Store.SetSetting(ctx, k, ""); err != nil {
@@ -586,19 +644,22 @@ const basePrompt = `你是「小暖」，一位耐心、温暖、可靠的 AI �
 - 如果用户描述的情况疑似电信诈骗（如陌生人要求转账、索要验证码、冒充公检法或客服、高回报投资等），要明确、直接地提醒用户注意防骗。
 - 不确定的事情就说不确定，不要编造。`
 
-func (s *Service) systemPrompt(ctx context.Context, user *store.User, conv *store.Conversation, canDraw bool) string {
+func (s *Service) systemPrompt(ctx context.Context, user *store.User, conv *store.Conversation, canDraw bool, core ...string) string {
 	var b strings.Builder
 	b.WriteString(basePrompt)
 	b.WriteString(s.drawPrompt(ctx, canDraw))
-	now := time.Now().In(shanghai)
-	fmt.Fprintf(&b, "\n\n当前时间：%s（%s）。", now.Format("2006年1月2日 15:04"), weekdays[now.Weekday()])
-	if user.DisplayName != "" {
-		fmt.Fprintf(&b, "\n正在和你对话的用户称呼是「%s」。", user.DisplayName)
-	}
 	if conv.AssistantID != nil {
 		if a, err := s.Store.GetAssistant(ctx, *conv.AssistantID, user.ID); err == nil && strings.TrimSpace(a.SystemPrompt) != "" {
 			fmt.Fprintf(&b, "\n\n# 本次对话的角色设定（%s）\n%s", a.Name, a.SystemPrompt)
 		}
+	}
+	now := time.Now().In(shanghai)
+	fmt.Fprintf(&b, "\n\n当前日期：%s（%s）。", now.Format("2006年1月2日"), weekdays[now.Weekday()])
+	if user.DisplayName != "" {
+		fmt.Fprintf(&b, "\n正在和你对话的用户称呼是「%s」。", user.DisplayName)
+	}
+	if len(core) > 0 {
+		b.WriteString(core[0])
 	}
 	return b.String()
 }
@@ -628,12 +689,42 @@ func estimateTokens(s string) int {
 
 const imageTokens = 1100
 
-func (s *Service) buildRequest(ctx context.Context, user *store.User, conv *store.Conversation, asstID string, model *store.Model, canDraw bool) (llm.Request, error) {
+type chatRequest struct {
+	llm.Request
+	core string
+}
+
+func (s *Service) buildRequest(ctx context.Context, user *store.User, conv *store.Conversation, asstID string, model *store.Model, canDraw bool) (chatRequest, error) {
 	history, err := s.Store.ListMessages(ctx, conv.ID, asstID, 500)
 	if err != nil {
-		return llm.Request{}, err
+		return chatRequest{}, err
 	}
-	sys := s.systemPrompt(ctx, user, conv, canDraw)
+	lastUser := -1
+	query := ""
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Role == "user" {
+			if lastUser < 0 {
+				lastUser = i
+				query = history[i].Content
+				if utf8.RuneCountInString(query) >= 8 {
+					break
+				}
+			} else {
+				query = history[i].Content + "\n" + query
+				break
+			}
+		}
+	}
+	mem := memory.Context{}
+	if s.Memory != nil {
+		mem = s.Memory.Inject(ctx, user, conv.AssistantID, query)
+	}
+	sys := s.systemPrompt(ctx, user, conv, canDraw, mem.Core)
+	note := "（系统附注，不是用户说的话，回复时不要写出这种附注：现在是 " + time.Now().In(shanghai).Format("15:04") + "。"
+	if mem.Recall != "" {
+		note += "可能相关的往事：" + mem.Recall
+	}
+	note += "）\n"
 
 	budget := model.ContextWindow
 	if budget <= 0 {
@@ -696,6 +787,18 @@ func (s *Service) buildRequest(ctx context.Context, user *store.User, conv *stor
 				lm.Content = fmt.Sprintf("[用户发送了 %s，当前已不可见]\n%s", n, m.Content)
 			}
 		}
+		if i == lastUser {
+			lm.Content = note + lm.Content
+			if len(lm.Parts) > 0 {
+				for j := range lm.Parts {
+					if lm.Parts[j].Type == "text" {
+						lm.Parts[j].Text = note + lm.Parts[j].Text
+						break
+					}
+				}
+			}
+			cost += estimateTokens(note)
+		}
 		if budget-cost < 0 && len(picked) > 0 {
 			break
 		}
@@ -712,9 +815,9 @@ func (s *Service) buildRequest(ctx context.Context, user *store.User, conv *stor
 		msgs = append(msgs, picked[i])
 	}
 	if len(msgs) == 1 {
-		return llm.Request{}, ErrEmptyMessage
+		return chatRequest{}, ErrEmptyMessage
 	}
-	req := llm.Request{Model: model.UpstreamModel, Messages: msgs, MaxTokens: model.MaxOutput}
+	req := chatRequest{Request: llm.Request{Model: model.UpstreamModel, Messages: msgs, MaxTokens: model.MaxOutput}, core: mem.Core}
 	if conv.AssistantID != nil {
 		if a, err := s.Store.GetAssistant(ctx, *conv.AssistantID, user.ID); err == nil && a.Temperature != nil {
 			req.Temperature = a.Temperature

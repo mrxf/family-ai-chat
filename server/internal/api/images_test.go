@@ -180,7 +180,12 @@ func TestChatDrawsPictureThroughTool(t *testing.T) {
 		e := s.next()
 		switch e.name {
 		case "activity":
-			activities = append(activities, decodeEvent[struct{ Text string `json:"text"` }](t, e).Text)
+			// An empty text clears the indicator; a late subscriber may only see that.
+			if text := decodeEvent[struct {
+				Text string `json:"text"`
+			}](t, e).Text; text != "" {
+				activities = append(activities, text)
+			}
 		case "attachments":
 			sawAttachments = true
 		case "done":
@@ -278,6 +283,9 @@ func TestChatWithoutImageModelSendsNoTools(t *testing.T) {
 func TestChatRetriesWithoutToolsWhenRejected(t *testing.T) {
 	f, d := drawFixture(t, true)
 	d.rejectAll = true
+	if err := f.st.CreateMemories(t.Context(), []*store.Memory{{UserID: f.user.ID, Category: "preference", Content: "用户喜欢小狗", Pinned: true}}); err != nil {
+		t.Fatal(err)
+	}
 	res := f.send(map[string]any{"content": "帮我画一只小狗"})
 	f.waitRun(res.Assistant.ID)
 	m, err := f.st.GetMessage(t.Context(), res.Assistant.ID)
@@ -287,6 +295,13 @@ func TestChatRetriesWithoutToolsWhenRejected(t *testing.T) {
 	chats := d.chatRequests()
 	if len(chats) != 2 || chats[0]["tools"] == nil || chats[1]["tools"] != nil {
 		t.Fatalf("expected one rejected request with tools and one retry without: %d", len(chats))
+	}
+	for _, req := range chats {
+		messages := req["messages"].([]any)
+		sys := messages[0].(map[string]any)["content"].(string)
+		if !strings.Contains(sys, "用户喜欢小狗") {
+			t.Fatal("retry lost core", sys)
+		}
 	}
 }
 
@@ -341,6 +356,9 @@ func TestChatDrawsSeveralPicturesInParallelWithLimit(t *testing.T) {
 func TestToolRejectionIsRemembered(t *testing.T) {
 	f, d := drawFixture(t, true)
 	d.rejectAll = true
+	if err := f.st.CreateMemories(t.Context(), []*store.Memory{{UserID: f.user.ID, Category: "preference", Content: "用户喜欢小狗", Pinned: true}}); err != nil {
+		t.Fatal(err)
+	}
 	res := f.send(map[string]any{"content": "你好"})
 	f.waitRun(res.Assistant.ID)
 	res = f.send(map[string]any{"conversation_id": res.Conversation.ID, "content": "再来"})

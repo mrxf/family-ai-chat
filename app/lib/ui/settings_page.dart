@@ -5,28 +5,48 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../core/api.dart';
 import '../state/session.dart';
+import '../state/memories.dart';
 import 'admin/asr_page.dart';
 import 'admin/models_page.dart';
 import 'admin/usage_page.dart';
 import 'admin_page.dart';
 import 'sheets.dart';
+import 'memories_page.dart';
 import 'theme.dart';
 import 'update.dart';
 import 'widgets.dart';
 
 const avatarChoices = ['', '👵', '👴', '👩', '👨', '👧', '👦', '🧑', '🐱', '🐶', '🐼', '🐰', '🦊', '🐻', '🌻', '🌈', '⭐', '🍀'];
 
-class SettingsPage extends ConsumerWidget {
+class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends ConsumerState<SettingsPage> {
+  @override
+  void initState() {
+    super.initState();
+    ref.invalidate(memoriesProvider);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final p = context.pal;
     final session = ref.watch(sessionProvider);
     final user = session.user;
     if (user == null) return const Scaffold();
     final s = ref.watch(settingsProvider);
     final settings = ref.read(settingsProvider.notifier);
+    final memories = ref.watch(memoriesProvider);
+    final memorySubtitle = memories.when(
+      skipLoadingOnRefresh: false,
+      data: (m) => !m.enabled ? '已关闭' : '已记住 ${m.total} 件事${m.newCount > 0 ? ' · ${m.newCount} 条新的' : ''}',
+      loading: () => '让小暖记住你的情况，换哪个模型都认识你',
+      error: (_, _) => '让小暖记住你的情况，换哪个模型都认识你',
+    );
 
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
@@ -52,6 +72,21 @@ class SettingsPage extends ConsumerWidget {
                 ),
                 Icon(Icons.chevron_right_rounded, color: p.faint),
               ]),
+            ),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: Material(
+              clipBehavior: Clip.antiAlias,
+              color: p.surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: p.line)),
+              child: _Tile(
+                icon: Icons.favorite_outline_rounded,
+                title: '小暖记住的事',
+                subtitle: memorySubtitle,
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MemoriesPage())),
+              ),
             ),
           ),
 

@@ -78,7 +78,7 @@ class AdminModel {
   factory AdminModel.fromJson(Map<String, dynamic> j) => AdminModel(
         id: _str(j['id']),
         providerId: _str(j['provider_id']),
-        kind: _str(j['kind']) == 'image' ? 'image' : 'chat',
+        kind: const ['chat', 'image', 'embedding'].contains(j['kind']) ? j['kind'] as String : 'chat',
         upstreamModel: _str(j['upstream_model']),
         displayName: _str(j['display_name']),
         description: _str(j['description']),
@@ -96,15 +96,19 @@ class AdminModel {
   bool get think => thinkEffort.isNotEmpty;
   bool get hasPrice => inputPrice > 0 || outputPrice > 0;
   bool get isImage => kind == 'image';
+  bool get isChat => kind == 'chat';
+  bool get isEmbedding => kind == 'embedding';
 }
 
 /// A model offered by the provider's /models, with suggested settings.
 class UpstreamItem {
+  final String kind;
   final String upstreamModel, displayName, description, defaultEffort, thinkEffort, existingModelId;
   final bool vision, chat, image, tools, recommended;
   final int contextWindow, created;
   final double inputPrice, outputPrice;
   const UpstreamItem({
+    this.kind = '',
     required this.upstreamModel,
     required this.displayName,
     required this.description,
@@ -122,6 +126,7 @@ class UpstreamItem {
     required this.outputPrice,
   });
   factory UpstreamItem.fromJson(Map<String, dynamic> j) => UpstreamItem(
+        kind: _str(j['kind']).isNotEmpty ? _str(j['kind']) : (j['embedding'] == true ? 'embedding' : ''),
         upstreamModel: _str(j['upstream_model']),
         displayName: _str(j['display_name']),
         description: _str(j['description']),
@@ -142,8 +147,13 @@ class UpstreamItem {
   bool get think => thinkEffort.isNotEmpty;
   bool get hasPrice => inputPrice > 0 || outputPrice > 0;
 
+  String get modelKind => kind.isNotEmpty ? kind : (image ? 'image' : 'chat');
+  bool get isEmbedding => modelKind == 'embedding';
+  bool get isChat => kind.isNotEmpty ? kind == 'chat' : chat && !image;
+  bool get isImage => modelKind == 'image';
+
   Map<String, dynamic> toModelJson() => {
-        'kind': image ? 'image' : 'chat',
+        'kind': modelKind,
         'tools': tools,
         'upstream_model': upstreamModel,
         'display_name': displayName,
@@ -222,15 +232,17 @@ class ModelTestResult {
 
 /// Model choices the admin assigns for the whole family.
 class ModelSettings {
-  final String defaultModelId, fallbackModelId, titleModelId, imageModelId;
+  final String defaultModelId, fallbackModelId, titleModelId, imageModelId, memoryModelId, embeddingModelId;
   /// Pictures per family member per day; 0 = no limit.
   final int imageDailyLimit;
-  const ModelSettings({this.defaultModelId = '', this.fallbackModelId = '', this.titleModelId = '', this.imageModelId = '', this.imageDailyLimit = 0});
+  const ModelSettings({this.defaultModelId = '', this.fallbackModelId = '', this.titleModelId = '', this.imageModelId = '', this.memoryModelId = '', this.embeddingModelId = '', this.imageDailyLimit = 0});
   factory ModelSettings.fromJson(Map<String, dynamic> j) => ModelSettings(
         defaultModelId: _str(j['default_model_id']),
         fallbackModelId: _str(j['fallback_model_id']),
         titleModelId: _str(j['title_model_id']),
         imageModelId: _str(j['image_model_id']),
+        memoryModelId: _str(j['memory_model_id']),
+        embeddingModelId: _str(j['embedding_model_id']),
         imageDailyLimit: int.tryParse(_str(j['image_daily_limit'])) ?? 0,
       );
 }

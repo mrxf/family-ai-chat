@@ -62,7 +62,7 @@ class _Body extends ConsumerWidget {
     final s = c.settings;
     String nameOf(String id, String empty) => id.isEmpty ? empty : (c.model(id)?.displayName ?? '已删除');
     final noUsable = c.usableModels.isEmpty;
-    final chat = c.chatModels, images = c.imageModels;
+    final chat = c.chatModels, images = c.imageModels, embeddings = c.embeddingModels;
 
     return CustomScrollView(slivers: [
       SliverPadding(
@@ -98,6 +98,23 @@ class _Body extends ConsumerWidget {
               subtitle: '自动给对话起标题，选便宜、快的就行',
               value: nameOf(s.titleModelId, '跟随对话'),
               onTap: noUsable ? null : () => _assign(context, ref, 'title_model_id', '起标题的模型', s.titleModelId, noneLabel: '跟随当前对话的模型'),
+            ),
+          ]),
+          const SectionHeader('记忆'),
+          GroupCard(children: [
+            InfoRow(
+              icon: Icons.auto_awesome_rounded,
+              title: '记忆整理模型',
+              subtitle: '从聊天中整理家人的情况，选聊天模型',
+              value: nameOf(s.memoryModelId, '跟随起标题的模型'),
+              onTap: () => _assign(context, ref, 'memory_model_id', '记忆整理模型', s.memoryModelId, noneLabel: '跟随起标题的模型'),
+            ),
+            InfoRow(
+              icon: Icons.manage_search_rounded,
+              title: '记忆检索模型',
+              subtitle: '用向量模型查找相关的记忆',
+              value: nameOf(s.embeddingModelId, '不用向量，只按关键词找'),
+              onTap: () => _assign(context, ref, 'embedding_model_id', '记忆检索模型', s.embeddingModelId, noneLabel: '不用向量，只按关键词找', kind: 'embedding'),
             ),
           ]),
           if (chat.isNotEmpty)
@@ -145,7 +162,7 @@ class _Body extends ConsumerWidget {
               valueColor: c.imageModel == null ? p.muted : p.text,
               onTap: images.isEmpty
                   ? () => showToast(context, '先到下面的供应商里，挑选一个画图模型（列表里标着「画图」）')
-                  : () => _assign(context, ref, 'image_model_id', '画图模型', s.imageModelId, noneLabel: '不开通画图', image: true),
+                  : () => _assign(context, ref, 'image_model_id', '画图模型', s.imageModelId, noneLabel: '不开通画图', kind: 'image'),
             ),
             if (s.imageModelId.isNotEmpty)
               InfoRow(
@@ -157,6 +174,8 @@ class _Body extends ConsumerWidget {
               ),
           ]),
           for (final m in images) Padding(padding: const EdgeInsets.only(top: 8), child: ModelRow(model: m, catalog: c)),
+          if (embeddings.isNotEmpty) const SectionHeader('向量模型', subtitle: '供记忆检索使用，不出现在家人的模型列表里'),
+          for (final m in embeddings) Padding(padding: const EdgeInsets.only(top: 8), child: ModelRow(model: m, catalog: c)),
           SectionHeader('供应商',
               subtitle: '模型从这里来，费用也由它们收取',
               trailing: TextButton.icon(onPressed: () => openAddProvider(context), icon: const Icon(Icons.add_rounded), label: const Text('添加'))),
@@ -196,8 +215,8 @@ class _Body extends ConsumerWidget {
   }
 
   Future<void> _assign(BuildContext context, WidgetRef ref, String key, String title, String current,
-      {bool allowNone = true, String noneLabel = '不使用', bool image = false}) async {
-    final picked = await showAdminModelChooser(context, c, title: title, current: current, noneLabel: allowNone ? noneLabel : null, image: image);
+      {bool allowNone = true, String noneLabel = '不使用', String kind = 'chat'}) async {
+    final picked = await showAdminModelChooser(context, c, title: title, current: current, noneLabel: allowNone ? noneLabel : null, kind: kind);
     if (picked == null || picked == current) return;
     try {
       final s = await ref.read(apiProvider).adminPutModelSettings({key: picked});
@@ -224,7 +243,7 @@ class ModelRow extends ConsumerWidget {
     final m = model;
     final provider = catalog.provider(m.providerId);
     final providerOff = provider != null && !provider.enabled;
-    final visible = m.isImage ? catalog.enabledNow(m) : catalog.usable(m);
+    final visible = catalog.enabledNow(m);
     final isDefault = catalog.settings.defaultModelId == m.id;
     final isFallback = catalog.settings.fallbackModelId == m.id;
     return Pressable(
@@ -255,8 +274,10 @@ class ModelRow extends ConsumerWidget {
                 Wrap(spacing: 6, runSpacing: 6, children: [
                   if (providerOff) Tag('供应商已停用', color: p.bad),
                   if (m.isImage) Tag('画图', icon: Icons.palette_outlined, color: const Color(0xFFDB2777)),
+                  if (m.isEmbedding) Tag('向量', icon: Icons.manage_search_rounded, color: p.accent),
+                  if (m.isEmbedding && catalog.settings.embeddingModelId == m.id) Tag('正在使用', color: p.accent),
                   if (m.isImage && catalog.settings.imageModelId == m.id) Tag('正在使用', color: p.accent),
-                  if (!m.isImage) ...modelTags(context, vision: m.vision, think: m.think),
+                  if (m.isChat) ...modelTags(context, vision: m.vision, think: m.think),
                 ]),
               ]),
             ),
@@ -326,7 +347,7 @@ class ProviderCard extends StatelessWidget {
 
 /// Bottom sheet listing the family-visible models, grouped by provider.
 /// Returns the chosen id, '' for [noneLabel], or null when dismissed.
-Future<String?> showAdminModelChooser(BuildContext context, Catalog c, {required String title, required String current, String? noneLabel, bool image = false}) {
+Future<String?> showAdminModelChooser(BuildContext context, Catalog c, {required String title, required String current, String? noneLabel, String kind = 'chat'}) {
   return showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
@@ -364,7 +385,7 @@ Future<String?> showAdminModelChooser(BuildContext context, Catalog c, {required
 
       final groups = <Widget>[];
       for (final pr in c.providers.where((x) => x.enabled)) {
-        final ms = c.modelsOf(pr.id).where((m) => m.enabled && m.isImage == image).toList();
+        final ms = c.modelsOf(pr.id).where((m) => m.enabled && m.kind == kind).toList();
         if (ms.isEmpty) continue;
         groups.add(Padding(
           padding: const EdgeInsets.fromLTRB(4, 10, 4, 8),
@@ -375,7 +396,7 @@ Future<String?> showAdminModelChooser(BuildContext context, Catalog c, {required
           ]),
         ));
         for (final m in ms) {
-          groups.add(option(id: m.id, name: m.displayName, sub: m.description, tags: modelTags(ctx, vision: m.vision, think: m.think)));
+          groups.add(option(id: m.id, name: m.displayName, sub: m.description, tags: m.isChat ? modelTags(ctx, vision: m.vision, think: m.think) : const []));
         }
       }
       return DraggableScrollableSheet(

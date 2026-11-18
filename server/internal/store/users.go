@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 )
 
@@ -42,7 +41,7 @@ func (s *Store) CreateUser(ctx context.Context, u *User) error {
 		u.Settings = json.RawMessage(`{}`)
 	}
 	u.CreatedAt, u.UpdatedAt = now, now
-	_, err := s.w.ExecContext(ctx, `INSERT INTO users (`+userCols+`) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+	_, err := s.exec(ctx, `INSERT INTO users (`+userCols+`) VALUES (?,?,?,?,?,?,?,?,?,?)`,
 		u.ID, u.Username, u.DisplayName, u.Avatar, u.Role, u.PasswordHash, string(u.Settings), u.Disabled, u.CreatedAt, u.UpdatedAt)
 	if isUnique(err) {
 		return ErrConflict
@@ -51,15 +50,15 @@ func (s *Store) CreateUser(ctx context.Context, u *User) error {
 }
 
 func (s *Store) GetUser(ctx context.Context, id string) (*User, error) {
-	return scanUser(s.r.QueryRowContext(ctx, `SELECT `+userCols+` FROM users WHERE id = ?`, id))
+	return scanUser(s.queryRow(ctx, `SELECT `+userCols+` FROM users WHERE id = ?`, id))
 }
 
 func (s *Store) GetUserByUsername(ctx context.Context, username string) (*User, error) {
-	return scanUser(s.r.QueryRowContext(ctx, `SELECT `+userCols+` FROM users WHERE username = ?`, username))
+	return scanUser(s.queryRow(ctx, `SELECT `+userCols+` FROM users WHERE lower(username) = lower(?)`, username))
 }
 
 func (s *Store) ListUsers(ctx context.Context) ([]*User, error) {
-	rows, err := s.r.QueryContext(ctx, `SELECT `+userCols+` FROM users ORDER BY created_at`)
+	rows, err := s.query(ctx, `SELECT `+userCols+` FROM users ORDER BY created_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +76,7 @@ func (s *Store) ListUsers(ctx context.Context) ([]*User, error) {
 
 func (s *Store) CountUsers(ctx context.Context) (int, error) {
 	var n int
-	err := s.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&n)
+	err := s.queryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&n)
 	return n, err
 }
 
@@ -92,8 +91,8 @@ type UserPatch struct {
 }
 
 func (s *Store) UpdateUser(ctx context.Context, id string, p UserPatch) (*User, error) {
-	err := s.tx(ctx, func(tx *sql.Tx) error {
-		u, err := scanUser(tx.QueryRowContext(ctx, `SELECT `+userCols+` FROM users WHERE id = ?`, id))
+	err := s.tx(ctx, func(tx *Tx) error {
+		u, err := scanUser(tx.queryRow(ctx, `SELECT `+userCols+` FROM users WHERE id = ?`+s.forUpdate(), id))
 		if err != nil {
 			return err
 		}
@@ -110,12 +109,30 @@ func (s *Store) UpdateUser(ctx context.Context, id string, p UserPatch) (*User, 
 			u.PasswordHash = *p.PasswordHash
 		}
 		if p.Settings != nil {
-			u.Settings = p.Settings
+			var current, patch map[string]json.RawMessage
+			if err := json.Unmarshal(p.Settings, &patch); err != nil {
+				return err
+			}
+			_ = json.Unmarshal(u.Settings, &current)
+			if current == nil {
+				current = map[string]json.RawMessage{}
+			}
+			for k, v := range patch {
+				if string(v) == "null" {
+					delete(current, k)
+				} else {
+					current[k] = v
+				}
+			}
+			u.Settings, err = json.Marshal(current)
+			if err != nil {
+				return err
+			}
 		}
 		if p.Disabled != nil {
 			u.Disabled = *p.Disabled
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE users SET display_name=?, avatar=?, role=?, password_hash=?, settings=?, disabled=?, updated_at=? WHERE id=?`,
+		_, err = tx.exec(ctx, `UPDATE users SET display_name=?, avatar=?, role=?, password_hash=?, settings=?, disabled=?, updated_at=? WHERE id=?`,
 			u.DisplayName, u.Avatar, u.Role, u.PasswordHash, string(u.Settings), u.Disabled, Now(), id)
 		return err
 	})
@@ -126,7 +143,7 @@ func (s *Store) UpdateUser(ctx context.Context, id string, p UserPatch) (*User, 
 }
 
 func (s *Store) DeleteUser(ctx context.Context, id string) error {
-	return affected(s.w.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, id))
+	return affected(s.exec(ctx, `DELETE FROM users WHERE id = ?`, id))
 }
 
 // ---- sessions ----
@@ -140,14 +157,14 @@ type Session struct {
 }
 
 func (s *Store) CreateSession(ctx context.Context, tokenHash []byte, sess Session) error {
-	_, err := s.w.ExecContext(ctx, `INSERT INTO sessions (token_hash, user_id, device, created_at, last_seen_at, expires_at) VALUES (?,?,?,?,?,?)`,
+	_, err := s.exec(ctx, `INSERT INTO sessions (token_hash, user_id, device, created_at, last_seen_at, expires_at) VALUES (?,?,?,?,?,?)`,
 		tokenHash, sess.UserID, sess.Device, sess.CreatedAt, sess.LastSeenAt, sess.ExpiresAt)
 	return err
 }
 
 func (s *Store) GetSession(ctx context.Context, tokenHash []byte) (*Session, error) {
 	var sess Session
-	err := s.r.QueryRowContext(ctx, `SELECT user_id, device, created_at, last_seen_at, expires_at FROM sessions WHERE token_hash = ?`, tokenHash).
+	err := s.queryRow(ctx, `SELECT user_id, device, created_at, last_seen_at, expires_at FROM sessions WHERE token_hash = ?`, tokenHash).
 		Scan(&sess.UserID, &sess.Device, &sess.CreatedAt, &sess.LastSeenAt, &sess.ExpiresAt)
 	if err != nil {
 		return nil, notFound(err)
@@ -156,21 +173,21 @@ func (s *Store) GetSession(ctx context.Context, tokenHash []byte) (*Session, err
 }
 
 func (s *Store) TouchSession(ctx context.Context, tokenHash []byte, lastSeen, expires int64) error {
-	_, err := s.w.ExecContext(ctx, `UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE token_hash = ?`, lastSeen, expires, tokenHash)
+	_, err := s.exec(ctx, `UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE token_hash = ?`, lastSeen, expires, tokenHash)
 	return err
 }
 
 func (s *Store) DeleteSession(ctx context.Context, tokenHash []byte) error {
-	_, err := s.w.ExecContext(ctx, `DELETE FROM sessions WHERE token_hash = ?`, tokenHash)
+	_, err := s.exec(ctx, `DELETE FROM sessions WHERE token_hash = ?`, tokenHash)
 	return err
 }
 
 func (s *Store) DeleteUserSessions(ctx context.Context, userID string) error {
-	_, err := s.w.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, userID)
+	_, err := s.exec(ctx, `DELETE FROM sessions WHERE user_id = ?`, userID)
 	return err
 }
 
 func (s *Store) DeleteExpiredSessions(ctx context.Context) error {
-	_, err := s.w.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at < ?`, Now())
+	_, err := s.exec(ctx, `DELETE FROM sessions WHERE expires_at < ?`, Now())
 	return err
 }

@@ -8,12 +8,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"nuan/internal/store"
+	"nuan/internal/store/storetest"
 )
 
 func TestBuildTencentWSSURLMatchesSpec(t *testing.T) {
@@ -87,11 +87,7 @@ func pipeWS(t *testing.T, rawURL string) (client *WSConn, server *WSConn) {
 }
 
 func TestTencentStreamChunkingAndAggregation(t *testing.T) {
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
+	st := storetest.Open(t)
 
 	ctx := context.Background()
 	svc := NewService(st)
@@ -197,11 +193,7 @@ func TestLiveTencentProbe(t *testing.T) {
 	if sid == "" || skey == "" {
 		t.Skip("set TENCENT_SECRET_ID and TENCENT_SECRET_KEY to run live Tencent probe")
 	}
-	st, err := store.Open(filepath.Join(t.TempDir(), "live.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
+	st := storetest.Open(t)
 
 	svc := NewService(st)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)

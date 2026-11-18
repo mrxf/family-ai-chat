@@ -29,14 +29,16 @@ class Catalog {
   List<AdminModel> modelsOf(String providerId) => models.where((m) => m.providerId == providerId).toList();
 
   /// Models the family chats with (image models only draw for the chat models).
-  List<AdminModel> get chatModels => models.where((m) => !m.isImage).toList();
+  List<AdminModel> get chatModels => models.where((m) => m.isChat).toList();
   List<AdminModel> get imageModels => models.where((m) => m.isImage).toList();
+
+  List<AdminModel> get embeddingModels => models.where((m) => m.isEmbedding).toList();
 
   /// Enabled and its provider is enabled too.
   bool enabledNow(AdminModel m) => m.enabled && (provider(m.providerId)?.enabled ?? false);
 
   /// Chat model visible to the family.
-  bool usable(AdminModel m) => !m.isImage && enabledNow(m);
+  bool usable(AdminModel m) => m.isChat && enabledNow(m);
 
   List<AdminModel> get usableModels => models.where(usable).toList();
 

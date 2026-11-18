@@ -33,11 +33,11 @@ func scanASRConfig(row interface{ Scan(...any) error }) (*ASRConfig, error) {
 }
 
 func (s *Store) GetASRConfig(ctx context.Context, kind string) (*ASRConfig, error) {
-	return scanASRConfig(s.r.QueryRowContext(ctx, `SELECT `+asrCols+` FROM asr_configs WHERE kind = ?`, kind))
+	return scanASRConfig(s.queryRow(ctx, `SELECT `+asrCols+` FROM asr_configs WHERE kind = ?`, kind))
 }
 
 func (s *Store) ListASRConfigs(ctx context.Context) (map[string]*ASRConfig, error) {
-	rows, err := s.r.QueryContext(ctx, `SELECT `+asrCols+` FROM asr_configs`)
+	rows, err := s.query(ctx, `SELECT `+asrCols+` FROM asr_configs`)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func (s *Store) UpsertASRConfig(ctx context.Context, c *ASRConfig) error {
 		c.Extra = map[string]string{}
 	}
 	extra, _ := json.Marshal(c.Extra)
-	_, err := s.w.ExecContext(ctx, `INSERT INTO asr_configs (`+asrCols+`) VALUES (?,?,?,?,?,?,?,?)
+	_, err := s.exec(ctx, `INSERT INTO asr_configs (`+asrCols+`) VALUES (?,?,?,?,?,?,?,?)
 		ON CONFLICT(kind) DO UPDATE SET app_id=excluded.app_id, access_key=excluded.access_key, secret_key=excluded.secret_key,
 		base_url=excluded.base_url, model=excluded.model, extra=excluded.extra, updated_at=excluded.updated_at`,
 		c.Kind, c.AppID, c.AccessKey, c.SecretKey, c.BaseURL, c.Model, string(extra), c.UpdatedAt)

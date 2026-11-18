@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 )
 
 type Provider struct {
@@ -20,14 +21,15 @@ type Provider struct {
 
 // Model kinds.
 const (
-	KindChat  = "chat"
-	KindImage = "image"
+	KindChat      = "chat"
+	KindImage     = "image"
+	KindEmbedding = "embedding"
 )
 
 type Model struct {
 	ID            string  `json:"id"`
 	ProviderID    string  `json:"provider_id"`
-	Kind          string  `json:"kind"` // KindChat | KindImage
+	Kind          string  `json:"kind"` // KindChat | KindImage | KindEmbedding
 	UpstreamModel string  `json:"upstream_model"`
 	DisplayName   string  `json:"display_name"`
 	Description   string  `json:"description"`
@@ -74,7 +76,7 @@ func (s *Store) UpsertProvider(ctx context.Context, p *Provider) error {
 		p.Kind = "custom"
 	}
 	p.UpdatedAt = now
-	_, err := s.w.ExecContext(ctx, `INSERT INTO providers (`+providerCols+`) VALUES (?,?,?,?,?,?,?,?,?)
+	_, err := s.exec(ctx, `INSERT INTO providers (`+providerCols+`) VALUES (?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, name=excluded.name, base_url=excluded.base_url, api_key=excluded.api_key,
 		enabled=excluded.enabled, sort=excluded.sort, updated_at=excluded.updated_at`,
 		p.ID, p.Kind, p.Name, p.BaseURL, p.APIKey, p.Enabled, p.Sort, p.CreatedAt, p.UpdatedAt)
@@ -82,11 +84,11 @@ func (s *Store) UpsertProvider(ctx context.Context, p *Provider) error {
 }
 
 func (s *Store) GetProvider(ctx context.Context, id string) (*Provider, error) {
-	return scanProvider(s.r.QueryRowContext(ctx, `SELECT `+providerCols+` FROM providers WHERE id = ?`, id))
+	return scanProvider(s.queryRow(ctx, `SELECT `+providerCols+` FROM providers WHERE id = ?`, id))
 }
 
 func (s *Store) ListProviders(ctx context.Context) ([]*Provider, error) {
-	rows, err := s.r.QueryContext(ctx, `SELECT `+providerCols+` FROM providers ORDER BY sort, created_at`)
+	rows, err := s.query(ctx, `SELECT `+providerCols+` FROM providers ORDER BY sort, created_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +105,7 @@ func (s *Store) ListProviders(ctx context.Context) ([]*Provider, error) {
 }
 
 func (s *Store) DeleteProvider(ctx context.Context, id string) error {
-	return affected(s.w.ExecContext(ctx, `DELETE FROM providers WHERE id = ?`, id))
+	return affected(s.exec(ctx, `DELETE FROM providers WHERE id = ?`, id))
 }
 
 // ---- models ----
@@ -120,11 +122,11 @@ func scanModel(row interface{ Scan(...any) error }) (*Model, error) {
 }
 
 func (s *Store) UpsertModel(ctx context.Context, m *Model) error {
-	return upsertModel(ctx, s.w, m)
+	return upsertModel(ctx, s, m)
 }
 
 type execer interface {
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	exec(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
 func upsertModel(ctx context.Context, db execer, m *Model) error {
@@ -139,7 +141,7 @@ func upsertModel(ctx context.Context, db execer, m *Model) error {
 	if m.Kind == "" {
 		m.Kind = KindChat
 	}
-	_, err := db.ExecContext(ctx, `INSERT INTO models (`+modelCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+	_, err := db.exec(ctx, `INSERT INTO models (`+modelCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET provider_id=excluded.provider_id, kind=excluded.kind, upstream_model=excluded.upstream_model,
 		display_name=excluded.display_name, description=excluded.description, vision=excluded.vision, tools=excluded.tools, default_effort=excluded.default_effort, think_effort=excluded.think_effort,
 		context_window=excluded.context_window, max_output=excluded.max_output, input_price=excluded.input_price, output_price=excluded.output_price,
@@ -151,9 +153,12 @@ func upsertModel(ctx context.Context, db execer, m *Model) error {
 
 // CreateModels inserts several models in one transaction, appended after the existing ones.
 func (s *Store) CreateModels(ctx context.Context, ms []*Model) error {
-	return s.tx(ctx, func(tx *sql.Tx) error {
+	return s.tx(ctx, func(tx *Tx) error {
+		if err := tx.lockModels(ctx); err != nil {
+			return err
+		}
 		var next int
-		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(sort), -1) + 1 FROM models`).Scan(&next); err != nil {
+		if err := tx.queryRow(ctx, `SELECT COALESCE(MAX(sort), -1) + 1 FROM models`).Scan(&next); err != nil {
 			return err
 		}
 		for i, m := range ms {
@@ -169,26 +174,32 @@ func (s *Store) CreateModels(ctx context.Context, ms []*Model) error {
 // SetModelOrder rewrites sort so models appear in the given order; unlisted models keep
 // their relative order after the listed ones.
 func (s *Store) SetModelOrder(ctx context.Context, ids []string) error {
-	return s.tx(ctx, func(tx *sql.Tx) error {
+	return s.tx(ctx, func(tx *Tx) error {
+		if err := tx.lockModels(ctx); err != nil {
+			return err
+		}
 		now := Now()
 		for i, id := range ids {
-			if _, err := tx.ExecContext(ctx, `UPDATE models SET sort = ?, updated_at = ? WHERE id = ?`, i, now, id); err != nil {
+			if _, err := tx.exec(ctx, `UPDATE models SET sort = ?, updated_at = ? WHERE id = ?`, i, now, id); err != nil {
 				return err
 			}
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE models SET sort = sort + ? WHERE id NOT IN (SELECT value FROM json_each(?))`, len(ids), jsonStrings(ids))
+		q := `UPDATE models SET sort = sort + ?`
+		args := []any{len(ids)}
+		if len(ids) > 0 {
+			q += ` WHERE id NOT IN (` + strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",") + `)`
+			for _, id := range ids {
+				args = append(args, id)
+			}
+		}
+		_, err := tx.exec(ctx, q, args...)
 		return err
 	})
 }
 
-func jsonStrings(v []string) string {
-	b, _ := json.Marshal(v)
-	return string(b)
-}
-
 // ModelCounts returns, per provider id, the number of models and enabled models.
 func (s *Store) ModelCounts(ctx context.Context) (map[string][2]int, error) {
-	rows, err := s.r.QueryContext(ctx, `SELECT provider_id, COUNT(*), COALESCE(SUM(enabled), 0) FROM models GROUP BY provider_id`)
+	rows, err := s.query(ctx, `SELECT provider_id, COUNT(*), COALESCE(SUM(enabled), 0) FROM models GROUP BY provider_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +217,7 @@ func (s *Store) ModelCounts(ctx context.Context) (map[string][2]int, error) {
 }
 
 func (s *Store) GetModel(ctx context.Context, id string) (*Model, error) {
-	return scanModel(s.r.QueryRowContext(ctx, `SELECT `+modelCols+` FROM models WHERE id = ?`, id))
+	return scanModel(s.queryRow(ctx, `SELECT `+modelCols+` FROM models WHERE id = ?`, id))
 }
 
 // ListModels returns all models (every kind). usableChat returns only enabled
@@ -217,7 +228,7 @@ func (s *Store) ListModels(ctx context.Context, usableChat bool) ([]*Model, erro
 		q = `SELECT ` + prefixCols(modelCols, "m.") + ` FROM models m JOIN providers p ON p.id = m.provider_id
 			WHERE m.enabled = 1 AND p.enabled = 1 AND m.kind = 'chat' ORDER BY m.sort, m.created_at`
 	}
-	rows, err := s.r.QueryContext(ctx, q)
+	rows, err := s.query(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -234,14 +245,14 @@ func (s *Store) ListModels(ctx context.Context, usableChat bool) ([]*Model, erro
 }
 
 func (s *Store) DeleteModel(ctx context.Context, id string) error {
-	return affected(s.w.ExecContext(ctx, `DELETE FROM models WHERE id = ?`, id))
+	return affected(s.exec(ctx, `DELETE FROM models WHERE id = ?`, id))
 }
 
 // ---- settings ----
 
 func (s *Store) GetSetting(ctx context.Context, key string) (string, error) {
 	var v string
-	err := s.r.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, key).Scan(&v)
+	err := s.queryRow(ctx, `SELECT value FROM settings WHERE key = ?`, key).Scan(&v)
 	if err == sql.ErrNoRows {
 		return "", nil
 	}
@@ -249,13 +260,14 @@ func (s *Store) GetSetting(ctx context.Context, key string) (string, error) {
 }
 
 func (s *Store) SetSetting(ctx context.Context, key, value string) error {
-	_, err := s.w.ExecContext(ctx, `INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
+	_, err := s.exec(ctx, `INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
 	return err
 }
 
 // ---- assistants ----
 
 type Assistant struct {
+	UseMemory    bool     `json:"use_memory"`
 	ID           string   `json:"id"`
 	OwnerID      *string  `json:"owner_id"`
 	Name         string   `json:"name"`
@@ -271,13 +283,13 @@ type Assistant struct {
 	UpdatedAt    int64    `json:"updated_at"`
 }
 
-const assistantCols = `id, owner_id, name, avatar, description, system_prompt, greeting, suggestions, model_id, temperature, sort, created_at, updated_at`
+const assistantCols = `id, owner_id, name, avatar, description, system_prompt, greeting, suggestions, model_id, temperature, sort, created_at, updated_at, use_memory`
 
 func scanAssistant(row interface{ Scan(...any) error }) (*Assistant, error) {
 	var a Assistant
 	var sugg string
 	if err := row.Scan(&a.ID, &a.OwnerID, &a.Name, &a.Avatar, &a.Description, &a.SystemPrompt, &a.Greeting, &sugg,
-		&a.ModelID, &a.Temperature, &a.Sort, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		&a.ModelID, &a.Temperature, &a.Sort, &a.CreatedAt, &a.UpdatedAt, &a.UseMemory); err != nil {
 		return nil, notFound(err)
 	}
 	_ = json.Unmarshal([]byte(sugg), &a.Suggestions)
@@ -300,23 +312,23 @@ func (s *Store) UpsertAssistant(ctx context.Context, a *Assistant) error {
 		a.Suggestions = []string{}
 	}
 	sugg, _ := json.Marshal(a.Suggestions)
-	_, err := s.w.ExecContext(ctx, `INSERT INTO assistants (`+assistantCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+	_, err := s.exec(ctx, `INSERT INTO assistants (`+assistantCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET name=excluded.name, avatar=excluded.avatar, description=excluded.description,
 		system_prompt=excluded.system_prompt, greeting=excluded.greeting, suggestions=excluded.suggestions,
-		model_id=excluded.model_id, temperature=excluded.temperature, sort=excluded.sort, updated_at=excluded.updated_at`,
+		model_id=excluded.model_id, temperature=excluded.temperature, use_memory=excluded.use_memory, sort=excluded.sort, updated_at=excluded.updated_at`,
 		a.ID, a.OwnerID, a.Name, a.Avatar, a.Description, a.SystemPrompt, a.Greeting, string(sugg),
-		a.ModelID, a.Temperature, a.Sort, a.CreatedAt, a.UpdatedAt)
+		a.ModelID, a.Temperature, a.Sort, a.CreatedAt, a.UpdatedAt, a.UseMemory)
 	return err
 }
 
 // GetAssistant returns an assistant visible to userID (shared or owned).
 func (s *Store) GetAssistant(ctx context.Context, id, userID string) (*Assistant, error) {
-	return scanAssistant(s.r.QueryRowContext(ctx, `SELECT `+assistantCols+` FROM assistants
+	return scanAssistant(s.queryRow(ctx, `SELECT `+assistantCols+` FROM assistants
 		WHERE id = ? AND (owner_id IS NULL OR owner_id = ?)`, id, userID))
 }
 
 func (s *Store) ListAssistants(ctx context.Context, userID string) ([]*Assistant, error) {
-	rows, err := s.r.QueryContext(ctx, `SELECT `+assistantCols+` FROM assistants
+	rows, err := s.query(ctx, `SELECT `+assistantCols+` FROM assistants
 		WHERE owner_id IS NULL OR owner_id = ? ORDER BY sort, created_at`, userID)
 	if err != nil {
 		return nil, err
@@ -335,14 +347,14 @@ func (s *Store) ListAssistants(ctx context.Context, userID string) ([]*Assistant
 
 func (s *Store) CountAssistants(ctx context.Context) (int, error) {
 	var n int
-	err := s.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM assistants`).Scan(&n)
+	err := s.queryRow(ctx, `SELECT COUNT(*) FROM assistants`).Scan(&n)
 	return n, err
 }
 
 // DeleteAssistant deletes an assistant. If ownerID is non-empty only that owner's assistant is deleted.
 func (s *Store) DeleteAssistant(ctx context.Context, id, ownerID string) error {
 	if ownerID == "" {
-		return affected(s.w.ExecContext(ctx, `DELETE FROM assistants WHERE id = ?`, id))
+		return affected(s.exec(ctx, `DELETE FROM assistants WHERE id = ?`, id))
 	}
-	return affected(s.w.ExecContext(ctx, `DELETE FROM assistants WHERE id = ? AND owner_id = ?`, id, ownerID))
+	return affected(s.exec(ctx, `DELETE FROM assistants WHERE id = ? AND owner_id = ?`, id, ownerID))
 }

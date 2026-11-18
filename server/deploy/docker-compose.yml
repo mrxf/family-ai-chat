@@ -30,5 +30,29 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # Enable in ../.env: NUAN_DB_URL=postgres://nuan:<password>@postgres:5432/nuan?sslmode=disable
+  # Also set NUAN_PG_PASSWORD=<password> there (URL-encode it in NUAN_DB_URL).
+  # From server/deploy: docker compose --env-file ../.env --profile pg up -d
+  # Stop nuan and back up SQLite before copying (keep postgres running).
+  # Export NUAN_DB_URL in your shell, then from server/deploy run:
+  # docker compose --env-file ../.env run --rm nuan migrate-db --from /data/nuan.db --to "$NUAN_DB_URL"
+  postgres:
+    image: pgvector/pgvector:pg17
+    profiles: ["pg"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nuan
+      POSTGRES_PASSWORD: ${NUAN_PG_PASSWORD:-nuan}
+      POSTGRES_DB: nuan
+      POSTGRES_INITDB_ARGS: "--locale=C.UTF-8 --encoding=UTF8"
+    volumes:
+      - nuan-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nuan -d nuan"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
+  nuan-pg:
   nuan-data:

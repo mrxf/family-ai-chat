@@ -127,6 +127,7 @@ func (c *Client) CheckKey(ctx context.Context) (*KeyInfo, error) {
 
 // Suggestion is a ready-to-save model configuration inferred from an upstream model.
 type Suggestion struct {
+	Kind          string  `json:"kind"`
 	UpstreamModel string  `json:"upstream_model"`
 	DisplayName   string  `json:"display_name"`
 	Description   string  `json:"description"`
@@ -200,6 +201,12 @@ func Suggest(kind string, um UpstreamModel) Suggestion {
 		(um.Rich && contains(um.OutputModalities, "image"))
 	if s.Image {
 		s.Chat = false
+	}
+	s.Kind = "chat"
+	if hasAny(base, []string{"bge", "gte", "e5", "embed", "m3e"}) && !strings.Contains(base, "rerank") {
+		s.Kind, s.Chat, s.Image = "embedding", false, false
+	} else if s.Image {
+		s.Kind = "image"
 	}
 	s.Tools = s.Chat && !hasAny(base, noToolMarkers)
 	if s.Chat && um.Rich && len(um.SupportedParams) > 0 {

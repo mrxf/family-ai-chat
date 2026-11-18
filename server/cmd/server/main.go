@@ -11,18 +11,27 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"nuan/internal/api"
 	"nuan/internal/chat"
 	"nuan/internal/config"
+	"nuan/internal/memory"
 	"nuan/internal/store"
 )
 
 var version = "dev"
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "migrate-db" {
+		if err := migrateDB(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "fatal:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 	if *showVersion {
@@ -47,11 +56,20 @@ func run() error {
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		return err
 	}
-	st, err := store.Open(filepath.Join(cfg.DataDir, "nuan.db"))
+	dsn := cfg.DBURL
+	if dsn == "" {
+		dsn = filepath.Join(cfg.DataDir, "nuan.db")
+	}
+	database := "sqlite"
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+		database = "postgres"
+	}
+	st, err := store.Open(dsn)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
 	defer st.Close()
+	log.Info("opened database", "database", database)
 
 	ctx := context.Background()
 	if n, err := st.MarkInterrupted(ctx); err == nil && n > 0 {
@@ -66,6 +84,10 @@ func run() error {
 	if err := svc.RepairSettings(ctx); err != nil {
 		return err
 	}
+	mem := memory.New(st, svc.ResolveMemoryModel, log)
+	svc.Memory = mem
+	svc.MemoryWorker = memory.NewWorker(mem)
+	defer svc.MemoryWorker.Shutdown(context.Background())
 	apiSrv := api.New(apiCfg, st, svc, log)
 	if err := apiSrv.InitSetup(ctx); err != nil {
 		return err

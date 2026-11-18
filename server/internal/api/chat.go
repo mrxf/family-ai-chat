@@ -110,7 +110,8 @@ func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {
 		p.DisplayName = &n
 	}
 	if len(in.Settings) > 0 {
-		if !json.Valid(in.Settings) || len(in.Settings) > 16<<10 {
+		var settings map[string]json.RawMessage
+		if json.Unmarshal(in.Settings, &settings) != nil || settings == nil || len(in.Settings) > 16<<10 {
 			writeErr(w, 400, "bad_settings", "设置格式不正确")
 			return
 		}
@@ -177,6 +178,7 @@ func (s *Server) listAssistants(w http.ResponseWriter, r *http.Request) {
 }
 
 type assistantInput struct {
+	UseMemory    *bool    `json:"use_memory"`
 	Name         *string  `json:"name"`
 	Avatar       *string  `json:"avatar"`
 	Description  *string  `json:"description"`
@@ -190,6 +192,9 @@ type assistantInput struct {
 }
 
 func (in *assistantInput) apply(a *store.Assistant) {
+	if in.UseMemory != nil {
+		a.UseMemory = *in.UseMemory
+	}
 	if in.Name != nil {
 		a.Name = strings.TrimSpace(*in.Name)
 	}
@@ -229,7 +234,7 @@ func (s *Server) createAssistant(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	a := &store.Assistant{OwnerID: &u.ID}
+	a := &store.Assistant{OwnerID: &u.ID, UseMemory: true}
 	in.apply(a)
 	if a.Name == "" {
 		writeErr(w, 400, "bad_name", "请填写名称")
