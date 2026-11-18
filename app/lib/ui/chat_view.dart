@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/models.dart';
@@ -17,8 +18,9 @@ import 'widgets.dart';
 ///  * Messages from the anchor on grow downward. After sending, the anchor is
 ///    the new question: it slides to the top and the answer streams in below
 ///    it without moving the text the user is reading.
-///  * When just browsing (no anchor), the view is bottom-aligned like a
-///    classic chat.
+///  * When browsing a long conversation (no anchor), the view starts at the
+///    bottom; if the whole conversation fits on one screen, it stays top-aligned
+///    instead of floating above the input bar.
 class ChatView extends ConsumerStatefulWidget {
   const ChatView({super.key});
 
@@ -28,9 +30,11 @@ class ChatView extends ConsumerStatefulWidget {
 
 class _ChatViewState extends ConsumerState<ChatView> {
   final _scroll = ScrollController();
+  final _beforeKey = GlobalKey();
   int _epoch = -1;
   String? _anchorId;
   bool _showDown = false;
+  bool _shortHistory = false;
 
   @override
   void dispose() {
@@ -42,6 +46,18 @@ class _ChatViewState extends ConsumerState<ChatView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _scroll.hasClients) f(_scroll.position);
     });
+  }
+
+  void _checkShortHistory(ScrollPosition pos, ChatState s) {
+    if (!mounted || _shortHistory) return;
+    if (s.anchor < s.messages.length || s.hasMore || s.loadingOlder || s.messages.isEmpty) return;
+    final ro = _beforeKey.currentContext?.findRenderObject();
+    if (ro is RenderSliver && ro.geometry != null) {
+      if (ro.geometry!.paintExtent < pos.viewportDimension - 1) {
+        setState(() => _shortHistory = true);
+        _afterLayout((p) => p.jumpTo(0));
+      }
+    }
   }
 
   bool _onMetrics(ScrollMetrics m) {
@@ -60,28 +76,41 @@ class _ChatViewState extends ConsumerState<ChatView> {
   Widget build(BuildContext context) {
     final s = ref.watch(chatProvider);
     final msgs = s.messages;
-    final anchor = s.anchor.clamp(0, msgs.length);
-    final topMode = anchor < msgs.length;
-    final anchorId = topMode ? msgs[anchor].id : null;
+    final rawAnchor = s.anchor.clamp(0, msgs.length);
 
     if (s.epoch != _epoch) {
       _epoch = s.epoch;
-      _anchorId = anchorId;
-      _afterLayout((pos) => pos.jumpTo(0));
-    } else if (anchorId != _anchorId) {
-      final idChangeOnly = _anchorId != null && anchorId != null && _anchorId!.startsWith('local-') && !anchorId.startsWith('local-');
-      _anchorId = anchorId;
-      if (anchorId != null && !idChangeOnly) {
-        // New turn: start where the old bottom was, then glide the question to the top.
-        _afterLayout((pos) {
-          final from = math.max(pos.minScrollExtent, -pos.viewportDimension + 24);
-          pos.jumpTo(from);
-          _scroll.animateTo(0, duration: const Duration(milliseconds: 460), curve: Curves.easeOutCubic);
-        });
+      _shortHistory = false;
+      _anchorId = rawAnchor < msgs.length ? msgs[rawAnchor].id : null;
+      _afterLayout((pos) {
+        pos.jumpTo(0);
+        _checkShortHistory(pos, ref.read(chatProvider));
+      });
+    } else {
+      if (rawAnchor < msgs.length || s.hasMore || s.loadingOlder) {
+        _shortHistory = false;
+      }
+      final nextAnchorId = rawAnchor < msgs.length ? msgs[rawAnchor].id : null;
+      if (nextAnchorId != _anchorId) {
+        final idChangeOnly = _anchorId != null && nextAnchorId != null && _anchorId!.startsWith('local-') && !nextAnchorId.startsWith('local-');
+        _anchorId = nextAnchorId;
+        if (nextAnchorId != null && !idChangeOnly) {
+          // New turn: start where the old bottom was, then glide the question to the top.
+          _afterLayout((pos) {
+            final from = math.max(pos.minScrollExtent, -pos.viewportDimension + 24);
+            pos.jumpTo(from);
+            _scroll.animateTo(0, duration: const Duration(milliseconds: 460), curve: Curves.easeOutCubic);
+          });
+        }
+      } else if (!_shortHistory && rawAnchor == msgs.length && !s.hasMore && !s.loadingOlder) {
+        _afterLayout((pos) => _checkShortHistory(pos, ref.read(chatProvider)));
       }
     }
 
-    final centerKey = ValueKey('center-${anchorId ?? 'end'}-${s.epoch}');
+    final anchor = _shortHistory ? 0 : rawAnchor;
+    final topMode = anchor < msgs.length;
+    final centerAnchorId = topMode ? msgs[anchor].id : null;
+    final centerKey = ValueKey('center-${centerAnchorId ?? 'end'}-${s.epoch}');
     final lastAssistant = msgs.isNotEmpty && !msgs.last.isUser ? msgs.last.id : null;
 
     Widget item(Message m) => m.isUser
@@ -90,6 +119,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
     final beforeExtra = topMode ? 0 : 1; // bottom padding lives in the "before" list when bottom-aligned
     final before = SliverList(
+      key: _beforeKey,
       delegate: SliverChildBuilderDelegate(
         (context, i) {
           if (!topMode && i == 0) return const SizedBox(height: 20);
@@ -153,13 +183,12 @@ class _TopCap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!loading && !hasMore) return const SizedBox.shrink();
     final p = context.pal;
     return SizedBox(
       height: 56,
       child: Center(
-        child: loading || hasMore
-            ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: p.faint))
-            : const SizedBox(),
+        child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: p.faint)),
       ),
     );
   }
