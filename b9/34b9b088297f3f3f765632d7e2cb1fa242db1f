@@ -1,0 +1,126 @@
+app/lib/core/admin_models.dart
+  h_8f297825d1fe21 418-503
+app/lib/core/api.dart
+  h_8f297825d1fe21 314-318
+app/lib/core/models.dart
+  h_8f297825d1fe21 265-283,297,310,329,345,353-363,371,385,387,397-398,416-417,432-433,448-449
+app/lib/state/chat.dart
+  h_8f297825d1fe21 18-45,53-55,59-61,65-73,87-95,103-111,463,572,643,645,647-650,697-702,709-716
+app/lib/ui/admin/asr_page.dart
+  h_8f297825d1fe21 246,325,418
+app/lib/ui/admin/common.dart
+  h_8f297825d1fe21 74,97,130,202,263,323,351,436,503,556,595
+app/lib/ui/admin/model_edit_page.dart
+  h_8f297825d1fe21 226,382
+app/lib/ui/admin/models_page.dart
+  h_8f297825d1fe21 476,524,570
+app/lib/ui/admin/provider_pages.dart
+  h_8f297825d1fe21 83,259,463
+app/lib/ui/admin/search_page.dart
+  h_8f297825d1fe21 1-480
+app/lib/ui/admin/upstream_picker_page.dart
+  h_8f297825d1fe21 319,322,407
+app/lib/ui/admin/usage_page.dart
+  h_8f297825d1fe21 98
+app/lib/ui/admin_page.dart
+  h_8f297825d1fe21 34,69
+app/lib/ui/composer.dart
+  h_8f297825d1fe21 275,351,378,416
+app/lib/ui/drawer.dart
+  h_8f297825d1fe21 115,178,209
+app/lib/ui/home_page.dart
+  h_8f297825d1fe21 136,144,165,186,198,225,239,244,298
+app/lib/ui/icons.dart
+  h_8f297825d1fe21 4-8,11-13,43-44,122-289
+app/lib/ui/login_page.dart
+  h_8f297825d1fe21 327,336,352,367,369,381,464,517,565,587,845
+app/lib/ui/memories_page.dart
+  h_8f297825d1fe21 107,116,156,199,253
+app/lib/ui/memory_import_page.dart
+  h_8f297825d1fe21 259,313,326,411,434
+app/lib/ui/messages.dart
+  h_8f297825d1fe21 1,8,55,113,325,401-404,413-421,425-429,433,436,468,482,518,560,562,570-579,583,591-593,620,622,632-972,1004,1011
+app/lib/ui/search_page.dart
+  h_8f297825d1fe21 285,316,339,385
+app/lib/ui/self_host_page.dart
+  h_8f297825d1fe21 270,298,307,333,396,406,627,642,674,690,703,717,719,781,860
+app/lib/ui/settings_page.dart
+  h_8f297825d1fe21 11,76,168-175,408,413
+app/lib/ui/setup_page.dart
+  h_8f297825d1fe21 129,145,179
+app/lib/ui/share_page.dart
+  h_8f297825d1fe21 300,390,425,653,699,1086,1241,1263,1307,1316
+app/lib/ui/sheets.dart
+  h_8f297825d1fe21 43,209,235,249
+app/lib/ui/theme.dart
+  h_8f297825d1fe21 153-155
+app/lib/ui/voice.dart
+  h_8f297825d1fe21 363,423
+app/lib/ui/welcome.dart
+  h_8f297825d1fe21 141,193,204,229,239,267,313,330,395,429,525,545
+app/lib/ui/widgets.dart
+  h_8f297825d1fe21 4,155
+app/test/app_icons_test.dart
+  h_8f297825d1fe21 1-49
+app/test/chat_ux_fixes_test.dart
+  h_8f297825d1fe21 131,135-140
+app/test/web_search_ui_test.dart
+  h_8f297825d1fe21 1-150
+server/cmd/server/main.go
+  h_8f297825d1fe21 151-153
+server/internal/api/chat.go
+  h_8f297825d1fe21 78,87-88,542-545,559-560,570,599-610,650-663
+server/internal/api/helpers_test.go
+  h_8f297825d1fe21 521
+server/internal/api/search.go
+  h_8f297825d1fe21 1-234
+server/internal/api/search_test.go
+  h_8f297825d1fe21 1-399
+server/internal/api/server.go
+  h_8f297825d1fe21 21,41,50-53,59,128-130
+server/internal/chat/hub.go
+  h_8f297825d1fe21 19-28,44-45,47,60-61,63,106-109,119-171,186-191,200-201,215-218
+server/internal/chat/router.go
+  h_8f297825d1fe21 49,165,431-433,568,572-574,670-680
+server/internal/chat/service.go
+  h_8f297825d1fe21 60,208,281,531,544-547,554,565,613-615,645-647,649-652,659-665,667,719-726,741,743-745,965,1016-1017,1148-1152
+server/internal/chat/tools.go
+  h_8f297825d1fe21 32,34,192-193,210-219,247-261,273,278,311-315,317,319,322,342,344,346-354,415,477
+server/internal/chat/tools_search.go
+  h_8f297825d1fe21 1-625
+server/internal/llm/catalog.go
+  h_8f297825d1fe21 172
+server/internal/llm/client.go
+  h_8f297825d1fe21 27,209-212,215,243-264
+server/internal/store/conversations.go
+  h_8f297825d1fe21 345-353,369,382,386-387,395-398,415-421,513-518,520,532-541
+server/internal/store/copy.go
+  h_8f297825d1fe21 13
+server/internal/store/copy_test.go
+  h_8f297825d1fe21 124,137-139
+server/internal/store/migrations/postgres/010_web_search.sql
+  h_8f297825d1fe21 1-11
+server/internal/store/migrations/sqlite/010_web_search.sql
+  h_8f297825d1fe21 1-11
+server/internal/store/search.go
+  h_8f297825d1fe21 1-64
+server/internal/store/store_test.go
+  h_8f297825d1fe21 82
+server/internal/websearch/deepseek.go
+  h_8f297825d1fe21 1-321
+server/internal/websearch/websearch.go
+  h_8f297825d1fe21 1-350
+server/internal/websearch/websearch_test.go
+  h_8f297825d1fe21 1-212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "b934b9b088297f3f3f765632d7e2cb1fa242db1f",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
