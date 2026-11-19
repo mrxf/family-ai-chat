@@ -9,6 +9,7 @@ import '../state/session.dart';
 import 'admin/models_page.dart';
 import 'icons.dart';
 import 'mascot_anim.dart';
+import 'self_host_page.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -62,7 +63,8 @@ class _WelcomeState extends ConsumerState<Welcome> {
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
-    final boot = ref.watch(sessionProvider).boot;
+    final session = ref.watch(sessionProvider);
+    final boot = session.boot;
     if (boot == null) return const SizedBox();
     final assistantId = ref.watch(chatProvider.select((s) => s.assistantId));
     final isPrivate = ref.watch(chatProvider.select((s) => s.isPrivate));
@@ -113,6 +115,15 @@ class _WelcomeState extends ConsumerState<Welcome> {
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 16.5, color: p.muted, height: 1.5),
               ),
+              if (assistant == null && session.isSelfHosted) ...[
+                const SizedBox(height: 12),
+                Center(
+                  child: _SelfHostHomePill(
+                    host: session.serverHost,
+                    onTap: () => showSelfHostInfoSheet(context, ref),
+                  ),
+                ),
+              ],
               if (boot.models.isEmpty) ...[
                 const SizedBox(height: 22),
                 _NoModels(isAdmin: boot.user.isAdmin),
@@ -149,6 +160,54 @@ class _WelcomeState extends ConsumerState<Welcome> {
         ),
       );
     });
+  }
+}
+
+/// Compact badge on the empty-chat home screen indicating active self-hosted mode & family invite tools.
+class _SelfHostHomePill extends StatelessWidget {
+  const _SelfHostHomePill({required this.host, required this.onTap});
+  final String host;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Semantics(
+      button: true,
+      label: '自托管服务 $host',
+      child: Pressable(
+        scale: 0.96,
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 320, minHeight: 36),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+            decoration: BoxDecoration(
+              color: p.surfaceAlt,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: p.accent.withValues(alpha: 0.25)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(AppIcons.server, size: 15, color: p.accent),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    '自托管 · $host',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: p.accent),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(AppIcons.chevronRight, size: 13, color: p.accent.withValues(alpha: 0.8)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

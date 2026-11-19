@@ -5,8 +5,10 @@ import '../core/models.dart';
 import '../state/chat.dart';
 import '../state/conversations.dart';
 import '../state/session.dart';
+import 'admin/common.dart' show Tag;
 import 'icons.dart';
 import 'search_page.dart';
+import 'self_host_page.dart';
 import 'settings_page.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -35,7 +37,8 @@ class HistoryDrawer extends ConsumerWidget {
     final list = ref.watch(conversationsProvider);
     final currentId = ref.watch(chatProvider.select((s) => s.conversationId));
     final isPrivate = ref.watch(chatProvider.select((s) => s.isPrivate));
-    final user = ref.watch(sessionProvider).user;
+    final session = ref.watch(sessionProvider);
+    final user = session.user;
     final items = list.items;
 
     final groups = <String, List<Conversation>>{};
@@ -69,6 +72,17 @@ class HistoryDrawer extends ConsumerWidget {
                 const Mascot(size: 36),
                 const SizedBox(width: 10),
                 const Text('小暖', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+                if (session.isSelfHosted) ...[
+                  const SizedBox(width: 8),
+                  Pressable(
+                    scale: 0.95,
+                    onTap: () {
+                      Navigator.pop(context);
+                      showSelfHostInfoSheet(context, ref);
+                    },
+                    child: Tag('自托管', color: p.accent, icon: AppIcons.server),
+                  ),
+                ],
                 const Spacer(),
                 SoftIconButton(
                   icon: AppIcons.search,

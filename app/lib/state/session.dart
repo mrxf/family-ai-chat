@@ -4,11 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api.dart';
+import '../core/invite_code.dart';
 import '../core/models.dart';
 import '../core/storage.dart';
 
 /// Overridden in main() once storage is opened.
 final storageProvider = Provider<Storage>((ref) => throw UnimplementedError());
+
+typedef ApiFactory = Api Function(String baseUrl, {String? token, void Function()? onUnauthorized});
+
+/// Allows widget tests to inject a deterministic [Api] for unauthenticated checks & login.
+final apiFactoryProvider = Provider<ApiFactory>((_) => Api.new);
 
 // ---------------- settings ----------------
 
@@ -60,9 +66,11 @@ class Session {
   final String server;
   final Api? api;
   final Bootstrap? boot;
-  const Session({required this.status, this.server = '', this.api, this.boot});
+  const Session({required this.status, this.server = kDefaultServer, this.api, this.boot});
 
   User? get user => boot?.user;
+  bool get isSelfHosted => isSelfHostedServer(server);
+  String get serverHost => displayHost(server);
 }
 
 class SessionNotifier extends Notifier<Session> {
@@ -88,23 +96,26 @@ class SessionNotifier extends Notifier<Session> {
   }
 
   Storage get _st => ref.read(storageProvider);
+  ApiFactory get _apiFactory => ref.read(apiFactoryProvider);
 
   String get lastServer => _st.prefs.getString('server') ?? '';
+  String get configuredServer => effectiveServer(lastServer);
   String get lastUsername => _st.prefs.getString('username') ?? '';
 
   Future<void> _restore() async {
-    final server = lastServer;
+    final saved = lastServer;
+    final active = effectiveServer(saved);
     final token = await _st.readToken();
-    if (server.isEmpty || token == null) {
-      state = Session(status: SessionStatus.loggedOut, server: server);
+    if (saved.isEmpty || token == null) {
+      state = Session(status: SessionStatus.loggedOut, server: active);
       return;
     }
-    final api = _makeApi(server, token);
+    final api = _makeApi(active, token);
     // Paint from cache immediately, refresh in the background.
     final cached = await _st.readCache('bootstrap');
     if (cached is Map) {
       try {
-        state = Session(status: SessionStatus.loggedIn, server: server, api: api, boot: Bootstrap.fromJson(cached.cast()));
+        state = Session(status: SessionStatus.loggedIn, server: active, api: api, boot: Bootstrap.fromJson(cached.cast()));
         unawaited(refresh());
         return;
       } catch (_) {}
@@ -112,14 +123,14 @@ class SessionNotifier extends Notifier<Session> {
     try {
       final boot = await api.bootstrap();
       await _st.writeCache('bootstrap', boot.toJson());
-      state = Session(status: SessionStatus.loggedIn, server: server, api: api, boot: boot);
+      state = Session(status: SessionStatus.loggedIn, server: active, api: api, boot: boot);
     } on ApiError catch (e) {
       if (e.isUnauthorized) {
         await _st.writeToken(null);
-        state = Session(status: SessionStatus.loggedOut, server: server);
+        state = Session(status: SessionStatus.loggedOut, server: active);
       } else {
         // Offline with no cache: still go to login so the user sees a clear error there.
-        state = Session(status: SessionStatus.loggedOut, server: server);
+        state = Session(status: SessionStatus.loggedOut, server: active);
       }
     }
   }
@@ -127,10 +138,19 @@ class SessionNotifier extends Notifier<Session> {
   Api _makeApi(String server, String token) {
     late final Api api;
     // A late 401 from an old account must not log out the current one.
-    api = Api(server, token: token, onUnauthorized: () {
+    api = _apiFactory(server, token: token, onUnauthorized: () {
       if (identical(state.api, api)) unawaited(logout(remote: false));
     });
     return api;
+  }
+
+  /// Saves the target server (official default or self-hosted) while logged out.
+  Future<void> setServer(String server) async {
+    final next = effectiveServer(server);
+    await _st.prefs.setString('server', next);
+    if (state.status != SessionStatus.loggedIn) {
+      state = Session(status: state.status, server: next);
+    }
   }
 
   Future<void> refresh() async {
@@ -145,15 +165,15 @@ class SessionNotifier extends Notifier<Session> {
   }
 
   Future<void> login(String server, String username, String password) async {
-    final base = normalizeServer(server);
-    final anon = Api(base);
+    final base = effectiveServer(server);
+    final anon = _apiFactory(base);
     final (token, _) = await anon.login(username.trim(), password, 'Android');
     await loginWithToken(base, username, token);
   }
 
   /// Finishes a login when the token was obtained elsewhere (first-run setup).
   Future<void> loginWithToken(String server, String username, String token) async {
-    final base = normalizeServer(server);
+    final base = effectiveServer(server);
     final api = _makeApi(base, token);
     final boot = await api.bootstrap();
     await _st.writeToken(token);

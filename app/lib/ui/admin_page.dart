@@ -1,13 +1,13 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api.dart';
 import '../core/models.dart';
 import '../state/session.dart';
 import 'icons.dart';
+import 'self_host_page.dart';
 import 'settings_page.dart' show avatarChoices;
 import 'sheets.dart';
 import 'theme.dart';
@@ -152,24 +152,13 @@ class AdminUsersPage extends ConsumerWidget {
   }
 
   void _showCredentials(BuildContext context, WidgetRef ref, User u, String password) {
-    final server = ref.read(sessionProvider).server.replaceFirst(RegExp(r'^https?://'), '');
-    final text = '小暖登录信息\n服务器：$server\n用户名：${u.username}\n密码：$password';
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('已为「${u.displayName}」创建账号'),
-        content: SelectableText(text, style: const TextStyle(fontSize: 16, height: 1.7)),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: text));
-              showToast(context, '已复制，可以发给家人');
-            },
-            child: const Text('复制'),
-          ),
-          FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('好的')),
-        ],
-      ),
+    showInviteGeneratorSheet(
+      context,
+      ref,
+      initialUsername: u.username,
+      initialPassword: password,
+      initialDisplayName: u.displayName,
+      lockAccount: true,
     );
   }
 
@@ -187,6 +176,18 @@ class AdminUsersPage extends ConsumerWidget {
     }
 
     showActionSheet(context, title: '${u.displayName}（${u.username}）', actions: [
+      if (!u.disabled)
+        SheetAction(
+          AppIcons.magicWand,
+          '生成免输登录口令',
+          () => showInviteGeneratorSheet(
+            context,
+            ref,
+            initialUsername: u.username,
+            initialDisplayName: u.displayName,
+          ),
+          subtitle: '生成 #xn...xn# 加密口令，父母复制打开即自动登录',
+        ),
       SheetAction(AppIcons.key, '重置密码', () async {
         final pw = await showTextEditor(context, title: '给 ${u.displayName} 设置新密码', initial: _randomPassword(), ok: '确定', maxLines: 1);
         if (pw == null || pw.isEmpty) return;

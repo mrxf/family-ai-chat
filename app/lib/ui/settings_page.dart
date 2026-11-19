@@ -11,6 +11,7 @@ import 'admin/models_page.dart';
 import 'admin/usage_page.dart';
 import 'admin_page.dart';
 import 'icons.dart';
+import 'self_host_page.dart';
 import 'sheets.dart';
 import 'memories_page.dart';
 import 'theme.dart';
@@ -128,6 +129,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
           _Section('账号', children: [
             _Tile(icon: AppIcons.key, title: '修改密码', onTap: () => _changePassword(context, ref)),
+            _Tile(
+              icon: AppIcons.magicWand,
+              title: '生成免输登录口令',
+              subtitle: '生成 #xn...xn# 加密口令，方便异地家人或另一台手机直接登录',
+              onTap: () => showInviteGeneratorSheet(
+                context,
+                ref,
+                initialUsername: user.username,
+                initialDisplayName: user.displayName,
+              ),
+            ),
           ]),
 
           if (user.isAdmin)
@@ -166,7 +178,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               future: PackageInfo.fromPlatform(),
               builder: (_, snap) => _Tile(icon: AppIcons.info, title: '版本', trailing: Text(snap.data?.version ?? '', style: TextStyle(color: p.muted))),
             ),
-            _Tile(icon: AppIcons.server, title: '服务器', trailing: Text(session.server.replaceFirst(RegExp(r'^https?://'), ''), style: TextStyle(color: p.muted, fontSize: 14))),
+            _Tile(
+              icon: AppIcons.server,
+              title: '服务器',
+              subtitle: session.isSelfHosted ? '自托管 · ${session.serverHost}' : '官方默认 · ${session.serverHost}',
+              onTap: () => showSelfHostInfoSheet(context, ref),
+            ),
           ]),
 
           const SizedBox(height: 24),
