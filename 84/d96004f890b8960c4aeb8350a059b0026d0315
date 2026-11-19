@@ -1,0 +1,38 @@
+README.md
+  h_8f297825d1fe21 26,78
+app/lib/core/invite_code.dart
+  h_8f297825d1fe21 1-427
+app/lib/state/session.dart
+  h_8f297825d1fe21 7,14-18,69,72-73,99,102,106-107,109-110,113,118,126,130,133,141,147-155,168-169,176
+app/lib/ui/admin_page.dart
+  h_8f297825d1fe21 10,155-161,179-190
+app/lib/ui/drawer.dart
+  h_8f297825d1fe21 8,11,40-41,75-85
+app/lib/ui/login_page.dart
+  h_8f297825d1fe21 4,8-9,11,14-15,28,32-35,39-44,49-73,78-81,88-91,93-97,102-103,106,115-212,215-230,238,251-262,268,275,277-281,283-286,288,290-309,313,316-318,321-325,350-353,395-397,405-430,446-854
+app/lib/ui/self_host_page.dart
+  h_8f297825d1fe21 1-872
+app/lib/ui/settings_page.dart
+  h_8f297825d1fe21 14,132-142,181-186
+app/lib/ui/welcome.dart
+  h_8f297825d1fe21 12,66-67,118-126,166-213
+app/pubspec.lock
+  h_8f297825d1fe21 77
+app/pubspec.yaml
+  h_8f297825d1fe21 41
+app/test/login_self_host_test.dart
+  h_8f297825d1fe21 1-389
+docs/proposal-v5-login-and-self-host.md
+  h_8f297825d1fe21 1-173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "84d96004f890b8960c4aeb8350a059b0026d0315",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
