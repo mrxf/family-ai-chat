@@ -133,7 +133,7 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
 
     return Scaffold(
       drawer: const HistoryDrawer(),
-      drawerEdgeDragWidth: MediaQuery.sizeOf(context).width * 0.25,
+      drawerEnableOpenDragGesture: false,
       onDrawerChanged: (opened) {
         if (opened) _unfocusComposer();
       },
@@ -141,7 +141,7 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
         leading: Builder(
           builder: (ctx) => IconButton(
             tooltip: '聊天记录',
-            icon: const Icon(AppIcons.menu, size: 24),
+            icon: const AppIcon(AppIcons.menu, size: 24),
             onPressed: () {
               _unfocusComposer();
               Scaffold.of(ctx).openDrawer();
@@ -162,7 +162,7 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (chat.isPrivate) ...[
-                    Icon(AppIcons.privateChat, size: 17, color: p.privateAccent),
+                    AppIcon(AppIcons.privateChat, size: 17, color: p.privateAccent),
                     const SizedBox(width: 5),
                   ],
                   Flexible(
@@ -183,7 +183,7 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
             if (model != null)
               Row(mainAxisSize: MainAxisSize.min, children: [
                 if (isAuto) ...[
-                  Icon(AppIcons.sparkles, size: 12.5, color: p.accent),
+                  AppIcon(AppIcons.sparkles, size: 12.5, color: p.accent),
                   const SizedBox(width: 3.5),
                 ],
                 Flexible(
@@ -195,7 +195,7 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
                   ),
                 ),
                 const SizedBox(width: 3),
-                Icon(AppIcons.chevronDown, size: 13.5, color: p.muted),
+                AppIcon(AppIcons.chevronDown, size: 13.5, color: p.muted),
               ]),
           ]),
         ),
@@ -222,7 +222,7 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
                           border: Border.all(color: p.privateAccent.withValues(alpha: 0.3)),
                         ),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          Icon(AppIcons.close, size: 15, color: p.privateAccent),
+                          AppIcon(AppIcons.close, size: 15, color: p.privateAccent),
                           const SizedBox(width: 4),
                           Text('退出', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.privateAccent)),
                         ]),
@@ -236,12 +236,12 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
             if (!chat.isEmpty && !chat.loading)
               IconButton(
                 tooltip: '分享对话',
-                icon: const Icon(AppIcons.share, size: 22),
+                icon: const AppIcon(AppIcons.share, size: 22),
                 onPressed: () => openShareChat(context, ref),
               ),
             IconButton(
               tooltip: '新对话',
-              icon: const Icon(AppIcons.newChat, size: 22),
+              icon: const AppIcon(AppIcons.newChat, size: 22),
               onPressed: chat.conversationId == null && chat.assistantId == null ? null : () => ref.read(chatProvider.notifier).newChat(),
             ),
             const SizedBox(width: 4),
@@ -295,7 +295,7 @@ class _PrivateBanner extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(AppIcons.privateChat, size: 15, color: p.privateAccent),
+          AppIcon(AppIcons.privateChat, size: 15, color: p.privateAccent),
           const SizedBox(width: 6),
           Flexible(
             child: Text(

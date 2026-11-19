@@ -104,7 +104,7 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('小暖记住的事'),
-        actions: [IconButton(tooltip: '更多', onPressed: _busy ? null : _menu, icon: const Icon(AppIcons.more))],
+        actions: [IconButton(tooltip: '更多', onPressed: _busy ? null : _menu, icon: const AppIcon(AppIcons.more))],
       ),
       bottomNavigationBar: SafeArea(
         top: false,
@@ -113,7 +113,7 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
           child: FilledButton.icon(
             style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
             onPressed: _busy ? null : () => _edit(),
-            icon: const Icon(AppIcons.plus, size: 20),
+            icon: const AppIcon(AppIcons.plus, size: 20),
             label: const Text('手动添加'),
           ),
         ),
@@ -153,7 +153,7 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
                         child: TextButton.icon(
                           style: TextButton.styleFrom(minimumSize: const Size(44, 48), padding: const EdgeInsets.symmetric(horizontal: 4)),
                           onPressed: _busy ? null : _import,
-                          icon: const Icon(AppIcons.inbox, size: 19),
+                          icon: const AppIcon(AppIcons.inbox, size: 19),
                           label: const Text('从 ChatGPT、Gemini 等导入'),
                         ),
                       ),
@@ -196,7 +196,7 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
                             OutlinedButton.icon(
                               style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
                               onPressed: _busy ? null : _import,
-                              icon: const Icon(AppIcons.inbox, size: 19),
+                              icon: const AppIcon(AppIcons.inbox, size: 19),
                               label: const Text('从其他 AI 导入'),
                             ),
                           ],
@@ -250,7 +250,7 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
                                                       ref.read(chatProvider.notifier).open(memory.sourceConvId!);
                                                       Navigator.of(context).popUntil((r) => r.isFirst);
                                                     },
-                                              icon: const Icon(AppIcons.chatBubble, size: 15),
+                                              icon: const AppIcon(AppIcons.chatBubble, size: 15),
                                               label: const Text('来自对话'),
                                             ),
                                           ),

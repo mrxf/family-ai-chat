@@ -80,7 +80,7 @@ class PresetPickerPage extends ConsumerWidget {
                         ]),
                       ),
                       const SizedBox(width: 6),
-                      Icon(AppIcons.chevronRight, color: p.faint, size: 18),
+                      AppIcon(AppIcons.chevronRight, color: p.faint, size: 18),
                     ]),
                   ),
                 ),
@@ -256,7 +256,7 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
                       onTap: () => setState(() => _hideKey = !_hideKey),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                        child: Icon(_hideKey ? AppIcons.eye : AppIcons.eyeOff, size: 19, color: p.muted),
+                        child: AppIcon(_hideKey ? AppIcons.eye : AppIcons.eyeOff, size: 19, color: p.muted),
                       ),
                     ),
                     const SizedBox(width: 4),
@@ -460,7 +460,7 @@ class _ProviderDetailPageState extends ConsumerState<ProviderDetailPage> {
                 InfoRow(
                   icon: AppIcons.wallet,
                   title: '去官网查看余额、管理 Key',
-                  trailing: Icon(AppIcons.externalLink, size: 18, color: p.faint),
+                  trailing: AppIcon(AppIcons.externalLink, size: 18, color: p.faint),
                   onTap: () => openLink(context, pr.keyUrl),
                 ),
               Padding(

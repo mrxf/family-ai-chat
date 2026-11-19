@@ -121,6 +121,7 @@ func populateCopyStore(t *testing.T, s *Store) {
 		t.Fatal(err)
 	}
 	ms[0].Cost, ms[0].PromptTokens, ms[0].CompletionTokens = 0.125, 100, 20
+	ms[0].Sources = []WebSource{{Title: "示例新闻", URL: "https://example.com/news", SiteName: "示例网"}}
 	if err := s.FinishMessage(ctx, ms[0]); err != nil {
 		t.Fatal(err)
 	}
@@ -131,6 +132,9 @@ func populateCopyStore(t *testing.T, s *Store) {
 		t.Fatal(err)
 	}
 	if err := s.UpsertASRConfig(ctx, &ASRConfig{Kind: "openai", SecretKey: "test", Extra: map[string]string{"region": "test"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertSearchConfig(ctx, &SearchConfig{Kind: "deepseek", APIKey: "test", BaseURL: "https://api.deepseek.com", Extra: map[string]string{"mode": "auto"}}); err != nil {
 		t.Fatal(err)
 	}
 }

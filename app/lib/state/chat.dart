@@ -16,19 +16,61 @@ import 'session.dart';
 enum LivePhase { waiting, reasoning, answering }
 
 @immutable
+class RunStep {
+  final String kind, title, detail, status;
+  final DateTime? startedAt;
+
+  const RunStep({
+    required this.kind,
+    required this.title,
+    this.detail = '',
+    this.status = 'done',
+    this.startedAt,
+  });
+
+  bool get running => status == 'running';
+  bool get isError => status == 'error';
+
+  factory RunStep.fromJson(Map<String, dynamic> j) {
+    final ts = (j['started_at'] as num?)?.toInt() ?? 0;
+    return RunStep(
+      kind: '${j['kind'] ?? ''}',
+      title: '${j['title'] ?? ''}',
+      detail: '${j['detail'] ?? ''}',
+      status: '${j['status'] ?? 'done'}',
+      startedAt: ts > 0 ? DateTime.fromMillisecondsSinceEpoch(ts) : null,
+    );
+  }
+}
+
+@immutable
 class LiveText {
   final String content, reasoning;
 
   /// What a tool is doing right now ("正在画图…"), empty when idle.
   final String activity;
 
+  /// Chronological task trace (memory recall, web search, webpage fetch).
+  final List<RunStep> steps;
+
   /// Pictures drawn so far in this reply.
   final List<Attachment> attachments;
+
+  /// Web pages referenced so far in this reply.
+  final List<WebSource> sources;
 
   /// When the current activity started (for the elapsed-seconds counter).
   final DateTime? activitySince;
 
-  const LiveText(this.content, this.reasoning, {this.activity = '', this.attachments = const [], this.activitySince});
+  const LiveText(
+    this.content,
+    this.reasoning, {
+    this.activity = '',
+    this.steps = const [],
+    this.attachments = const [],
+    this.sources = const [],
+    this.activitySince,
+  });
   static const empty = LiveText('', '');
 
   LivePhase get phase => content.isNotEmpty
@@ -42,7 +84,15 @@ class LiveText {
 
   /// [activityAt] is the server's start time (unix ms) when known, so the
   /// elapsed counter survives reconnects.
-  LiveText copyWith({String? content, String? reasoning, String? activity, int? activityAt, List<Attachment>? attachments}) {
+  LiveText copyWith({
+    String? content,
+    String? reasoning,
+    String? activity,
+    int? activityAt,
+    List<RunStep>? steps,
+    List<Attachment>? attachments,
+    List<WebSource>? sources,
+  }) {
     final act = activity ?? this.activity;
     DateTime? since;
     if (act.isNotEmpty) {
@@ -50,7 +100,15 @@ class LiveText {
           ? DateTime.fromMillisecondsSinceEpoch(activityAt)
           : (act == this.activity ? activitySince : null) ?? DateTime.now();
     }
-    return LiveText(content ?? this.content, reasoning ?? this.reasoning, activity: act, attachments: attachments ?? this.attachments, activitySince: since);
+    return LiveText(
+      content ?? this.content,
+      reasoning ?? this.reasoning,
+      activity: act,
+      steps: steps ?? this.steps,
+      attachments: attachments ?? this.attachments,
+      sources: sources ?? this.sources,
+      activitySince: since,
+    );
   }
 }
 
@@ -402,7 +460,7 @@ class ChatController extends Notifier<ChatState> {
       final i = base.indexWhere((m) => m.id == editOf);
       if (i >= 0) base = base.sublist(0, i);
     }
-    live.value = LiveText.empty;
+    live.value = LiveText('', '', activity: images.isNotEmpty ? '正在上传图片…' : '正在发送…', activitySince: DateTime.now());
     state = state.copyWith(messages: [...base, localUser, localAsst], anchor: base.length, activeId: localAsst.id);
     bool current() => nav == _nav && state.activeId == localAsst.id;
 
@@ -511,7 +569,7 @@ class ChatController extends Notifier<ChatState> {
     var base = state.messages;
     if (base.last.role == 'assistant') base = base.sublist(0, base.length - 1);
     final placeholder = Message(id: 'local-a-${DateTime.now().microsecondsSinceEpoch}', conversationId: convId, role: 'assistant', status: MsgStatus.streaming);
-    live.value = LiveText.empty;
+    live.value = LiveText('', '', activity: '正在连接…', activitySince: DateTime.now());
     if (modelId != null) {
       _sessionModelId = modelId;
       state = state.copyWith(modelId: modelId);
@@ -582,8 +640,14 @@ class ChatController extends Notifier<ChatState> {
                 reasoning: '${ev.data['reasoning'] ?? ''}',
                 activity: '${ev.data['activity'] ?? ''}',
                 activityAt: (ev.data['activity_at'] as num?)?.toInt(),
+                steps: _steps(ev.data['steps']),
                 attachments: _attachments(ev.data['attachments']),
+                sources: _sources(ev.data['sources']),
               );
+            case 'steps':
+              live.value = live.value.copyWith(steps: _steps(ev.data['steps']));
+            case 'sources':
+              live.value = live.value.copyWith(sources: _sources(ev.data['sources']));
             case 'model':
               final mid = '${ev.data['model_id'] ?? ''}';
               if (mid.isNotEmpty) {
@@ -630,13 +694,26 @@ class ChatController extends Notifier<ChatState> {
   static List<Attachment> _attachments(dynamic raw) =>
       raw is List ? [for (final e in raw) if (e is Map) Attachment.fromJson(e.cast())] : const [];
 
+  static List<RunStep> _steps(dynamic raw) =>
+      raw is List ? [for (final e in raw) if (e is Map) RunStep.fromJson(e.cast())] : const [];
+
+  static List<WebSource> _sources(dynamic raw) =>
+      raw is List ? [for (final e in raw) if (e is Map) WebSource.fromJson(e.cast())] : const [];
+
   void _finish(String expectedId, Message? finalMsg) {
     if (state.activeId != expectedId) return;
     final v = live.value;
     final msgs = [
       for (final m in state.messages)
         if (m.id == expectedId)
-          finalMsg ?? m.copyWith(content: v.content, reasoning: v.reasoning, attachments: v.attachments, status: MsgStatus.interrupted)
+          finalMsg ??
+              m.copyWith(
+                content: v.content,
+                reasoning: v.reasoning,
+                attachments: v.attachments,
+                sources: v.sources,
+                status: MsgStatus.interrupted,
+              )
         else
           m,
     ];

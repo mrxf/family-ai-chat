@@ -150,9 +150,9 @@ ThemeData buildTheme(Brightness b) {
     splashFactory: InkSparkle.splashFactory,
     iconTheme: IconThemeData(color: p.text, size: 22),
     actionIconTheme: ActionIconThemeData(
-      backButtonIconBuilder: (_) => const Icon(AppIcons.back, size: 23),
-      closeButtonIconBuilder: (_) => const Icon(AppIcons.close, size: 22),
-      drawerButtonIconBuilder: (_) => const Icon(AppIcons.menu, size: 24),
+      backButtonIconBuilder: (_) => const AppIcon(AppIcons.back, size: 23),
+      closeButtonIconBuilder: (_) => const AppIcon(AppIcons.close, size: 22),
+      drawerButtonIconBuilder: (_) => const AppIcon(AppIcons.menu, size: 24),
     ),
     appBarTheme: AppBarTheme(
       backgroundColor: p.bg,

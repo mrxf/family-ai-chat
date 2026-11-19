@@ -75,6 +75,7 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
 	def, _ := s.Store.GetSetting(ctx, "default_model_id")
 	autoDyn, _ := s.Store.GetSetting(ctx, chat.SettingAutoDynamic)
 	voiceInput, voiceMode := s.voiceStatus(ctx)
+	webSearch, _, webSearchKind := s.searchStatus(ctx)
 	writeJSON(w, 200, map[string]any{
 		"user":             u,
 		"models":           publicModels(models),
@@ -83,6 +84,8 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
 		"features": map[string]any{
 			"voice_input":      voiceInput,
 			"voice_mode":       voiceMode,
+			"web_search":       webSearch,
+			"search_provider":  webSearchKind,
 			"image_generation": s.Chat.ImageAvailable(ctx),
 			"images_left":      s.Chat.ImagesLeftToday(ctx, u),
 			"auto_model":       s.Chat.AutoEnabled(ctx),
@@ -536,7 +539,10 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 	run := s.Chat.Hub.Get(id)
 	if run == nil || run.UserID != u.ID {
 		// Already finished (or interrupted): replay the stored result.
-		send("snapshot", map[string]any{"content": msg.Content, "reasoning": msg.Reasoning, "status": msg.Status, "attachments": msg.Attachments})
+		send("snapshot", map[string]any{
+			"content": msg.Content, "reasoning": msg.Reasoning, "status": msg.Status,
+			"attachments": nonNil(msg.Attachments), "sources": nonNilSources(msg.Sources),
+		})
 		send("done", chat.FinalEvent{Message: msg})
 		return
 	}
@@ -550,7 +556,8 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 	}
 	snapPayload := map[string]any{
 		"content": snap.Content, "reasoning": snap.Reasoning, "status": store.StatusStreaming, "title": snap.Title,
-		"activity": snap.Activity, "activity_at": snap.ActivityAt, "attachments": nonNil(snap.Attachments),
+		"activity": snap.Activity, "activity_at": snap.ActivityAt,
+		"steps": nonNilSteps(snap.Steps), "attachments": nonNil(snap.Attachments), "sources": nonNilSources(snap.Sources),
 	}
 	if snap.ModelID != "" {
 		snapPayload["model_id"] = snap.ModelID
@@ -560,7 +567,7 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	offC, offR, title := len(snap.Content), len(snap.Reasoning), snap.Title
-	activity, nAtt := snap.Activity, len(snap.Attachments)
+	activity, stepsSeq, nAtt, nSrc := snap.Activity, snap.StepsSeq, len(snap.Attachments), len(snap.Sources)
 	if snap.Final != nil {
 		send("done", snap.Final)
 		return
@@ -588,6 +595,18 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 			if snap.ModelID != "" && snap.ModelID != curModel {
 				curModel = snap.ModelID
 				send("model", map[string]string{"conversation_id": run.ConversationID, "model_id": snap.ModelID})
+			}
+			if snap.StepsSeq != stepsSeq {
+				stepsSeq = snap.StepsSeq
+				if !send("steps", map[string]any{"steps": nonNilSteps(snap.Steps)}) {
+					return
+				}
+			}
+			if len(snap.Sources) != nSrc {
+				nSrc = len(snap.Sources)
+				if !send("sources", map[string]any{"sources": nonNilSources(snap.Sources)}) {
+					return
+				}
 			}
 			delta := map[string]string{}
 			if len(snap.Reasoning) > offR {
@@ -626,6 +645,20 @@ func nonNil(a []store.Attachment) []store.Attachment {
 		return []store.Attachment{}
 	}
 	return a
+}
+
+func nonNilSteps(s []chat.RunStep) []chat.RunStep {
+	if s == nil {
+		return []chat.RunStep{}
+	}
+	return s
+}
+
+func nonNilSources(s []store.WebSource) []store.WebSource {
+	if s == nil {
+		return []store.WebSource{}
+	}
+	return s
 }
 
 func truncate(s string, n int) string {

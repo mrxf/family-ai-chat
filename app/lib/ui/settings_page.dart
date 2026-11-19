@@ -8,6 +8,7 @@ import '../state/session.dart';
 import '../state/memories.dart';
 import 'admin/asr_page.dart';
 import 'admin/models_page.dart';
+import 'admin/search_page.dart';
 import 'admin/usage_page.dart';
 import 'admin_page.dart';
 import 'icons.dart';
@@ -72,7 +73,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     Text('用户名：${user.username}${user.isAdmin ? ' · 管理员' : ''}', style: TextStyle(fontSize: 14, color: p.muted)),
                   ]),
                 ),
-                Icon(AppIcons.chevronRight, color: p.faint, size: 19),
+                AppIcon(AppIcons.chevronRight, color: p.faint, size: 19),
               ]),
             ),
           ),
@@ -163,6 +164,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ? (session.boot?.voiceMode == 'stream' ? '已开启 · 实时边说边出字' : '已开启 · 录音转文字')
                     : '未开启 · 配置密钥后聊天框才会出现麦克风',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AsrAdminPage())),
+              ),
+              _Tile(
+                icon: AppIcons.globe,
+                title: '联网搜索',
+                subtitle: session.boot?.webSearch == true
+                    ? '已开启 · 需要实时新闻、行情或政策时自动上网查证'
+                    : '未开启 · 配置密钥后全家人都能查实时信息',
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WebSearchAdminPage())),
               ),
               _Tile(
                 icon: AppIcons.chart,
@@ -396,12 +405,12 @@ class _Tile extends StatelessWidget {
     final p = context.pal;
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 2),
-      leading: Icon(icon, color: p.accent),
+      leading: AppIcon(icon, color: p.accent),
       title: Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w500)),
       subtitle: subtitle == null || subtitle!.isEmpty
           ? null
           : Padding(padding: const EdgeInsets.only(top: 4), child: Text(subtitle!, style: TextStyle(fontSize: 13.5, color: p.muted, height: 1.45))),
-      trailing: trailing ?? (onTap != null ? Icon(AppIcons.chevronRight, color: p.faint, size: 18) : null),
+      trailing: trailing ?? (onTap != null ? AppIcon(AppIcons.chevronRight, color: p.faint, size: 18) : null),
       onTap: onTap,
     );
   }

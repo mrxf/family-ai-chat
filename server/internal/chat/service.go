@@ -57,6 +57,7 @@ type Service struct {
 	DataDir      string
 	Memory       MemoryService
 	MemoryWorker MemoryWorker
+	Search       WebSearchService
 
 	clientsMu sync.Mutex
 	clients   map[string]*llm.Client // by provider id + updated_at
@@ -204,7 +205,7 @@ func (s *Service) Send(ctx context.Context, user *store.User, in SendInput) (*Se
 	if err := s.Store.ApplyTurn(ctx, store.Turn{ConversationID: conv.ID, TruncateFrom: in.EditOf, Append: []*store.Message{userMsg, asst}}); err != nil {
 		return nil, err
 	}
-	s.startRun(user, conv, asst, model, provider, in.Think, autoPlan)
+	s.startRun(user, conv, asst, model, provider, in.Think, autoPlan, in.Content)
 	return &SendResult{Conversation: conv, UserMessage: userMsg, Assistant: asst}, nil
 }
 
@@ -277,7 +278,7 @@ func (s *Service) Regenerate(ctx context.Context, user *store.User, convID, mode
 	if err := s.Store.ApplyTurn(ctx, store.Turn{ConversationID: conv.ID, TruncateFrom: truncate, Append: []*store.Message{asst}}); err != nil {
 		return nil, err
 	}
-	s.startRun(user, conv, asst, model, provider, think, autoPlan)
+	s.startRun(user, conv, asst, model, provider, think, autoPlan, lastUserText)
 	return &SendResult{Conversation: conv, Assistant: asst}, nil
 }
 
@@ -527,7 +528,7 @@ type FinalEvent struct {
 	Message *store.Message `json:"message"`
 }
 
-func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst *store.Message, model *store.Model, provider *store.Provider, think bool, autoPlan *autoRunPlan) {
+func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst *store.Message, model *store.Model, provider *store.Provider, think bool, autoPlan *autoRunPlan, userText string) {
 	convCopy := *convOrig
 	conv := &convCopy
 	run := &Run{MessageID: asst.ID, ConversationID: conv.ID, UserID: user.ID}
@@ -540,16 +541,17 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 		msg := *asst
 		var firstToken time.Duration
 		var usage llm.Usage
-		turn := &toolTurn{user: user, convID: conv.ID, assistantID: conv.AssistantID, asstID: asst.ID, run: run, private: conv.Private}
+		turn := &toolTurn{
+			user: user, convID: conv.ID, assistantID: conv.AssistantID,
+			asstID: asst.ID, userQuestion: userText, run: run, private: conv.Private,
+		}
 
 		if autoPlan != nil {
 			var asstMeta *store.Assistant
 			if conv.AssistantID != nil {
 				asstMeta, _ = s.Store.GetAssistant(ctx, *conv.AssistantID, user.ID)
 			}
-			if autoPlan.mode == RouteInitial {
-				run.setActivity("正在挑选合适的模型…")
-			}
+			run.setActivity("正在挑选合适的模型…")
 			dec, rerr := s.activeRouter(ctx).Route(ctx, RouteRequest{
 				Mode:         autoPlan.mode,
 				Candidates:   autoPlan.candidates,
@@ -560,9 +562,7 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 				HasImages:    autoPlan.hasImages,
 				DeepThink:    autoPlan.deepThink,
 			})
-			if autoPlan.mode == RouteInitial {
-				run.setActivity("")
-			}
+			run.setActivity("")
 			if dec != nil {
 				turn.cost += dec.Cost
 			}
@@ -610,6 +610,9 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 			if firstToken == 0 {
 				firstToken = time.Since(started)
 			}
+			if ev.Reasoning != "" || ev.Content != "" {
+				run.setActivity("")
+			}
 			if ev.Reasoning != "" {
 				run.appendReasoning(ev.Reasoning)
 			}
@@ -639,14 +642,29 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 
 		ts := s.toolsFor(ctx, user, conv, model)
 		tools := ts.tools
+		if !conv.Private && s.Memory != nil && s.Memory.Allowed(ctx, user, conv.AssistantID) {
+			run.setActivity("正在翻看相关记忆…")
+		}
 		req, err := s.buildRequestWithTools(ctx, user, conv, asst.ID, model, ts)
+		run.setActivity("")
+		if err == nil && req.recalled {
+			run.addDoneStep("memory", "已关联相关记忆背景", "")
+		}
 		for round := 0; err == nil && round < maxToolRounds; round++ {
 			req.ReasoningEffort = effortFor(model, think)
 			req.Tools = tools
 			if round == maxToolRounds-1 {
 				req.Tools = nil // last round: answer in words
 			}
+			if round > 0 {
+				if turn.postActivity != "" {
+					run.setActivity(turn.postActivity)
+				} else {
+					run.setActivity("正在整理回答…")
+				}
+			}
 			roundStart := run.contentLen()
+			roundReasoningStart := run.reasoningLen()
 			produced = false
 			var res *llm.Result
 			res, err = s.streamWithRetry(ctx, s.client(provider), req.Request, onEvent)
@@ -698,8 +716,14 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 					calls[i].ID = fmt.Sprintf("call_%d_%d", round, i)
 				}
 			}
-			content, _ := run.text()
-			req.Messages = append(req.Messages, llm.Message{Role: "assistant", Content: strings.TrimSpace(content[roundStart:]), ToolCalls: calls})
+			content, reasoning := run.text()
+			req.Messages = append(req.Messages, llm.Message{
+				Role:      "assistant",
+				Content:   strings.TrimSpace(content[roundStart:]),
+				Reasoning: strings.TrimSpace(reasoning[roundReasoningStart:]),
+				ToolCalls: calls,
+			})
+			turn.postActivity = ""
 			results, stopTools := s.runTools(ctx, turn, calls)
 			for i, result := range results {
 				req.Messages = append(req.Messages, llm.Message{Role: "tool", ToolCallID: calls[i].ID, Content: result})
@@ -714,8 +738,11 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 			}
 		}
 
+		run.setActivity("")
 		msg.Content, msg.Reasoning = run.text()
-		msg.Attachments = run.Snapshot().Attachments
+		snap := run.Snapshot()
+		msg.Attachments = snap.Attachments
+		msg.Sources = snap.Sources
 		// The pictures are what the user asked for: a failure while the model
 		// was only wrapping up must not turn the reply into an error.
 		if err != nil && len(msg.Attachments) > 0 && ctx.Err() == nil {
@@ -935,6 +962,7 @@ func (s *Service) systemPromptWithTools(ctx context.Context, user *store.User, c
 	var b strings.Builder
 	b.WriteString(basePrompt)
 	b.WriteString(s.drawPrompt(ctx, ts.canDraw))
+	b.WriteString(s.searchPrompt(ctx, ts))
 	if ts.canRecall && !conv.Private {
 		b.WriteString(memoryToolPrompt)
 	}
@@ -985,7 +1013,8 @@ const imageTokens = 1100
 
 type chatRequest struct {
 	llm.Request
-	core string
+	core     string
+	recalled bool
 }
 
 func (s *Service) buildRequest(ctx context.Context, user *store.User, conv *store.Conversation, asstID string, model *store.Model, canDraw bool) (chatRequest, error) {
@@ -1116,7 +1145,11 @@ func (s *Service) buildRequestWithTools(ctx context.Context, user *store.User, c
 	if len(msgs) == 1 {
 		return chatRequest{}, ErrEmptyMessage
 	}
-	req := chatRequest{Request: llm.Request{Model: model.UpstreamModel, Messages: msgs, MaxTokens: model.MaxOutput}, core: mem.Core}
+	req := chatRequest{
+		Request:  llm.Request{Model: model.UpstreamModel, Messages: msgs, MaxTokens: model.MaxOutput},
+		core:     mem.Core,
+		recalled: mem.Recall != "",
+	}
 	if conv.AssistantID != nil {
 		if a, err := s.Store.GetAssistant(ctx, *conv.AssistantID, user.ID); err == nil && a.Temperature != nil {
 			req.Temperature = a.Temperature

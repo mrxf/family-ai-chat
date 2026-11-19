@@ -46,6 +46,7 @@ type RouteCandidate struct {
 	Model            *store.Model
 	Provider         *store.Provider
 	Profile          llm.ModelProfile
+	CanTools         bool
 	IsLatestInSeries bool
 	NewerVersion     string // non-empty when an enabled sibling in the same series has a higher version
 }
@@ -161,6 +162,7 @@ func (s *Service) buildRouteCandidates(ctx context.Context, needVision bool) ([]
 			Model:    um,
 			Provider: p,
 			Profile:  llm.ProfileModel(um.UpstreamModel, um.DisplayName),
+			CanTools: um.Tools && !s.toolsRejected(um),
 		})
 	}
 	if len(raw) == 0 {
@@ -426,6 +428,9 @@ func buildJudgePrompts(req RouteRequest, curCand *RouteCandidate) (string, strin
 		if m.ThinkEffort != "" {
 			caps = append(caps, "可深度思考")
 		}
+		if c.CanTools || m.Tools {
+			caps = append(caps, "可联网/调工具")
+		}
 		if len(caps) > 0 {
 			fmt.Fprintf(&b, " | 能力=%s", strings.Join(caps, ","))
 		}
@@ -560,9 +565,13 @@ func HeuristicRoute(req RouteRequest) *RouteDecision {
 		cand  RouteCandidate
 		score int
 	}
+	needTools := hasRealtimeSearchIntent(req.UserMessage)
 	items := make([]scored, 0, len(req.Candidates))
 	for _, c := range req.Candidates {
 		sc := 0
+		if needTools && (c.CanTools || c.Model.Tools) {
+			sc += 4200
+		}
 		// 1. Tier proximity: penalize over-kill on casual queries and under-power on hard queries.
 		diff := c.Profile.Tier - wantTier
 		if diff < 0 {
@@ -656,6 +665,17 @@ func matchesDomainNote(noteLower, domain, userMsg string) bool {
 	}
 	_ = userMsg
 	return false
+}
+
+func hasRealtimeSearchIntent(msg string) bool {
+	q := strings.ToLower(strings.TrimSpace(msg))
+	if strings.Contains(q, "http://") || strings.Contains(q, "https://") {
+		return true
+	}
+	return hasAnyStr(q,
+		"今天", "今日", "昨天", "最近", "最新", "刚刚", "实时", "新闻", "查一下", "搜一下", "网上",
+		"金价", "油价", "汇率", "股价", "天气", "放假安排", "新政策", "几点开门",
+	)
 }
 
 func clipRunes(s string, maxRunes int) string {

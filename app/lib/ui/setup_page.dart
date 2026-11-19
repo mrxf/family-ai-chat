@@ -126,7 +126,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
             textCapitalization: TextCapitalization.characters,
             autocorrect: false,
             style: const TextStyle(fontSize: 20, letterSpacing: 3, fontFamily: 'monospace', fontWeight: FontWeight.w700),
-            decoration: InputDecoration(labelText: '设置码', hintText: 'ABCD-EFGH', prefixIcon: Icon(AppIcons.pinCode, color: p.faint)),
+            decoration: InputDecoration(labelText: '设置码', hintText: 'ABCD-EFGH', prefixIcon: AppIcon(AppIcons.pinCode, color: p.faint)),
           ),
           const SizedBox(height: 26),
           const Text('第 2 步：创建管理员账号', style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700)),
@@ -142,7 +142,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
             obscureText: _hide,
             decoration: InputDecoration(
               labelText: '密码（至少 8 位）',
-              suffixIcon: IconButton(icon: Icon(_hide ? AppIcons.eye : AppIcons.eyeOff), onPressed: () => setState(() => _hide = !_hide)),
+              suffixIcon: IconButton(icon: AppIcon(_hide ? AppIcons.eye : AppIcons.eyeOff), onPressed: () => setState(() => _hide = !_hide)),
             ),
           ),
           AnimatedSize(
@@ -176,7 +176,7 @@ class _Command extends StatelessWidget {
         decoration: BoxDecoration(color: p.preBg, borderRadius: BorderRadius.circular(12)),
         child: Row(children: [
           Expanded(child: Text(cmd, style: TextStyle(color: p.preText, fontFamily: 'monospace', fontSize: 13))),
-          Icon(AppIcons.copy, size: 17, color: p.preText.withValues(alpha: 0.7)),
+          AppIcon(AppIcons.copy, size: 17, color: p.preText.withValues(alpha: 0.7)),
         ]),
       ),
     );

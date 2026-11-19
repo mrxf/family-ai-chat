@@ -31,7 +31,7 @@ class AdminUsersPage extends ConsumerWidget {
         onPressed: () => _create(context, ref),
         backgroundColor: p.accent,
         foregroundColor: Colors.white,
-        icon: const Icon(AppIcons.userPlus, size: 21),
+        icon: const AppIcon(AppIcons.userPlus, size: 21),
         label: const Text('添加家人', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
       ),
       body: users.when(
@@ -66,7 +66,7 @@ class AdminUsersPage extends ConsumerWidget {
                         Text(disabled ? '已停用 · 不能登录' : '用户名：${u.username}', style: TextStyle(fontSize: 14, color: disabled ? p.bad : p.muted)),
                       ]),
                     ),
-                    Icon(AppIcons.more, color: p.faint),
+                    AppIcon(AppIcons.more, color: p.faint),
                   ]),
                 ),
               );

@@ -18,6 +18,7 @@ import (
 	"nuan/internal/auth"
 	"nuan/internal/chat"
 	"nuan/internal/store"
+	"nuan/internal/websearch"
 )
 
 type Config struct {
@@ -37,6 +38,7 @@ type Server struct {
 	Store    *store.Store
 	Chat     *chat.Service
 	ASR      *asr.Service
+	Search   *websearch.Service
 	Sessions *auth.Sessions
 	Limiter  *auth.Limiter
 	Log      *slog.Logger
@@ -45,11 +47,16 @@ type Server struct {
 }
 
 func New(cfg Config, st *store.Store, svc *chat.Service, log *slog.Logger) *Server {
+	srch := websearch.NewService(st)
+	if svc != nil && svc.Search == nil {
+		svc.Search = srch
+	}
 	return &Server{
 		Cfg:      cfg,
 		Store:    st,
 		Chat:     svc,
 		ASR:      asr.NewService(st),
+		Search:   srch,
 		Sessions: &auth.Sessions{Store: st},
 		Limiter:  auth.NewLimiter(8, 15*time.Minute),
 		Log:      log,
@@ -118,6 +125,9 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/asr", s.adminGetASR)
 				r.Put("/asr", s.adminPutASR)
 				r.Post("/asr/test", s.adminTestASR)
+				r.Get("/search", s.adminGetSearch)
+				r.Put("/search", s.adminPutSearch)
+				r.Post("/search/test", s.adminTestSearch)
 				r.Get("/provider-presets", s.adminProviderPresets)
 				r.Get("/providers", s.adminListProviders)
 				r.Post("/providers", s.adminSaveProvider)

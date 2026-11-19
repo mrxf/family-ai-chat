@@ -342,6 +342,15 @@ type Attachment struct {
 	Source string `json:"source,omitempty"` // a modified picture: file id of the picture it was made from
 }
 
+// WebSource records a web page searched or fetched while generating an assistant message.
+type WebSource struct {
+	Title    string `json:"title"`
+	URL      string `json:"url"`
+	SiteName string `json:"site_name,omitempty"`
+	Date     string `json:"date,omitempty"`
+	Snippet  string `json:"snippet,omitempty"`
+}
+
 const (
 	StatusDone        = "done"
 	StatusStreaming   = "streaming"
@@ -357,6 +366,7 @@ type Message struct {
 	Content          string       `json:"content"`
 	Reasoning        string       `json:"reasoning"`
 	Attachments      []Attachment `json:"attachments"`
+	Sources          []WebSource  `json:"sources,omitempty"`
 	Status           string       `json:"status"`
 	Error            string       `json:"error"`
 	ModelID          *string      `json:"model_id"`
@@ -369,18 +379,22 @@ type Message struct {
 	UpdatedAt        int64        `json:"updated_at"`
 }
 
-const msgCols = `id, conversation_id, role, content, reasoning, attachments, status, error, model_id, prompt_tokens, completion_tokens, first_token_ms, duration_ms, created_at, updated_at`
+const msgCols = `id, conversation_id, role, content, reasoning, attachments, sources, status, error, model_id, prompt_tokens, completion_tokens, first_token_ms, duration_ms, created_at, updated_at`
 
 func scanMsg(row interface{ Scan(...any) error }) (*Message, error) {
 	var m Message
-	var att string
-	if err := row.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &m.Reasoning, &att, &m.Status, &m.Error, &m.ModelID,
+	var att, src string
+	if err := row.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &m.Reasoning, &att, &src, &m.Status, &m.Error, &m.ModelID,
 		&m.PromptTokens, &m.CompletionTokens, &m.FirstTokenMs, &m.DurationMs, &m.CreatedAt, &m.UpdatedAt); err != nil {
 		return nil, notFound(err)
 	}
 	_ = json.Unmarshal([]byte(att), &m.Attachments)
 	if m.Attachments == nil {
 		m.Attachments = []Attachment{}
+	}
+	_ = json.Unmarshal([]byte(src), &m.Sources)
+	if len(m.Sources) == 0 {
+		m.Sources = nil
 	}
 	return &m, nil
 }
@@ -398,8 +412,13 @@ func insertMsg(ctx context.Context, tx *Tx, m *Message) error {
 		m.Attachments = []Attachment{}
 	}
 	att, _ := json.Marshal(m.Attachments)
-	_, err := tx.exec(ctx, `INSERT INTO messages (`+msgCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		m.ID, m.ConversationID, m.Role, m.Content, m.Reasoning, string(att), m.Status, m.Error, m.ModelID,
+	sources := m.Sources
+	if sources == nil {
+		sources = []WebSource{}
+	}
+	src, _ := json.Marshal(sources)
+	_, err := tx.exec(ctx, `INSERT INTO messages (`+msgCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		m.ID, m.ConversationID, m.Role, m.Content, m.Reasoning, string(att), string(src), m.Status, m.Error, m.ModelID,
 		m.PromptTokens, m.CompletionTokens, m.FirstTokenMs, m.DurationMs, m.CreatedAt, m.UpdatedAt)
 	if isUnique(err) {
 		return ErrConflict
@@ -491,9 +510,14 @@ func (s *Store) FinishMessage(ctx context.Context, m *Message) error {
 		m.Attachments = []Attachment{}
 	}
 	att, _ := json.Marshal(m.Attachments)
-	_, err := s.exec(ctx, `UPDATE messages SET content=?, reasoning=?, attachments=?, status=?, error=?, model_id=?, prompt_tokens=?, completion_tokens=?,
+	sources := m.Sources
+	if sources == nil {
+		sources = []WebSource{}
+	}
+	src, _ := json.Marshal(sources)
+	_, err := s.exec(ctx, `UPDATE messages SET content=?, reasoning=?, attachments=?, sources=?, status=?, error=?, model_id=?, prompt_tokens=?, completion_tokens=?,
 		first_token_ms=?, duration_ms=?, cost=?, updated_at=? WHERE id=?`,
-		m.Content, m.Reasoning, string(att), m.Status, m.Error, m.ModelID, m.PromptTokens, m.CompletionTokens, m.FirstTokenMs, m.DurationMs, m.Cost, m.UpdatedAt, m.ID)
+		m.Content, m.Reasoning, string(att), string(src), m.Status, m.Error, m.ModelID, m.PromptTokens, m.CompletionTokens, m.FirstTokenMs, m.DurationMs, m.Cost, m.UpdatedAt, m.ID)
 	return err
 }
 
@@ -502,6 +526,16 @@ func (s *Store) FinishMessage(ctx context.Context, m *Message) error {
 func (s *Store) SetAttachments(ctx context.Context, messageID string, atts []Attachment) error {
 	att, _ := json.Marshal(atts)
 	_, err := s.exec(ctx, `UPDATE messages SET attachments=?, updated_at=? WHERE id=?`, string(att), Now(), messageID)
+	return err
+}
+
+// SetSources saves a streaming message's web search references as soon as they exist.
+func (s *Store) SetSources(ctx context.Context, messageID string, sources []WebSource) error {
+	if sources == nil {
+		sources = []WebSource{}
+	}
+	src, _ := json.Marshal(sources)
+	_, err := s.exec(ctx, `UPDATE messages SET sources=?, updated_at=? WHERE id=?`, string(src), Now(), messageID)
 	return err
 }
 

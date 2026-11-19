@@ -112,7 +112,7 @@ class HistoryDrawer extends ConsumerWidget {
                     BoxShadow(color: Palette.brand.withValues(alpha: 0.28), blurRadius: 14, offset: const Offset(0, 5)),
                   ]),
                   child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Icon(AppIcons.plus, color: Colors.white, size: 21),
+                    AppIcon(AppIcons.plus, color: Colors.white, size: 21),
                     SizedBox(width: 6),
                     Text('新对话', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
                   ]),
@@ -175,7 +175,7 @@ class HistoryDrawer extends ConsumerWidget {
                     Expanded(
                       child: Text(user.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
                     ),
-                    Icon(AppIcons.settings, color: p.muted, size: 22),
+                    AppIcon(AppIcons.settings, color: p.muted, size: 22),
                     const SizedBox(width: 6),
                   ]),
                 ),
@@ -206,7 +206,7 @@ class _ConvTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
         decoration: BoxDecoration(color: selected ? p.surface : Colors.transparent, borderRadius: BorderRadius.circular(14)),
         child: Row(children: [
-          if (conv.pinned) Padding(padding: const EdgeInsets.only(right: 6), child: Icon(AppIcons.pin, size: 15, color: p.accent)),
+          if (conv.pinned) Padding(padding: const EdgeInsets.only(right: 6), child: AppIcon(AppIcons.pin, size: 15, color: p.accent)),
           Expanded(
             child: Text(
               conv.title.isEmpty ? '新对话' : conv.title,

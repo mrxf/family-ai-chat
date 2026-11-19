@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData, HapticFeedback, Uint8List;
 import 'package:gal/gal.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/models.dart';
 import '../core/tts.dart';
@@ -50,7 +52,7 @@ class UserMessage extends ConsumerWidget {
                 if (m.status == MsgStatus.error)
                   Pressable(
                     onTap: () => ref.read(chatProvider.notifier).retryFailed(m),
-                    child: Padding(padding: const EdgeInsets.only(right: 8), child: Icon(AppIcons.error, color: p.bad, size: 22)),
+                    child: Padding(padding: const EdgeInsets.only(right: 8), child: AppIcon(AppIcons.error, color: p.bad, size: 22)),
                   ),
                 Flexible(
                   child: Pressable(
@@ -108,7 +110,7 @@ class ImageGrid extends ConsumerWidget {
       }
       if (api == null || a.fileId.isEmpty) return const SizedBox();
       return Image.network(api.fileUrl(a.fileId), headers: api.authHeaders, fit: fit, gaplessPlayback: true, cacheWidth: 900,
-          errorBuilder: (_, _, _) => Container(color: context.pal.surfaceAlt, child: Icon(AppIcons.brokenImage, color: context.pal.faint)));
+          errorBuilder: (_, _, _) => Container(color: context.pal.surfaceAlt, child: AppIcon(AppIcons.brokenImage, color: context.pal.faint)));
     }
 
     void open(int i) => Navigator.of(context).push(PageRouteBuilder(
@@ -320,7 +322,7 @@ class _ImageViewerState extends ConsumerState<ImageViewer> {
                 onPressed: _saving ? null : _save,
                 icon: _saving
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(AppIcons.download),
+                    : const AppIcon(AppIcons.download),
                 label: const Text('保存到相册'),
               ),
             ),
@@ -396,6 +398,10 @@ class _AssistantMessageState extends ConsumerState<AssistantMessage> {
         final content = isLive ? live.content : m.content;
         final reasoning = isLive ? live.reasoning : m.reasoning;
         final drawn = isLive ? live.attachments : m.attachments;
+        final sources = isLive ? live.sources : m.sources;
+        final steps = isLive ? live.steps : const <RunStep>[];
+        final hasStepPanel = steps.isNotEmpty || sources.isNotEmpty;
+        final hasRunningStep = steps.any((s) => s.running);
         final drawing = isLive && live.drawing;
         final working = isLive && live.working;
         final phase = isLive ? live.phase : null;
@@ -404,18 +410,30 @@ class _AssistantMessageState extends ConsumerState<AssistantMessage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (hasStepPanel)
+                TaskAndSourcesPanel(
+                  steps: steps,
+                  sources: sources,
+                  isLive: isLive,
+                  waitingForReply: isLive && phase == LivePhase.waiting && !drawing,
+                  activity: live.activity,
+                  activitySince: live.activitySince,
+                ),
               if (reasoning.isNotEmpty) ReasoningPanel(text: reasoning, thinking: phase == LivePhase.reasoning, durationMs: m.durationMs),
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 250),
-                child: phase == LivePhase.waiting && !drawing && drawn.isEmpty
-                    ? ThinkingIndicator(label: working ? live.activity : '')
+                child: phase == LivePhase.waiting && !drawing && drawn.isEmpty && !hasStepPanel
+                    ? ThinkingIndicator(
+                        label: working ? live.activity : '正在思考…',
+                        since: live.activitySince,
+                      )
                     : const SizedBox(width: double.infinity),
               ),
               if (content.isNotEmpty) Md(content, streaming: isLive, animate: _wasLive),
-              if (working && phase != LivePhase.waiting)
+              if (working && phase != LivePhase.waiting && !hasRunningStep)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: ThinkingIndicator(label: live.activity, compact: true),
+                  child: ThinkingIndicator(label: live.activity, since: live.activitySince, compact: true),
                 ),
               if (drawn.isNotEmpty || drawing)
                 Padding(
@@ -447,7 +465,7 @@ class _Footer extends ConsumerWidget {
     Widget note(IconData icon, String text, Color color) => Padding(
           padding: const EdgeInsets.only(top: 6, bottom: 2),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(icon, size: 16, color: color),
+            AppIcon(icon, size: 16, color: color),
             const SizedBox(width: 6),
             Flexible(child: Text(text, style: TextStyle(fontSize: 14, color: color))),
           ]),
@@ -461,7 +479,7 @@ class _Footer extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
           decoration: BoxDecoration(color: p.bad.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(14)),
           child: Row(children: [
-            Icon(AppIcons.cloudOff, size: 20, color: p.bad),
+            AppIcon(AppIcons.cloudOff, size: 20, color: p.bad),
             const SizedBox(width: 10),
             Expanded(child: Text(m.error.isEmpty ? '回答出错了' : m.error, style: TextStyle(fontSize: 15, color: p.text))),
             if (isLast) TextButton(onPressed: () => chat.regenerate(), child: const Text('重试')),
@@ -497,7 +515,7 @@ class _ActionRow extends ConsumerWidget {
           message: tip,
           child: Pressable(
             onTap: onTap,
-            child: Padding(padding: const EdgeInsets.all(9), child: Icon(icon, size: 20, color: color ?? p.muted)),
+            child: Padding(padding: const EdgeInsets.all(9), child: AppIcon(icon, size: 20, color: color ?? p.muted)),
           ),
         );
     return Padding(
@@ -539,8 +557,9 @@ class _ActionRow extends ConsumerWidget {
 
 /// Shown between sending and the first token (or during fast read-only tool calls).
 class ThinkingIndicator extends StatefulWidget {
-  const ThinkingIndicator({super.key, this.label = '', this.compact = false});
+  const ThinkingIndicator({super.key, this.label = '', this.since, this.compact = false});
   final String label;
+  final DateTime? since;
   final bool compact;
   @override
   State<ThinkingIndicator> createState() => _ThinkingIndicatorState();
@@ -548,9 +567,20 @@ class ThinkingIndicator extends StatefulWidget {
 
 class _ThinkingIndicatorState extends State<ThinkingIndicator> with SingleTickerProviderStateMixin {
   late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat();
+  final DateTime _created = DateTime.now();
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
 
   @override
   void dispose() {
+    _tick?.cancel();
     _c.dispose();
     super.dispose();
   }
@@ -558,6 +588,9 @@ class _ThinkingIndicatorState extends State<ThinkingIndicator> with SingleTicker
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
+    final secs = DateTime.now().difference(widget.since ?? _created).inSeconds.clamp(0, 9999);
+    final baseLabel = widget.label;
+    final fullLabel = baseLabel.isNotEmpty && secs >= 5 ? '$baseLabel（${secs}s）' : baseLabel;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -584,9 +617,9 @@ class _ThinkingIndicatorState extends State<ThinkingIndicator> with SingleTicker
               ],
             ),
           ),
-          if (widget.label.isNotEmpty) ...[
+          if (fullLabel.isNotEmpty) ...[
             const SizedBox(width: 8),
-            Flexible(child: Text(widget.label, style: TextStyle(fontSize: 13.5, color: p.muted))),
+            Flexible(child: Text(fullLabel, style: TextStyle(fontSize: 13.5, color: p.muted))),
           ],
         ],
       ),
@@ -594,6 +627,347 @@ class _ThinkingIndicatorState extends State<ThinkingIndicator> with SingleTicker
   }
 
   double _pulse(double t) => t < 0.5 ? Curves.easeOut.transform(t * 2) : Curves.easeIn.transform((1 - t) * 2);
+}
+
+/// Live task progress (memory lookup, web search, webpage reading) and collapsible
+/// web reference list. Expands automatically while tasks are running so the user
+/// sees every step in real time, then folds into a compact pill once the reply flows.
+class TaskAndSourcesPanel extends StatefulWidget {
+  const TaskAndSourcesPanel({
+    super.key,
+    required this.steps,
+    required this.sources,
+    required this.isLive,
+    required this.waitingForReply,
+    this.activity = '',
+    this.activitySince,
+  });
+
+  final List<RunStep> steps;
+  final List<WebSource> sources;
+  final bool isLive;
+  final bool waitingForReply;
+  final String activity;
+  final DateTime? activitySince;
+
+  @override
+  State<TaskAndSourcesPanel> createState() => _TaskAndSourcesPanelState();
+}
+
+class _TaskAndSourcesPanelState extends State<TaskAndSourcesPanel> {
+  bool? _userOpen;
+  Timer? _tick;
+
+  bool get _activelyWorking =>
+      widget.isLive && (widget.steps.any((s) => s.running) || widget.waitingForReply);
+
+  @override
+  void initState() {
+    super.initState();
+    _syncTimer();
+  }
+
+  @override
+  void didUpdateWidget(covariant TaskAndSourcesPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncTimer();
+  }
+
+  void _syncTimer() {
+    if (_activelyWorking && _tick == null) {
+      _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    } else if (!_activelyWorking && _tick != null) {
+      _tick?.cancel();
+      _tick = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  static IconData _iconForStep(String kind) => switch (kind) {
+        'search' => AppIcons.globe,
+        'fetch' => AppIcons.article,
+        'memory' => AppIcons.manageSearch,
+        _ => AppIcons.sparkles,
+      };
+
+  static String _sitePreview(List<WebSource> sources) {
+    final names = <String>[];
+    for (final s in sources) {
+      final n = s.siteName.trim().isNotEmpty ? s.siteName.trim() : (Uri.tryParse(s.url)?.host ?? '');
+      if (n.isNotEmpty && !names.contains(n)) {
+        names.add(n);
+        if (names.length >= 2) break;
+      }
+    }
+    if (names.isEmpty) return '';
+    return ' · ${names.join('、')}${sources.length > names.length ? '等' : ''}';
+  }
+
+  String _headerLabel(RunStep? running) {
+    if (running != null) {
+      final secs = running.startedAt != null
+          ? DateTime.now().difference(running.startedAt!).inSeconds.clamp(0, 999)
+          : 0;
+      return secs >= 2 ? '正在${running.title}（${secs}s）' : '正在${running.title}…';
+    }
+    if (widget.waitingForReply) {
+      final act = widget.activity.isNotEmpty ? widget.activity : '正在整理检索结果…';
+      final secs = widget.activitySince != null
+          ? DateTime.now().difference(widget.activitySince!).inSeconds.clamp(0, 999)
+          : 0;
+      return secs >= 3 ? '$act（${secs}s）' : act;
+    }
+    if (widget.sources.isNotEmpty) {
+      final hadMemory = widget.steps.any((s) => s.kind == 'memory');
+      return '${hadMemory ? '已翻看记忆 · ' : ''}已参考 ${widget.sources.length} 篇网页${_sitePreview(widget.sources)}';
+    }
+    final hasSearch = widget.steps.any((s) => s.kind == 'search' || s.kind == 'fetch');
+    if (hasSearch) return '已完成联网检索';
+    return '已翻看相关记忆';
+  }
+
+  Future<void> _openSource(String rawUrl) async {
+    final uri = Uri.tryParse(rawUrl.trim());
+    if (uri == null) return;
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) showToast(context, '打不开网页链接');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    final running = widget.steps.where((s) => s.running).lastOrNull;
+    final busy = running != null || widget.waitingForReply;
+    final open = _userOpen ?? busy;
+    final hasWeb = widget.sources.isNotEmpty || widget.steps.any((s) => s.kind == 'search' || s.kind == 'fetch');
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Pressable(
+            onTap: () => setState(() => _userOpen = !open),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: busy ? Color.lerp(p.surfaceAlt, p.accentSoft, 0.38) : p.surfaceAlt,
+                borderRadius: BorderRadius.circular(20),
+                border: busy ? Border.all(color: p.accent.withValues(alpha: 0.25)) : null,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (busy)
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 1.9, color: p.accent),
+                    )
+                  else
+                    AppIcon(hasWeb ? AppIcons.globe : AppIcons.manageSearch, size: 16, color: p.accent),
+                  const SizedBox(width: 7),
+                  Flexible(
+                    child: Text(
+                      _headerLabel(running),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        color: busy ? p.text : p.muted,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 3),
+                  AnimatedRotation(
+                    turns: open ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: AppIcon(AppIcons.chevronDown, size: 15, color: p.muted),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: open
+                ? Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    decoration: BoxDecoration(
+                      color: p.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: p.line),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (var i = 0; i < widget.steps.length; i++) ...[
+                          if (i > 0) const SizedBox(height: 7),
+                          _StepRow(step: widget.steps[i], icon: _iconForStep(widget.steps[i].kind)),
+                        ],
+                        if (widget.waitingForReply && running == null) ...[
+                          if (widget.steps.isNotEmpty) const SizedBox(height: 7),
+                          Row(children: [
+                            SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 1.8, color: p.accent),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                widget.activity.isNotEmpty ? widget.activity : '正在结合检索内容整理回答…',
+                                style: TextStyle(fontSize: 13.5, color: p.text, fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          ]),
+                        ],
+                        if (widget.sources.isNotEmpty) ...[
+                          if (widget.steps.isNotEmpty) ...[
+                            const SizedBox(height: 9),
+                            Divider(height: 1, thickness: 0.7, color: p.line.withValues(alpha: 0.8)),
+                            const SizedBox(height: 8),
+                          ],
+                          for (var i = 0; i < widget.sources.length; i++) ...[
+                            if (i > 0) const SizedBox(height: 6),
+                            _SourceTile(index: i + 1, source: widget.sources[i], onTap: () => _openSource(widget.sources[i].url)),
+                          ],
+                        ],
+                      ],
+                    ),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StepRow extends StatelessWidget {
+  const _StepRow({required this.step, required this.icon});
+  final RunStep step;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: step.running
+              ? SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 1.8, color: p.accent))
+              : AppIcon(
+                  step.isError ? AppIcons.info : icon,
+                  size: 16,
+                  color: step.isError ? p.bad : p.accent,
+                ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 2,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                step.title,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: step.running ? p.text : p.muted,
+                  fontWeight: step.running ? FontWeight.w500 : FontWeight.w400,
+                ),
+              ),
+              if (step.detail.isNotEmpty)
+                Text(
+                  '· ${step.detail}',
+                  style: TextStyle(fontSize: 12.5, color: step.isError ? p.bad : p.faint),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SourceTile extends StatelessWidget {
+  const _SourceTile({required this.index, required this.source, required this.onTap});
+  final int index;
+  final WebSource source;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    final site = source.siteName.trim().isNotEmpty ? source.siteName.trim() : (Uri.tryParse(source.url)?.host ?? '网页');
+    final meta = source.date.trim().isNotEmpty ? '$site · ${source.date.trim()}' : site;
+    return Pressable(
+      scale: 0.985,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: p.surfaceAlt.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(11),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 20,
+              height: 20,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: p.surface,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: p.line),
+              ),
+              child: Text(
+                '$index',
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: p.muted),
+              ),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    source.title.isNotEmpty ? source.title : site,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500, color: p.text),
+                  ),
+                  const SizedBox(height: 1.5),
+                  Text(
+                    meta,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: p.muted),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            AppIcon(AppIcons.externalLink, size: 15, color: p.faint),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Collapsible "deep thinking" process. Expanded while reasoning streams,
@@ -627,14 +1001,14 @@ class _ReasoningPanelState extends State<ReasoningPanel> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(color: p.surfaceAlt, borderRadius: BorderRadius.circular(20)),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(AppIcons.thinkOff, size: 16, color: p.accent),
+                AppIcon(AppIcons.thinkOff, size: 16, color: p.accent),
                 const SizedBox(width: 6),
                 Text(label, style: TextStyle(fontSize: 14, color: p.muted, fontWeight: FontWeight.w500)),
                 const SizedBox(width: 3),
                 AnimatedRotation(
                   turns: open ? 0.5 : 0,
                   duration: const Duration(milliseconds: 200),
-                  child: Icon(AppIcons.chevronDown, size: 15, color: p.muted),
+                  child: AppIcon(AppIcons.chevronDown, size: 15, color: p.muted),
                 ),
               ]),
             ),

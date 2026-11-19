@@ -262,6 +262,25 @@ class Attachment {
   double get aspect => width > 0 && height > 0 ? width / height : 1;
 }
 
+class WebSource {
+  final String title, url, siteName, date, snippet;
+  const WebSource({required this.title, required this.url, this.siteName = '', this.date = '', this.snippet = ''});
+  factory WebSource.fromJson(Map<String, dynamic> j) => WebSource(
+        title: _str(j['title']),
+        url: _str(j['url']),
+        siteName: _str(j['site_name']),
+        date: _str(j['date']),
+        snippet: _str(j['snippet']),
+      );
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'url': url,
+        if (siteName.isNotEmpty) 'site_name': siteName,
+        if (date.isNotEmpty) 'date': date,
+        if (snippet.isNotEmpty) 'snippet': snippet,
+      };
+}
+
 enum MsgStatus { done, streaming, error, cancelled, interrupted, sending }
 
 MsgStatus _status(String s) => switch (s) {
@@ -275,6 +294,7 @@ MsgStatus _status(String s) => switch (s) {
 class Message {
   final String id, conversationId, role, content, reasoning, error;
   final List<Attachment> attachments;
+  final List<WebSource> sources;
   final MsgStatus status;
   final String? modelId;
   final int durationMs, completionTokens, createdAt;
@@ -287,6 +307,7 @@ class Message {
     this.reasoning = '',
     this.error = '',
     this.attachments = const [],
+    this.sources = const [],
     this.status = MsgStatus.done,
     this.modelId,
     this.durationMs = 0,
@@ -305,6 +326,7 @@ class Message {
         reasoning: _str(j['reasoning']),
         error: _str(j['error']),
         attachments: ((j['attachments'] as List?) ?? const []).map((e) => Attachment.fromJson((e as Map).cast())).toList(),
+        sources: ((j['sources'] as List?) ?? const []).map((e) => WebSource.fromJson((e as Map).cast())).toList(),
         status: _status(_str(j['status'])),
         modelId: _strN(j['model_id']),
         durationMs: _int(j['duration_ms']),
@@ -320,6 +342,7 @@ class Message {
         'reasoning': reasoning,
         'error': error,
         'attachments': attachments.map((a) => a.toJson()).toList(),
+        if (sources.isNotEmpty) 'sources': sources.map((s) => s.toJson()).toList(),
         'status': status.name == 'sending' ? 'done' : status.name,
         'model_id': modelId,
         'duration_ms': durationMs,
@@ -327,7 +350,17 @@ class Message {
         'created_at': createdAt,
       };
 
-  Message copyWith({String? id, String? content, String? reasoning, MsgStatus? status, String? error, List<Attachment>? attachments, String? modelId}) => Message(
+  Message copyWith({
+    String? id,
+    String? content,
+    String? reasoning,
+    MsgStatus? status,
+    String? error,
+    List<Attachment>? attachments,
+    List<WebSource>? sources,
+    String? modelId,
+  }) =>
+      Message(
         id: id ?? this.id,
         conversationId: conversationId,
         role: role,
@@ -335,6 +368,7 @@ class Message {
         reasoning: reasoning ?? this.reasoning,
         error: error ?? this.error,
         attachments: attachments ?? this.attachments,
+        sources: sources ?? this.sources,
         status: status ?? this.status,
         modelId: modelId ?? this.modelId,
         durationMs: durationMs,
@@ -348,8 +382,9 @@ class Bootstrap {
   final List<ChatModel> models;
   final List<Assistant> assistants;
   final String defaultModelId;
-  final bool voiceInput, imageGeneration, autoModel, autoDynamic;
+  final bool voiceInput, webSearch, imageGeneration, autoModel, autoDynamic;
   final String voiceMode; // 'stream' | 'upload' | ''
+  final String searchProvider; // 'deepseek' | 'serp' | ''
   /// Pictures the user may still draw today; -1 = no limit.
   final int imagesLeft;
   const Bootstrap({
@@ -359,6 +394,8 @@ class Bootstrap {
     required this.defaultModelId,
     required this.voiceInput,
     this.voiceMode = '',
+    this.webSearch = false,
+    this.searchProvider = '',
     this.imageGeneration = false,
     this.imagesLeft = -1,
     this.autoModel = false,
@@ -376,6 +413,8 @@ class Bootstrap {
       defaultModelId: _str(j['default_model_id']),
       voiceInput: voiceOn,
       voiceMode: rawMode.isNotEmpty ? rawMode : (voiceOn ? 'upload' : ''),
+      webSearch: feat?['web_search'] == true,
+      searchProvider: _str(feat?['search_provider']),
       imageGeneration: feat?['image_generation'] == true,
       imagesLeft: feat?['images_left'] is num ? (feat!['images_left'] as num).toInt() : -1,
       autoModel: feat?['auto_model'] == true,
@@ -390,6 +429,8 @@ class Bootstrap {
         'features': {
           'voice_input': voiceInput,
           'voice_mode': voiceMode,
+          'web_search': webSearch,
+          'search_provider': searchProvider,
           'image_generation': imageGeneration,
           'images_left': imagesLeft,
           'auto_model': autoModel,
@@ -404,6 +445,8 @@ class Bootstrap {
         defaultModelId: defaultModelId,
         voiceInput: voiceInput,
         voiceMode: voiceMode,
+        webSearch: webSearch,
+        searchProvider: searchProvider,
         imageGeneration: imageGeneration,
         imagesLeft: imagesLeft,
         autoModel: autoModel,

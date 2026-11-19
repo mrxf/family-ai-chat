@@ -128,8 +128,14 @@ void main() {
     final textField = tester.widget<TextField>(composerField);
     expect(textField.focusNode!.hasFocus, isTrue);
 
-    // Swipe open the history drawer (bypasses the AppBar menu button's onPressed).
+    // Swiping from the left edge must NOT open the history drawer (drag gesture disabled).
     await tester.dragFrom(const Offset(0, 300), const Offset(300, 0));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(HistoryDrawer), findsNothing);
+
+    // Open the history drawer via the AppBar menu button.
+    await tester.tap(find.byTooltip('聊天记录'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.byType(HistoryDrawer), findsOneWidget);

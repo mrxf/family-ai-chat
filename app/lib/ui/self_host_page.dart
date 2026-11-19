@@ -267,7 +267,7 @@ class _SelfHostConfigPageState extends ConsumerState<SelfHostConfigPage> {
                                 ? FieldActionPill(label: '粘贴', onTap: _pasteUrl)
                                 : IconButton(
                                     tooltip: '清空',
-                                    icon: Icon(AppIcons.closeCircle, size: 19, color: p.faint),
+                                    icon: AppIcon(AppIcons.closeCircle, size: 19, color: p.faint),
                                     onPressed: () => _urlCtrl.clear(),
                                   ),
                           ),
@@ -295,7 +295,7 @@ class _SelfHostConfigPageState extends ConsumerState<SelfHostConfigPage> {
                                   border: Border.all(color: p.accent.withValues(alpha: 0.38)),
                                 ),
                                 child: Row(children: [
-                                  Icon(AppIcons.rocket, color: p.accent, size: 21),
+                                  AppIcon(AppIcons.rocket, color: p.accent, size: 21),
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -304,7 +304,7 @@ class _SelfHostConfigPageState extends ConsumerState<SelfHostConfigPage> {
                                       Text('输入日志里的 8 位设置码，创建首个管理员账号', style: TextStyle(fontSize: 13, color: p.muted)),
                                     ]),
                                   ),
-                                  Icon(AppIcons.chevronRight, color: p.accent, size: 18),
+                                  AppIcon(AppIcons.chevronRight, color: p.accent, size: 18),
                                 ]),
                               ),
                             ),
@@ -330,7 +330,7 @@ class _SelfHostConfigPageState extends ConsumerState<SelfHostConfigPage> {
                     width: 42,
                     height: 42,
                     decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(13)),
-                    child: Icon(AppIcons.magicWand, color: p.accent, size: 22),
+                    child: AppIcon(AppIcons.magicWand, color: p.accent, size: 22),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -393,7 +393,7 @@ class _ModeOptionCard extends StatelessWidget {
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: Icon(
+            child: AppIcon(
               selected ? AppIcons.checkCircleFill : AppIcons.circle,
               color: selected ? p.accent : p.faint,
               size: 22,
@@ -403,7 +403,7 @@ class _ModeOptionCard extends StatelessWidget {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                Icon(icon, size: 18, color: selected ? p.accent : p.muted),
+                AppIcon(icon, size: 18, color: selected ? p.accent : p.muted),
                 const SizedBox(width: 6),
                 Flexible(
                   child: Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
@@ -624,7 +624,7 @@ class _InviteGeneratorSheetState extends ConsumerState<_InviteGeneratorSheet> {
                 Center(
                   child: TextButton.icon(
                     onPressed: () => setState(() => _showPlain = !_showPlain),
-                    icon: Icon(_showPlain ? AppIcons.chevronUp : AppIcons.chevronDown, size: 16, color: p.muted),
+                    icon: AppIcon(_showPlain ? AppIcons.chevronUp : AppIcons.chevronDown, size: 16, color: p.muted),
                     label: Text(_showPlain ? '收起明文账号密码' : '查看普通明文账号密码', style: TextStyle(fontSize: 14, color: p.muted)),
                   ),
                 ),
@@ -639,7 +639,7 @@ class _InviteGeneratorSheetState extends ConsumerState<_InviteGeneratorSheet> {
                           style: TextStyle(fontSize: 14, color: p.muted, height: 1.6),
                         ),
                       ),
-                      IconButton(tooltip: '复制明文', icon: Icon(AppIcons.copy, size: 19, color: p.accent), onPressed: _copyPlain),
+                      IconButton(tooltip: '复制明文', icon: AppIcon(AppIcons.copy, size: 19, color: p.accent), onPressed: _copyPlain),
                     ]),
                   ),
               ],
@@ -671,7 +671,7 @@ class _InviteGeneratorSheetState extends ConsumerState<_InviteGeneratorSheet> {
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(color: p.surfaceAlt, borderRadius: BorderRadius.circular(14)),
                 child: Row(children: [
-                  Icon(isSelfHost ? AppIcons.server : AppIcons.sparkles, size: 18, color: p.accent),
+                  AppIcon(isSelfHost ? AppIcons.server : AppIcons.sparkles, size: 18, color: p.accent),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -687,7 +687,7 @@ class _InviteGeneratorSheetState extends ConsumerState<_InviteGeneratorSheet> {
                 onChanged: (_) => setState(() {}),
                 decoration: const InputDecoration(
                   labelText: '家人称呼（选填，如：妈妈、爸爸）',
-                  prefixIcon: Icon(AppIcons.heart),
+                  prefixIcon: AppIcon(AppIcons.heart),
                 ),
               ),
               const SizedBox(height: 12),
@@ -700,7 +700,7 @@ class _InviteGeneratorSheetState extends ConsumerState<_InviteGeneratorSheet> {
                 }),
                 decoration: const InputDecoration(
                   labelText: '家人的登录用户名',
-                  prefixIcon: Icon(AppIcons.user),
+                  prefixIcon: AppIcon(AppIcons.user),
                 ),
               ),
               const SizedBox(height: 12),
@@ -714,9 +714,9 @@ class _InviteGeneratorSheetState extends ConsumerState<_InviteGeneratorSheet> {
                 }),
                 decoration: InputDecoration(
                   labelText: '家人的登录密码',
-                  prefixIcon: const Icon(AppIcons.lock),
+                  prefixIcon: const AppIcon(AppIcons.lock),
                   suffixIcon: IconButton(
-                    icon: Icon(_hidePass ? AppIcons.eye : AppIcons.eyeOff, color: p.faint),
+                    icon: AppIcon(_hidePass ? AppIcons.eye : AppIcons.eyeOff, color: p.faint),
                     onPressed: () => setState(() => _hidePass = !_hidePass),
                   ),
                 ),
@@ -778,7 +778,7 @@ Future<void> showSelfHostInfoSheet(BuildContext context, WidgetRef ref) {
                   width: 46,
                   height: 46,
                   decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(15)),
-                  child: Icon(isSelfHost ? AppIcons.server : AppIcons.sparkles, color: p.accent, size: 24),
+                  child: AppIcon(isSelfHost ? AppIcons.server : AppIcons.sparkles, color: p.accent, size: 24),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -857,7 +857,7 @@ class _CapItem extends StatelessWidget {
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
         padding: const EdgeInsets.only(top: 2),
-        child: Icon(icon, size: 20, color: p.accent),
+        child: AppIcon(icon, size: 20, color: p.accent),
       ),
       const SizedBox(width: 10),
       Expanded(

@@ -148,7 +148,9 @@ func run() error {
 	errCh := make(chan error, 1)
 	go func() {
 		voiceOn, _, voiceKind := apiSrv.ASR.ActiveStatus(context.Background())
-		log.Info("listening", "addr", cfg.Addr, "version", version, "data", cfg.DataDir, "voice", voiceOn, "asr", voiceKind)
+		searchOn, _, searchKind := apiSrv.Search.ActiveStatus(context.Background())
+		log.Info("listening", "addr", cfg.Addr, "version", version, "data", cfg.DataDir,
+			"voice", voiceOn, "asr", voiceKind, "web_search", searchOn, "search_provider", searchKind)
 		errCh <- srv.ListenAndServe()
 	}()
 

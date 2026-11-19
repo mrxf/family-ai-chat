@@ -29,9 +29,9 @@ import (
 )
 
 const (
-	// Up to 3 tool rounds (e.g. recall_memory -> read_past_conversation -> generate_image)
+	// Up to 4 tool rounds (e.g. recall_memory -> web_search -> web_fetch -> generate_image)
 	// followed by a final words-only round.
-	maxToolRounds    = 4
+	maxToolRounds    = 5
 	maxImagesPerTurn = 3
 	maxMemoryCalls   = 6
 	imageTimeout     = 3 * time.Minute
@@ -189,6 +189,8 @@ type toolSet struct {
 	tools     []llm.Tool
 	canDraw   bool
 	canRecall bool
+	canSearch bool
+	canFetch  bool
 }
 
 // toolsFor returns the tools a chat model may use in this reply.
@@ -204,6 +206,16 @@ func (s *Service) toolsFor(ctx context.Context, user *store.User, conv *store.Co
 	if !conv.Private && s.Memory != nil && s.Memory.Allowed(ctx, user, conv.AssistantID) {
 		ts.canRecall = true
 		ts.tools = append(ts.tools, recallMemoryTool, readConversationTool)
+	}
+	if s.Search != nil {
+		if en, canFetch, _ := s.Search.ActiveStatus(ctx); en {
+			ts.canSearch = true
+			ts.tools = append(ts.tools, webSearchTool)
+			if canFetch {
+				ts.canFetch = true
+				ts.tools = append(ts.tools, webFetchTool)
+			}
+		}
 	}
 	return ts
 }
@@ -232,15 +244,21 @@ func (s *Service) markToolsRejected(m *store.Model) { s.noTools.Store(toolKey(m)
 
 // toolTurn carries the state of one reply's tool use.
 type toolTurn struct {
-	user        *store.User
-	convID      string
-	assistantID *string
-	asstID      string
-	run         *Run
-	private     bool
-	images      int
-	memCalls    int
-	cost        float64
+	user          *store.User
+	convID        string
+	assistantID   *string
+	asstID        string
+	userQuestion  string
+	run           *Run
+	private       bool
+	images        int
+	memCalls      int
+	searchCalls   int
+	fetchCalls    int
+	sources       []store.WebSource
+	seenSourceURL map[string]int
+	postActivity  string
+	cost          float64
 }
 
 // runTools executes the calls of one round (pictures are drawn in parallel)
@@ -252,12 +270,12 @@ func (s *Service) runTools(ctx context.Context, t *toolTurn, calls []llm.ToolCal
 	im, ip := s.imageModel(ctx)
 	var refs []store.Attachment
 	refsLoaded := false
-	usedMemoryTool := false
+	usedReadTool := false
 
 	for i, call := range calls {
 		switch call.Name {
 		case recallMemoryTool.Name:
-			usedMemoryTool = true
+			usedReadTool = true
 			if t.private || s.Memory == nil {
 				results[i] = "当前是隐私对话或未开启记忆功能，无法查阅记忆。"
 				continue
@@ -290,12 +308,18 @@ func (s *Service) runTools(ctx context.Context, t *toolTurn, calls []llm.ToolCal
 					args.Queries = []string{alt.Query}
 				}
 			}
+			memLabel := "近期记忆"
+			if len(args.Queries) > 0 && !strings.EqualFold(strings.TrimSpace(args.Mode), "recent") {
+				memLabel = joinShortQueries(args.Queries, 28)
+			}
+			stepIdx := t.run.startStep("memory", "翻看记忆："+memLabel, "")
 			t.run.setActivity("正在翻看记忆…")
+			t.postActivity = "正在结合记忆整理回答…"
 			results[i] = s.Memory.Recall(ctx, t.user, t.assistantID, t.convID, args)
-			t.run.setActivity("")
+			t.run.finishStep(stepIdx, "done", "已翻看记忆："+memLabel, "")
 
 		case readConversationTool.Name:
-			usedMemoryTool = true
+			usedReadTool = true
 			if t.private || s.Memory == nil {
 				results[i] = "当前是隐私对话或未开启记忆功能，无法读取历史对话。"
 				continue
@@ -315,9 +339,19 @@ func (s *Service) runTools(ctx context.Context, t *toolTurn, calls []llm.ToolCal
 			if cid == "" {
 				cid = strings.TrimSpace(args.ConvID)
 			}
+			stepIdx := t.run.startStep("memory", "查阅历史对话", "")
 			t.run.setActivity("正在查看之前的对话…")
+			t.postActivity = "正在结合历史对话整理回答…"
 			results[i] = s.Memory.ReadConversation(ctx, t.user, t.assistantID, cid, args.Focus)
-			t.run.setActivity("")
+			t.run.finishStep(stepIdx, "done", "已查阅历史对话详情", "")
+
+		case webSearchTool.Name:
+			usedReadTool = true
+			results[i] = s.execWebSearchCall(ctx, t, call.Arguments)
+
+		case webFetchTool.Name:
+			usedReadTool = true
+			results[i] = s.execWebFetchCall(ctx, t, call.Arguments)
 
 		case imageTool.Name:
 			var args struct {
@@ -378,7 +412,7 @@ func (s *Service) runTools(ctx context.Context, t *toolTurn, calls []llm.ToolCal
 	}
 	jobs = jobs[:allowed]
 	if len(jobs) == 0 {
-		return results, !usedMemoryTool
+		return results, !usedReadTool
 	}
 
 	label := "正在画图…"
@@ -440,7 +474,7 @@ func (s *Service) runTools(ctx context.Context, t *toolTurn, calls []llm.ToolCal
 		}()
 	}
 	wg.Wait()
-	return results, !usedMemoryTool
+	return results, !usedReadTool
 }
 
 // drawJob is one picture to draw, or to modify when source is set.

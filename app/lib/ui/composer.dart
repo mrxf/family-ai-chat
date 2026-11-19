@@ -272,7 +272,7 @@ class ComposerState extends ConsumerState<Composer> {
                             child: Container(
                               padding: const EdgeInsets.all(3.5),
                               decoration: const BoxDecoration(color: Color(0xCC000000), shape: BoxShape.circle),
-                              child: const Icon(AppIcons.closeSmall, size: 13.5, color: Colors.white),
+                              child: const AppIcon(AppIcons.closeSmall, size: 13.5, color: Colors.white),
                             ),
                           ),
                         ),
@@ -348,7 +348,7 @@ class _ToolButton extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(color: p.surfaceAlt, shape: BoxShape.circle),
-          child: Icon(icon, size: 22, color: onTap == null ? p.faint : p.text),
+          child: AppIcon(icon, size: 22, color: onTap == null ? p.faint : p.text),
         ),
       ),
     );
@@ -375,7 +375,7 @@ class _ThinkChip extends StatelessWidget {
           border: Border.all(color: on ? p.accent.withValues(alpha: 0.6) : Colors.transparent),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(on ? AppIcons.thinkOn : AppIcons.thinkOff, size: 18, color: on ? p.accent : p.muted),
+          AppIcon(on ? AppIcons.thinkOn : AppIcons.thinkOff, size: 18, color: on ? p.accent : p.muted),
           const SizedBox(width: 5),
           Text('深度思考', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: on ? p.accent : p.muted)),
         ]),
@@ -413,7 +413,7 @@ class _SendButton extends StatelessWidget {
               shape: BoxShape.circle,
               boxShadow: enabled ? [BoxShadow(color: glow.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 4))] : null,
             ),
-            child: Icon(AppIcons.arrowUp, color: enabled ? Colors.white : p.faint, size: 22),
+            child: AppIcon(AppIcons.arrowUp, color: enabled ? Colors.white : p.faint, size: 22),
           );
     return Tooltip(
       message: busy ? '停止回答' : '发送',

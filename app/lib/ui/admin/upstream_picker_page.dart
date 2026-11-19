@@ -316,10 +316,10 @@ class _UpstreamPickerPageState extends ConsumerState<UpstreamPickerPage> {
           style: TextStyle(fontSize: 15.5, color: p.text),
           decoration: InputDecoration(
             hintText: '搜索模型，例如 gpt、claude、gemini',
-            prefixIcon: Icon(AppIcons.search, color: p.faint, size: 19),
+            prefixIcon: AppIcon(AppIcons.search, color: p.faint, size: 19),
             suffixIcon: _search.text.isEmpty
                 ? null
-                : IconButton(icon: Icon(AppIcons.close, size: 18, color: p.muted), onPressed: () => setState(_search.clear)),
+                : IconButton(icon: AppIcon(AppIcons.close, size: 18, color: p.muted), onPressed: () => setState(_search.clear)),
             contentPadding: const EdgeInsets.symmetric(vertical: 12),
           ),
         ),
@@ -404,7 +404,7 @@ class _ItemTile extends StatelessWidget {
           child: Row(children: [
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 160),
-              child: Icon(
+              child: AppIcon(
                 it.added ? AppIcons.checkCircle : (selected ? AppIcons.checkCircle : AppIcons.circle),
                 key: ValueKey('${it.added}$selected'),
                 color: it.added ? p.faint : (selected ? p.accent : p.line),

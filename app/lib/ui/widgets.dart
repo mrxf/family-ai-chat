@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'icons.dart';
 import 'theme.dart';
 
 /// The 小暖 mascot. [thinking] swaps in the pondering pose.
@@ -151,7 +152,7 @@ class SoftIconButton extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(color: filled ? p.surface : Colors.transparent, shape: BoxShape.circle, boxShadow: filled ? [BoxShadow(color: p.shadow, blurRadius: 10, offset: const Offset(0, 2))] : null),
-        child: Icon(icon, size: size * 0.52, color: color ?? p.text),
+        child: AppIcon(icon, size: size * 0.52, color: color ?? p.text),
       ),
     );
     return tooltip == null ? btn : Tooltip(message: tooltip!, child: btn);

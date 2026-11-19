@@ -223,7 +223,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
             if (m != null)
               IconButton(
                 tooltip: '删除',
-                icon: Icon(AppIcons.delete, color: p.bad),
+                icon: AppIcon(AppIcons.delete, color: p.bad),
                 onPressed: () => _delete(c, m),
               ),
           ],
@@ -379,7 +379,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
                           children: [
                             Padding(
                               padding: const EdgeInsets.only(top: 1.5),
-                              child: Icon(AppIcons.sparkles, size: 15, color: p.accent),
+                              child: AppIcon(AppIcons.sparkles, size: 15, color: p.accent),
                             ),
                             const SizedBox(width: 8),
                             Expanded(

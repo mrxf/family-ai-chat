@@ -16,6 +16,16 @@ import (
 // Subscribers do not get a per-token queue. They hold byte offsets into the
 // accumulated text and are woken through a 1-slot notify channel, so a slow
 // client never blocks the generator and bursts of tokens are coalesced.
+// RunStep describes one discrete task performed while preparing an assistant reply
+// (such as recalling memories, searching the web, or reading a web page).
+type RunStep struct {
+	Kind      string `json:"kind"`             // "memory" | "search" | "fetch" | "image"
+	Title     string `json:"title"`            // short human-readable task label
+	Detail    string `json:"detail,omitempty"` // optional outcome summary
+	Status    string `json:"status"`           // "running" | "done" | "error"
+	StartedAt int64  `json:"started_at,omitempty"`
+}
+
 type Run struct {
 	MessageID      string
 	ConversationID string
@@ -31,7 +41,10 @@ type Run struct {
 	modelID     string             // resolved/updated model ID (e.g. Auto mode or fallback)
 	activity    string             // what a tool is doing right now ("正在画图…"), "" when idle
 	activityAt  int64              // unix ms when the activity started
+	steps       []RunStep          // chronological task trace for memory/search/fetch
+	stepsSeq    int                // monotonic counter incremented on step mutations
 	attachments []store.Attachment // pictures drawn so far
+	sources     []store.WebSource  // web pages referenced so far
 	final       any                // set when finished: the final message payload
 	subs        map[chan struct{}]struct{}
 }
@@ -44,7 +57,10 @@ type Snapshot struct {
 	ModelID     string
 	Activity    string
 	ActivityAt  int64
+	Steps       []RunStep
+	StepsSeq    int
 	Attachments []store.Attachment
+	Sources     []store.WebSource
 	Final       any // non-nil once the run has finished
 }
 
@@ -87,6 +103,10 @@ func (r *Run) setModelID(id string) {
 
 func (r *Run) setActivity(a string) {
 	r.mu.Lock()
+	if r.activity == a {
+		r.mu.Unlock()
+		return
+	}
 	r.activity = a
 	r.activityAt = 0
 	if a != "" {
@@ -94,6 +114,59 @@ func (r *Run) setActivity(a string) {
 	}
 	r.notifyLocked()
 	r.mu.Unlock()
+}
+
+func (r *Run) startStep(kind, title, detail string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	idx := len(r.steps)
+	r.steps = append(r.steps, RunStep{
+		Kind:      kind,
+		Title:     title,
+		Detail:    detail,
+		Status:    "running",
+		StartedAt: time.Now().UnixMilli(),
+	})
+	r.stepsSeq++
+	r.notifyLocked()
+	return idx
+}
+
+func (r *Run) addDoneStep(kind, title, detail string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.steps = append(r.steps, RunStep{
+		Kind:   kind,
+		Title:  title,
+		Detail: detail,
+		Status: "done",
+	})
+	r.stepsSeq++
+	r.notifyLocked()
+}
+
+func (r *Run) finishStep(idx int, status, title, detail string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if idx < 0 || idx >= len(r.steps) {
+		return
+	}
+	if status != "" {
+		r.steps[idx].Status = status
+	}
+	if title != "" {
+		r.steps[idx].Title = title
+	}
+	r.steps[idx].Detail = detail
+	r.stepsSeq++
+	r.notifyLocked()
+}
+
+func (r *Run) setSources(sources []store.WebSource) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.sources = append([]store.WebSource(nil), sources...)
+	r.notifyLocked()
 }
 
 func (r *Run) addAttachment(a store.Attachment) []store.Attachment {
@@ -110,6 +183,12 @@ func (r *Run) contentLen() int {
 	return r.content.Len()
 }
 
+func (r *Run) reasoningLen() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.reasoning.Len()
+}
+
 func (r *Run) text() (string, string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -118,6 +197,8 @@ func (r *Run) text() (string, string) {
 
 func (r *Run) finish(final any) {
 	r.mu.Lock()
+	r.activity = ""
+	r.activityAt = 0
 	r.final = final
 	r.notifyLocked()
 	r.mu.Unlock()
@@ -131,7 +212,10 @@ func (r *Run) Snapshot() Snapshot {
 	return Snapshot{
 		Content: r.content.String(), Reasoning: r.reasoning.String(), Title: r.title, ModelID: r.modelID,
 		Activity: r.activity, ActivityAt: r.activityAt,
-		Attachments: append([]store.Attachment(nil), r.attachments...), Final: r.final,
+		Steps: append([]RunStep(nil), r.steps...), StepsSeq: r.stepsSeq,
+		Attachments: append([]store.Attachment(nil), r.attachments...),
+		Sources:     append([]store.WebSource(nil), r.sources...),
+		Final:       r.final,
 	}
 }
 

@@ -282,7 +282,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
               child: Row(
                 children: [
                   const SizedBox(width: 16),
-                  Icon(AppIcons.search, color: p.muted, size: 21),
+                  AppIcon(AppIcons.search, color: p.muted, size: 21),
                   const SizedBox(width: 10),
                   Expanded(
                     child: TextField(
@@ -313,7 +313,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                       },
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        child: Icon(AppIcons.closeCircle, size: 19, color: p.faint),
+                        child: AppIcon(AppIcons.closeCircle, size: 19, color: p.faint),
                       ),
                     )
                   else
@@ -336,7 +336,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                   border: Border.all(color: p.line),
                   boxShadow: [BoxShadow(color: p.shadow, blurRadius: 18, offset: const Offset(0, 4))],
                 ),
-                child: Icon(AppIcons.close, color: p.text, size: 21),
+                child: AppIcon(AppIcons.close, color: p.text, size: 21),
               ),
             ),
           ),
@@ -382,7 +382,7 @@ class _SearchTile extends StatelessWidget {
           children: [
             Padding(
               padding: EdgeInsets.only(top: hasSnippet ? 3 : 0, right: 14),
-              child: Icon(
+              child: AppIcon(
                 conv.pinned ? AppIcons.pin : AppIcons.chatBubble,
                 size: 19,
                 color: conv.pinned ? p.accent : p.muted,

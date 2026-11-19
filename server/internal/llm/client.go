@@ -24,6 +24,7 @@ import (
 type Message struct {
 	Role       string
 	Content    string
+	Reasoning  string // reasoning_content for multi-round tool calls on DeepSeek thinking models
 	Parts      []Part
 	ToolCalls  []ToolCall
 	ToolCallID string
@@ -205,9 +206,13 @@ func (c *Client) setHeaders(req *http.Request) {
 }
 
 func (c *Client) body(r Request, stream bool) ([]byte, error) {
+	var messages any = r.Messages
+	if c.Kind == KindDeepSeek || strings.Contains(strings.ToLower(r.Model), "deepseek-reasoner") {
+		messages = marshalDeepSeekMessages(r.Messages)
+	}
 	payload := map[string]any{
 		"model":    r.Model,
-		"messages": r.Messages,
+		"messages": messages,
 		"stream":   stream,
 	}
 	if stream {
@@ -233,6 +238,28 @@ func (c *Client) body(r Request, stream bool) ([]byte, error) {
 		payload["reasoning_effort"] = r.ReasoningEffort
 	}
 	return json.Marshal(payload)
+}
+
+func marshalDeepSeekMessages(msgs []Message) []any {
+	out := make([]any, len(msgs))
+	for i, m := range msgs {
+		if len(m.ToolCalls) > 0 {
+			var content *string
+			if m.Content != "" {
+				cp := m.Content
+				content = &cp
+			}
+			out[i] = map[string]any{
+				"role":              m.Role,
+				"content":           content,
+				"reasoning_content": m.Reasoning,
+				"tool_calls":        m.ToolCalls,
+			}
+			continue
+		}
+		out[i] = m
+	}
+	return out
 }
 
 func (c *Client) do(ctx context.Context, r Request, stream bool) (*http.Response, error) {

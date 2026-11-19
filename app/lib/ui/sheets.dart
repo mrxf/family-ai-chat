@@ -40,7 +40,7 @@ Future<void> showActionSheet(BuildContext context, {String? title, required List
               for (final a in actions)
                 ListTile(
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  leading: Icon(a.icon, color: a.danger ? p.bad : p.text),
+                  leading: AppIcon(a.icon, color: a.danger ? p.bad : p.text),
                   title: Text(a.label, style: TextStyle(fontSize: 17, color: a.danger ? p.bad : p.text)),
                   subtitle: a.subtitle == null ? null : Text(a.subtitle!, style: TextStyle(fontSize: 13, color: p.muted)),
                   onTap: () {
@@ -206,7 +206,7 @@ Future<String?> showModelPicker(BuildContext context, WidgetRef ref, {String tit
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Row(children: [
                               if (m.id == kAutoModelId) ...[
-                                Icon(AppIcons.sparkles, size: 18, color: p.accent),
+                                AppIcon(AppIcons.sparkles, size: 18, color: p.accent),
                                 const SizedBox(width: 6),
                               ],
                               Flexible(
@@ -232,7 +232,7 @@ Future<String?> showModelPicker(BuildContext context, WidgetRef ref, {String tit
                             ]),
                           ]),
                         ),
-                        if (m.id == current) Icon(AppIcons.checkCircle, color: p.accent),
+                        if (m.id == current) AppIcon(AppIcons.checkCircle, color: p.accent),
                       ]),
                     ),
                   ),
@@ -246,7 +246,7 @@ Future<String?> showModelPicker(BuildContext context, WidgetRef ref, {String tit
 }
 
 Widget _cap(Palette p, IconData icon, String label) => Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(icon, size: 14, color: p.faint),
+      AppIcon(icon, size: 14, color: p.faint),
       const SizedBox(width: 3),
       Text(label, style: TextStyle(fontSize: 12.5, color: p.faint)),
     ]);

@@ -169,7 +169,7 @@ var imageMarkers = []string{
 }
 
 // Chat models that are known to reject the tools parameter.
-var noToolMarkers = []string{"o1-mini", "o1-preview", "reasoner", "-r1", "qwq", "gemma", "-vl", "vl-", "instruct"}
+var noToolMarkers = []string{"o1-mini", "o1-preview", "-r1", "qwq", "gemma", "-vl", "vl-", "instruct"}
 
 func hasAny(s string, subs []string) bool {
 	for _, x := range subs {

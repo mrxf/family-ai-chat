@@ -518,7 +518,7 @@ func (s *sseReader) finish() (streamText, *store.Message, []string) {
 			text.Reasoning += v.Reasoning
 		case "title":
 			text.Title = decodeEvent[streamText](s.t, e).Title
-		case "model", "activity", "attachments":
+		case "model", "activity", "attachments", "steps", "sources":
 		case "done":
 			v := decodeEvent[chat.FinalEvent](s.t, e)
 			if v.Message == nil {

@@ -95,7 +95,7 @@ class _UsagePageState extends ConsumerState<UsagePage> {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(color: p.surfaceAlt, borderRadius: BorderRadius.circular(14)),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(AppIcons.info, size: 18, color: p.muted),
+              AppIcon(AppIcons.info, size: 18, color: p.muted),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(

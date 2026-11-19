@@ -71,6 +71,7 @@ class ProviderIcon extends StatelessWidget {
     'siliconflow': (Color(0xFF7B5CE6), AppIcons.cpu),
     'tencent': (Color(0xFF3D6EC9), AppIcons.waveform),
     'xfyun': (Color(0xFF4878B8), AppIcons.micOff),
+    'serp': (Color(0xFF3A7CA5), AppIcons.globe),
   };
 
   @override
@@ -93,7 +94,7 @@ class ProviderIcon extends StatelessWidget {
             ? Border.all(color: muted ? p.line : tone.withValues(alpha: isDark ? 0.26 : 0.16))
             : null,
       ),
-      child: Icon(style?.$2 ?? AppIcons.hub, color: tone, size: size * 0.50),
+      child: AppIcon(style?.$2 ?? AppIcons.hub, color: tone, size: size * 0.50),
     );
   }
 }
@@ -126,7 +127,7 @@ class Tag extends StatelessWidget {
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (icon != null) ...[
-          Icon(icon, size: 13, color: fg.withValues(alpha: isSemantic ? 0.95 : 0.85)),
+          AppIcon(icon, size: 13, color: fg.withValues(alpha: isSemantic ? 0.95 : 0.85)),
           const SizedBox(width: 3.5),
         ],
         Text(
@@ -198,7 +199,7 @@ class SwitchRow extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
         child: Row(children: [
           if (icon != null) ...[
-            Icon(icon, color: p.accent, size: 22),
+            AppIcon(icon, color: p.accent, size: 22),
             const SizedBox(width: 14),
           ],
           Expanded(child: TitleDesc(title, desc: desc)),
@@ -259,7 +260,7 @@ class SectionAction extends StatelessWidget {
             : null,
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           if (icon != null) ...[
-            Icon(icon, size: 15, color: p.accent),
+            AppIcon(icon, size: 15, color: p.accent),
             const SizedBox(width: 3.5),
           ],
           Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: p.accent)),
@@ -319,7 +320,7 @@ class InfoRow extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
           child: Row(children: [
-            if (icon != null) ...[Icon(icon, color: p.accent, size: 22), const SizedBox(width: 14)],
+            if (icon != null) ...[AppIcon(icon, color: p.accent, size: 22), const SizedBox(width: 14)],
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                 Text(title, style: AdminText.title(p)),
@@ -347,7 +348,7 @@ class InfoRow extends StatelessWidget {
               trailing!,
             ] else if (onTap != null) ...[
               const SizedBox(width: 4),
-              Icon(AppIcons.chevronRight, color: p.faint, size: 18),
+              AppIcon(AppIcons.chevronRight, color: p.faint, size: 18),
             ],
           ]),
         ),
@@ -432,7 +433,7 @@ class AdminField extends StatelessWidget {
           counterText: '',
           prefixText: prefixText,
           prefixStyle: TextStyle(fontSize: 15.5, color: p.muted),
-          prefixIcon: prefixIcon == null ? null : Icon(prefixIcon, size: 19, color: p.faint),
+          prefixIcon: prefixIcon == null ? null : AppIcon(prefixIcon, size: 19, color: p.faint),
           suffixIcon: suffix == null
               ? null
               : Padding(padding: const EdgeInsets.only(right: 6), child: suffix),
@@ -499,7 +500,7 @@ class ResultBanner extends StatelessWidget {
         border: Border.all(color: c.withValues(alpha: 0.22)),
       ),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(ok ? AppIcons.checkCircle : AppIcons.error, color: c, size: 20),
+        AppIcon(ok ? AppIcons.checkCircle : AppIcons.error, color: c, size: 20),
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -552,7 +553,7 @@ class PrimaryButton extends StatelessWidget {
           child: busy
               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
               : Row(mainAxisSize: MainAxisSize.min, children: [
-                  if (icon != null) ...[Icon(icon, color: Colors.white, size: 19), const SizedBox(width: 6)],
+                  if (icon != null) ...[AppIcon(icon, color: Colors.white, size: 19), const SizedBox(width: 6)],
                   Text(label, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
                 ]),
         ),
@@ -591,7 +592,7 @@ class SecondaryButton extends StatelessWidget {
           child: busy
               ? SizedBox(width: 19, height: 19, child: CircularProgressIndicator(strokeWidth: 2.2, color: p.accent))
               : Row(mainAxisSize: MainAxisSize.min, children: [
-                  if (icon != null) ...[Icon(icon, color: p.accent, size: 18), const SizedBox(width: 6)],
+                  if (icon != null) ...[AppIcon(icon, color: p.accent, size: 18), const SizedBox(width: 6)],
                   Text(label, style: TextStyle(color: p.text, fontSize: 15.5, fontWeight: FontWeight.w500)),
                 ]),
         ),

@@ -415,3 +415,89 @@ class AsrTestResult {
         message: _str(j['message']),
       );
 }
+
+// ---- web search admin models ----
+
+class AdminSearchProvider {
+  final String kind, name, description, keyUrl, keyPrefix, defaultUrl, priceNote;
+  final bool available, supportsFetch, hasKey, ready;
+  final String apiKeyHint, baseUrl, reusableProviderKeyHint;
+
+  const AdminSearchProvider({
+    required this.kind,
+    required this.name,
+    required this.description,
+    required this.available,
+    required this.supportsFetch,
+    required this.keyUrl,
+    required this.keyPrefix,
+    required this.defaultUrl,
+    required this.priceNote,
+    required this.hasKey,
+    required this.apiKeyHint,
+    required this.baseUrl,
+    required this.ready,
+    required this.reusableProviderKeyHint,
+  });
+
+  factory AdminSearchProvider.fromJson(Map<String, dynamic> j) => AdminSearchProvider(
+        kind: _str(j['kind']),
+        name: _str(j['name']),
+        description: _str(j['description']),
+        available: j['available'] == true,
+        supportsFetch: j['supports_fetch'] == true,
+        keyUrl: _str(j['key_url']),
+        keyPrefix: _str(j['key_prefix']),
+        defaultUrl: _str(j['default_url']),
+        priceNote: _str(j['price_note']),
+        hasKey: j['has_key'] == true,
+        apiKeyHint: _str(j['api_key_hint']),
+        baseUrl: _str(j['base_url']),
+        ready: j['ready'] == true,
+        reusableProviderKeyHint: _str(j['reusable_provider_key_hint']),
+      );
+}
+
+class AdminSearchState {
+  final String active;
+  final bool enabled, supportsFetch;
+  final List<AdminSearchProvider> providers;
+  const AdminSearchState({
+    required this.active,
+    required this.enabled,
+    required this.supportsFetch,
+    required this.providers,
+  });
+
+  AdminSearchProvider? byKind(String kind) {
+    for (final p in providers) {
+      if (p.kind == kind) return p;
+    }
+    return null;
+  }
+
+  factory AdminSearchState.fromJson(Map<String, dynamic> j) => AdminSearchState(
+        active: _str(j['active']),
+        enabled: j['enabled'] == true,
+        supportsFetch: j['supports_fetch'] == true,
+        providers: ((j['providers'] as List?) ?? const []).map((e) => AdminSearchProvider.fromJson((e as Map).cast())).toList(),
+      );
+}
+
+class SearchTestResult {
+  final bool ok;
+  final int latencyMs, resultCount;
+  final String message;
+  const SearchTestResult({
+    required this.ok,
+    required this.latencyMs,
+    required this.resultCount,
+    required this.message,
+  });
+  factory SearchTestResult.fromJson(Map<String, dynamic> j) => SearchTestResult(
+        ok: j['ok'] == true,
+        latencyMs: _int(j['latency_ms']),
+        resultCount: _int(j['result_count']),
+        message: _str(j['message']),
+      );
+}

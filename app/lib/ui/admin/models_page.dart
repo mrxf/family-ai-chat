@@ -473,7 +473,7 @@ class ModelRow extends ConsumerWidget {
               index: dragIndex!,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(4, 8, 6, 8),
-                child: Icon(AppIcons.dragHandle, size: 19, color: p.faint.withValues(alpha: 0.75)),
+                child: AppIcon(AppIcons.dragHandle, size: 19, color: p.faint.withValues(alpha: 0.75)),
               ),
             ),
         ]),
@@ -521,7 +521,7 @@ class ProviderCard extends StatelessWidget {
               ),
             ]),
           ),
-          Icon(AppIcons.chevronRight, color: p.faint, size: 18),
+          AppIcon(AppIcons.chevronRight, color: p.faint, size: 18),
         ]),
       ),
     );
@@ -567,7 +567,7 @@ Future<String?> showAdminModelChooser(
                     if (tags.isNotEmpty) ...[const SizedBox(height: 6), Wrap(spacing: 6, runSpacing: 6, children: tags)],
                   ]),
                 ),
-                if (selected) Icon(AppIcons.checkCircle, color: p.accent, size: 20),
+                if (selected) AppIcon(AppIcons.checkCircle, color: p.accent, size: 20),
               ]),
             ),
           ),

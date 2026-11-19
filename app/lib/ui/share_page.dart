@@ -297,7 +297,7 @@ class _ShareSelectPageState extends State<ShareSelectPage> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(AppIcons.sparkles, size: 18, color: count > 0 ? Colors.white : p.faint),
+                            AppIcon(AppIcons.sparkles, size: 18, color: count > 0 ? Colors.white : p.faint),
                             const SizedBox(width: 6),
                             Text(
                               '生成分享图片',
@@ -387,7 +387,7 @@ class _SelectableMessageTile extends StatelessWidget {
                     shape: BoxShape.circle,
                     border: checked ? null : Border.all(color: p.faint, width: 1.4),
                   ),
-                  child: checked ? const Icon(AppIcons.checkBold, size: 14, color: Colors.white) : null,
+                  child: checked ? const AppIcon(AppIcons.checkBold, size: 14, color: Colors.white) : null,
                 ),
               ),
               const SizedBox(width: 12),
@@ -422,7 +422,7 @@ class _SelectableMessageTile extends StatelessWidget {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(AppIcons.image, size: 13, color: p.muted),
+                                AppIcon(AppIcons.image, size: 13, color: p.muted),
                                 const SizedBox(width: 3),
                                 Text(imgCount > 1 ? '$imgCount 张图片' : '含图片', style: TextStyle(fontSize: 12, color: p.muted)),
                               ],
@@ -650,7 +650,7 @@ class _SharePosterPageState extends ConsumerState<SharePosterPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(AppIcons.download, size: 15, color: p.muted),
+                      AppIcon(AppIcons.download, size: 15, color: p.muted),
                       const SizedBox(width: 5),
                       Text('轻触上方图片或点击下方按钮，即可保存到本地', style: TextStyle(fontSize: 13, color: p.muted)),
                     ],
@@ -696,7 +696,7 @@ class _SharePosterPageState extends ConsumerState<SharePosterPage> {
                               child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
                             )
                           else
-                            Icon(_justSaved ? AppIcons.checkBold : AppIcons.download, size: 20, color: Colors.white),
+                            AppIcon(_justSaved ? AppIcons.checkBold : AppIcons.download, size: 20, color: Colors.white),
                           const SizedBox(width: 8),
                           Text(
                             _saving
@@ -1083,7 +1083,7 @@ class SharePosterCard extends StatelessWidget {
                           if (messages.isNotEmpty && !messages.first.isUser)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 6),
-                              child: Icon(AppIcons.quotes, size: 22, color: pal.accent.withValues(alpha: 0.4)),
+                              child: AppIcon(AppIcons.quotes, size: 22, color: pal.accent.withValues(alpha: 0.4)),
                             ),
                           for (var i = 0; i < messages.length; i++) ...[
                             if (i > 0) _buildTurnDivider(messages[i - 1], messages[i], pal),
@@ -1238,7 +1238,7 @@ class _PosterMessageItem extends StatelessWidget {
                 width: 22,
                 height: 22,
                 decoration: const BoxDecoration(gradient: Palette.brandGradient, shape: BoxShape.circle),
-                child: const Icon(AppIcons.sparkles, size: 12.5, color: Colors.white),
+                child: const AppIcon(AppIcons.sparkles, size: 12.5, color: Colors.white),
               ),
             const SizedBox(width: 7),
             Flexible(
@@ -1260,7 +1260,7 @@ class _PosterMessageItem extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(AppIcons.thinkOff, size: 11.5, color: palette.accent),
+                    AppIcon(AppIcons.thinkOff, size: 11.5, color: palette.accent),
                     const SizedBox(width: 3),
                     Text('深度思考', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: palette.accent)),
                   ],
@@ -1304,7 +1304,7 @@ class _PosterAttachments extends StatelessWidget {
       return Image.file(File(local), fit: BoxFit.cover, gaplessPlayback: true);
     }
     if (api == null || a.fileId.isEmpty) {
-      return Container(color: palette.surfaceAlt, child: Icon(AppIcons.image, color: palette.faint));
+      return Container(color: palette.surfaceAlt, child: AppIcon(AppIcons.image, color: palette.faint));
     }
     return Image.network(
       api!.fileUrl(a.fileId),
@@ -1313,7 +1313,7 @@ class _PosterAttachments extends StatelessWidget {
       gaplessPlayback: true,
       errorBuilder: (_, _, _) => Container(
         color: palette.surfaceAlt,
-        child: Icon(AppIcons.brokenImage, color: palette.faint),
+        child: AppIcon(AppIcons.brokenImage, color: palette.faint),
       ),
     );
   }

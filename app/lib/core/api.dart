@@ -311,6 +311,11 @@ class Api {
   Future<AdminAsrState> adminAsr() async => AdminAsrState.fromJson(((await _req('GET', '/api/admin/asr')) as Map).cast());
   Future<AdminAsrState> adminPutAsr(Map<String, dynamic> body) async => AdminAsrState.fromJson(((await _req('PUT', '/api/admin/asr', body: body)) as Map).cast());
   Future<AsrTestResult> adminTestAsr(Map<String, dynamic> body) async => AsrTestResult.fromJson(((await _req('POST', '/api/admin/asr/test', body: body)) as Map).cast());
+  Future<AdminSearchState> adminSearch() async => AdminSearchState.fromJson(((await _req('GET', '/api/admin/search')) as Map).cast());
+  Future<AdminSearchState> adminPutSearch(Map<String, dynamic> body) async =>
+      AdminSearchState.fromJson(((await _req('PUT', '/api/admin/search', body: body)) as Map).cast());
+  Future<SearchTestResult> adminTestSearch(Map<String, dynamic> body) async =>
+      SearchTestResult.fromJson(((await _req('POST', '/api/admin/search/test', body: body)) as Map).cast());
 
   // ---- admin: providers & models ----
   static List<T> _list<T>(dynamic d, T Function(Map<String, dynamic>) f) => ((d as List?) ?? const []).map((e) => f((e as Map).cast<String, dynamic>())).toList();

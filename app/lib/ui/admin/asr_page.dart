@@ -243,7 +243,7 @@ class _AsrAdminPageState extends ConsumerState<AsrAdminPage> {
             onTap: () => setState(() => _hideSecret = !_hideSecret),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-              child: Icon(
+              child: AppIcon(
                 _hideSecret ? AppIcons.eye : AppIcons.eyeOff,
                 size: 19,
                 color: p.muted,
@@ -322,7 +322,7 @@ class _AsrAdminPageState extends ConsumerState<AsrAdminPage> {
                         color: state.enabled ? p.accentSoft : p.surfaceAlt,
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      child: Icon(
+                      child: AppIcon(
                         state.enabled ? AppIcons.mic : AppIcons.micOff,
                         color: state.enabled ? p.accent : p.muted,
                         size: 22,
@@ -415,7 +415,7 @@ class _AsrAdminPageState extends ConsumerState<AsrAdminPage> {
                             ),
                             if (pr.available) ...[
                               const SizedBox(width: 10),
-                              Icon(
+                              AppIcon(
                                 selected ? AppIcons.checkCircle : AppIcons.circle,
                                 size: 21,
                                 color: selected ? p.accent : p.line,

@@ -138,7 +138,7 @@ class _WelcomeState extends ConsumerState<Welcome> {
                 Center(
                   child: TextButton.icon(
                     onPressed: () => setState(() => _picks = _shuffle()),
-                    icon: Icon(AppIcons.refresh, size: 17, color: p.muted),
+                    icon: AppIcon(AppIcons.refresh, size: 17, color: p.muted),
                     label: Text('换一批', style: TextStyle(color: p.muted, fontSize: 15)),
                   ),
                 ),
@@ -190,7 +190,7 @@ class _SelfHostHomePill extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(AppIcons.server, size: 15, color: p.accent),
+                AppIcon(AppIcons.server, size: 15, color: p.accent),
                 const SizedBox(width: 6),
                 Flexible(
                   child: Text(
@@ -201,7 +201,7 @@ class _SelfHostHomePill extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 4),
-                Icon(AppIcons.chevronRight, size: 13, color: p.accent.withValues(alpha: 0.8)),
+                AppIcon(AppIcons.chevronRight, size: 13, color: p.accent.withValues(alpha: 0.8)),
               ],
             ),
           ),
@@ -226,7 +226,7 @@ class _NoModels extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(18), border: Border.all(color: p.accent.withValues(alpha: 0.4))),
         child: Row(children: [
-          Icon(isAdmin ? AppIcons.hub : AppIcons.hourglass, color: p.accent),
+          AppIcon(isAdmin ? AppIcons.hub : AppIcons.hourglass, color: p.accent),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -236,7 +236,7 @@ class _NoModels extends StatelessWidget {
                   style: TextStyle(fontSize: 13.5, color: p.muted, height: 1.4)),
             ]),
           ),
-          if (isAdmin) Icon(AppIcons.chevronRight, color: p.accent, size: 18),
+          if (isAdmin) AppIcon(AppIcons.chevronRight, color: p.accent, size: 18),
         ]),
       ),
     );
@@ -264,7 +264,7 @@ class _SuggestionCard extends StatelessWidget {
         child: Row(children: [
           if (emoji.isNotEmpty) ...[Text(emoji, style: const TextStyle(fontSize: 20)), const SizedBox(width: 12)],
           Expanded(child: Text(text, style: const TextStyle(fontSize: 16.5, height: 1.4))),
-          Icon(AppIcons.arrowUpRight, size: 17, color: p.faint),
+          AppIcon(AppIcons.arrowUpRight, size: 17, color: p.faint),
         ]),
       ),
     );
@@ -310,7 +310,7 @@ class _PrivateWelcome extends ConsumerWidget {
                           shape: BoxShape.circle,
                           border: Border.all(color: p.privateAccent.withValues(alpha: 0.25), width: 1.5),
                         ),
-                        child: Icon(AppIcons.privateChat, size: 38, color: p.privateAccent),
+                        child: AppIcon(AppIcons.privateChat, size: 38, color: p.privateAccent),
                       )
                     : Stack(
                         clipBehavior: Clip.none,
@@ -327,7 +327,7 @@ class _PrivateWelcome extends ConsumerWidget {
                                 shape: BoxShape.circle,
                                 border: Border.all(color: p.bg, width: 2.5),
                               ),
-                              child: const Icon(AppIcons.privateChat, size: 15, color: Colors.white),
+                              child: const AppIcon(AppIcons.privateChat, size: 15, color: Colors.white),
                             ),
                           ),
                         ],
@@ -392,7 +392,7 @@ class _PrivateWelcome extends ConsumerWidget {
                 Center(
                   child: TextButton.icon(
                     onPressed: () => ref.read(chatProvider.notifier).newChat(isPrivate: true),
-                    icon: Icon(AppIcons.refresh, size: 17, color: p.privateAccent),
+                    icon: AppIcon(AppIcons.refresh, size: 17, color: p.privateAccent),
                     label: Text('切回通用隐私对话', style: TextStyle(color: p.privateAccent, fontSize: 15)),
                   ),
                 ),
@@ -426,7 +426,7 @@ class _PrivatePoint extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.only(top: 2),
-          child: Icon(icon, size: 21, color: p.privateAccent),
+          child: AppIcon(icon, size: 21, color: p.privateAccent),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -522,7 +522,7 @@ class _PrivateChatEntryCard extends StatelessWidget {
                     color: p.privateSoft,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(AppIcons.privateChat, size: 19, color: p.privateAccent),
+                  child: AppIcon(AppIcons.privateChat, size: 19, color: p.privateAccent),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -542,7 +542,7 @@ class _PrivateChatEntryCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 6),
-                Icon(AppIcons.chevronRight, size: 17, color: p.privateAccent.withValues(alpha: 0.75)),
+                AppIcon(AppIcons.chevronRight, size: 17, color: p.privateAccent.withValues(alpha: 0.75)),
               ],
             ),
           ),

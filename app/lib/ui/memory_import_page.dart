@@ -256,7 +256,7 @@ class _MemoryImportPageState extends ConsumerState<MemoryImportPage> {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: Icon(AppIcons.info, size: 20, color: p.bad),
+            child: AppIcon(AppIcons.info, size: 20, color: p.bad),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -310,7 +310,7 @@ class _MemoryImportPageState extends ConsumerState<MemoryImportPage> {
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
                 onPressed: _discard,
-                icon: const Icon(AppIcons.close, size: 19),
+                icon: const AppIcon(AppIcons.close, size: 19),
                 label: const Text('取消整理'),
               )
             else
@@ -323,7 +323,7 @@ class _MemoryImportPageState extends ConsumerState<MemoryImportPage> {
                     : (_text.text.trim().isEmpty || count > _maxRunes ? null : _start),
                 icon: _busy
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(reviewing ? AppIcons.check : AppIcons.sparkles, size: 20),
+                    : AppIcon(reviewing ? AppIcons.check : AppIcons.sparkles, size: 20),
                 label: Text(_busy ? (reviewing ? '正在导入…' : '正在提交…') : (reviewing ? '导入 ${_selected.length} 条' : '让小暖整理')),
               ),
           ],
@@ -408,7 +408,7 @@ class _MemoryImportPageState extends ConsumerState<MemoryImportPage> {
                         await Clipboard.setData(const ClipboardData(text: memoryImportPrompt));
                         if (mounted) showToast(context, '已复制，发给原来的 AI 就好');
                       },
-                icon: const Icon(AppIcons.copy, size: 19),
+                icon: const AppIcon(AppIcons.copy, size: 19),
                 label: const Text('一键复制这段话'),
               ),
             ],
@@ -431,7 +431,7 @@ class _MemoryImportPageState extends ConsumerState<MemoryImportPage> {
                   if (!mounted) return;
                   setState(() => _text.text = data?.text ?? '');
                 },
-          icon: const Icon(AppIcons.paste, size: 19),
+          icon: const AppIcon(AppIcons.paste, size: 19),
           label: const Text('粘贴回答'),
         ),
       ),

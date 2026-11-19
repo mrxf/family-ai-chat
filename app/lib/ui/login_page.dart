@@ -324,7 +324,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with WidgetsBindingObserv
                                     border: Border.all(color: p.accent.withValues(alpha: 0.4)),
                                   ),
                                   child: Row(children: [
-                                    Icon(AppIcons.rocket, color: p.accent),
+                                    AppIcon(AppIcons.rocket, color: p.accent),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -333,7 +333,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with WidgetsBindingObserv
                                         Text('你是部署它的人？点这里完成初始化', style: TextStyle(fontSize: 13.5, color: p.muted)),
                                       ]),
                                     ),
-                                    Icon(AppIcons.chevronRight, color: p.accent, size: 18),
+                                    AppIcon(AppIcons.chevronRight, color: p.accent, size: 18),
                                   ]),
                                 ),
                               ),
@@ -349,7 +349,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with WidgetsBindingObserv
                       style: const TextStyle(fontSize: 17),
                       decoration: InputDecoration(
                         hintText: '管理员给你的用户名',
-                        prefixIcon: Icon(AppIcons.user, color: p.faint),
+                        prefixIcon: AppIcon(AppIcons.user, color: p.faint),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -364,9 +364,9 @@ class _LoginPageState extends ConsumerState<LoginPage> with WidgetsBindingObserv
                       style: const TextStyle(fontSize: 17),
                       decoration: InputDecoration(
                         hintText: '请输入密码',
-                        prefixIcon: Icon(AppIcons.lock, color: p.faint),
+                        prefixIcon: AppIcon(AppIcons.lock, color: p.faint),
                         suffixIcon: IconButton(
-                          icon: Icon(_hide ? AppIcons.eye : AppIcons.eyeOff, color: p.faint),
+                          icon: AppIcon(_hide ? AppIcons.eye : AppIcons.eyeOff, color: p.faint),
                           onPressed: () => setState(() => _hide = !_hide),
                         ),
                       ),
@@ -378,7 +378,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with WidgetsBindingObserv
                           : Padding(
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               child: Row(children: [
-                                Icon(AppIcons.info, color: p.bad, size: 20),
+                                AppIcon(AppIcons.info, color: p.bad, size: 20),
                                 const SizedBox(width: 8),
                                 Expanded(child: Text(_error!, style: TextStyle(color: p.bad, fontSize: 15))),
                               ]),
@@ -461,7 +461,7 @@ class _FooterActionButton extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(icon, size: 17, color: p.accent),
+            AppIcon(icon, size: 17, color: p.accent),
             const SizedBox(width: 5),
             Text(label, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.muted)),
           ]),
@@ -514,7 +514,7 @@ class _SelfHostCard extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(12)),
-                child: Icon(AppIcons.server, color: p.accent, size: 20),
+                child: AppIcon(AppIcons.server, color: p.accent, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -562,7 +562,7 @@ class _SelfHostCard extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
                     child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Icon(AppIcons.magicWand, size: 16, color: p.accent),
+                      AppIcon(AppIcons.magicWand, size: 16, color: p.accent),
                       const SizedBox(width: 5),
                       Flexible(
                         child: Text(
@@ -584,7 +584,7 @@ class _SelfHostCard extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
                     child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Icon(AppIcons.repeat, size: 15, color: p.muted),
+                      AppIcon(AppIcons.repeat, size: 15, color: p.muted),
                       const SizedBox(width: 5),
                       Flexible(
                         child: Text(
@@ -842,7 +842,7 @@ class _ManualPasteSheetState extends State<_ManualPasteSheet> {
             Center(
               child: TextButton.icon(
                 onPressed: widget.onOpenGenerator,
-                icon: Icon(AppIcons.magicWand, size: 16, color: p.accent),
+                icon: AppIcon(AppIcons.magicWand, size: 16, color: p.accent),
                 label: Text('我是家人管理员，制作登录口令', style: TextStyle(fontSize: 14, color: p.muted)),
               ),
             ),
