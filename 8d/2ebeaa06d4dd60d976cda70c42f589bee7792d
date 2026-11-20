@@ -1,0 +1,112 @@
+README.md
+  h_8f297825d1fe21 80-81
+app/android/app/src/main/AndroidManifest.xml
+  h_8f297825d1fe21 5-8,71-82
+app/android/app/src/main/kotlin/com/nuan/chat/MainActivity.kt
+  h_8f297825d1fe21 3-5,7,12,24,26-27,34,36,38-39,43,68-148,154-155,157-158,170-183
+app/android/app/src/main/kotlin/com/nuan/chat/ReminderNotifications.kt
+  h_8f297825d1fe21 1-224
+app/ios/Runner/AppDelegate.swift
+  h_8f297825d1fe21 3,7-12,17,23-151
+app/lib/core/api.dart
+  h_8f297825d1fe21 179-201,261-274
+app/lib/core/models.dart
+  h_8f297825d1fe21 284-323,338,352,372,389,405,417,545-782
+app/lib/core/reminders.dart
+  h_8f297825d1fe21 1-78
+app/lib/state/chat.dart
+  h_8f297825d1fe21 11,13,64-66,77,82,101,117,286,655,661-662,715-764,777,796-798
+app/lib/state/schedules.dart
+  h_8f297825d1fe21 1-45
+app/lib/ui/chat_components.dart
+  h_8f297825d1fe21 1-2550
+app/lib/ui/drawer.dart
+  h_8f297825d1fe21 7,11,45,167-195,214
+app/lib/ui/home_page.dart
+  h_8f297825d1fe21 7,13,19,57-68,120,134-135
+app/lib/ui/icons.dart
+  h_8f297825d1fe21 114-134,262-281,297
+app/lib/ui/messages.dart
+  h_8f297825d1fe21 14,412,442,449-457,465,519,723-726,759-762,769-777,780-782,802-817,844
+app/lib/ui/schedule_editor.dart
+  h_8f297825d1fe21 1-350
+app/lib/ui/schedules_page.dart
+  h_8f297825d1fe21 1-624
+app/lib/ui/settings_page.dart
+  h_8f297825d1fe21 9,16,38,56-64,99-114
+app/lib/ui/share_page.dart
+  h_8f297825d1fe21 18,32,37,43,1273,1275-1282,1285
+app/test/chat_components_test.dart
+  h_8f297825d1fe21 1-398
+app/test/schedules_ui_test.dart
+  h_8f297825d1fe21 1-154
+docs/api.md
+  h_8f297825d1fe21 1261-1303
+docs/proposal-v7-skills-and-schedule.md
+  h_8f297825d1fe21 1-65
+docs/proposal-v8-components-and-ask-user.md
+  h_8f297825d1fe21 1-34
+server/internal/api/chat.go
+  h_8f297825d1fe21 545,561-562,572,625-630,672-678
+server/internal/api/components.go
+  h_8f297825d1fe21 1-43
+server/internal/api/components_test.go
+  h_8f297825d1fe21 1-56
+server/internal/api/schedules.go
+  h_8f297825d1fe21 1-219
+server/internal/api/schedules_test.go
+  h_8f297825d1fe21 1-79
+server/internal/api/server.go
+  h_8f297825d1fe21 97-102,119
+server/internal/chat/hub.go
+  h_8f297825d1fe21 5,9,24,39-53,58-70,186-213,250-254
+server/internal/chat/service.go
+  h_8f297825d1fe21 17,62-65,101-105,699-704,715-717,720,761-768,800-801,806-812,822-824,831-835,837,1070-1072,1195-1202,1257-1258,1262-1264,1266
+server/internal/chat/skills_components_test.go
+  h_8f297825d1fe21 1-285
+server/internal/chat/skills_runtime.go
+  h_8f297825d1fe21 1-220
+server/internal/chat/skills_schedule_test.go
+  h_8f297825d1fe21 1-196
+server/internal/chat/tools.go
+  h_8f297825d1fe21 28,197-200,227-250,278-301,314,401-415,453-486,492
+server/internal/chat/tools_components.go
+  h_8f297825d1fe21 1-1282
+server/internal/chat/tools_schedule.go
+  h_8f297825d1fe21 1-928
+server/internal/skills/skills.go
+  h_8f297825d1fe21 1-251
+server/internal/skills/skills_test.go
+  h_8f297825d1fe21 1-68
+server/internal/store/conversations.go
+  h_8f297825d1fe21 354-363,373-393,397-398,410-413,435-441,824-829,831,853-906
+server/internal/store/copy.go
+  h_8f297825d1fe21 13
+server/internal/store/copy_test.go
+  h_8f297825d1fe21 105-110
+server/internal/store/migrations/postgres/013_schedules.sql
+  h_8f297825d1fe21 1-23
+server/internal/store/migrations/postgres/014_message_components.sql
+  h_8f297825d1fe21 1
+server/internal/store/migrations/sqlite/013_schedules.sql
+  h_8f297825d1fe21 1-23
+server/internal/store/migrations/sqlite/014_message_components.sql
+  h_8f297825d1fe21 1
+server/internal/store/schedules.go
+  h_8f297825d1fe21 1-765
+server/internal/store/schedules_test.go
+  h_8f297825d1fe21 1-147
+server/internal/store/store_test.go
+  h_8f297825d1fe21 5,83,499-547
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "8d2ebeaa06d4dd60d976cda70c42f589bee7792d",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
