@@ -1258,3 +1258,46 @@ data: {"message":{"id":"01933c90-1210-7000-8000-000000000012","conversation_id":
   - `GET /api/bootstrap` 的 `features` 新增 `auto_model`（bool）与 `auto_dynamic`（bool）。
   - `Conversation` 新增 `auto_mode`（bool）；`POST /api/chat`、`POST /api/conversations/{id}/regenerate`、`POST/PATCH /api/conversations` 的 `model_id` 支持传 `"auto"`。
   - `GET /api/messages/{id}/stream`：Auto 选定或动态切换模型时，`snapshot` 包含最新 `model_id`，并在运行中推送 `event: model`（`{"conversation_id":"…","model_id":"…"}`）。
+
+---
+
+## 11. 个人日程与本地提醒接口（v7）
+
+除对话中通过 `read_skill({"skill_key": "schedule"})` 解锁日程专属工具（`list_schedules` / `create_schedule` / `update_schedule` / `complete_schedule` / `delete_schedule`）自动增删改查外，客户端「我的日程」页面与本地通知同步通过以下需登录接口交互：
+
+- **`GET /api/schedules`**：获取当前用户的全部活跃与已完成日程，同时由服务端统一展开：
+  - `schedules`：原始 `Schedule` 列表；
+  - `today_occurrences` / `tomorrow_occurrences` / `upcoming_occurrences`：今、明及未来两周的具体展开事项（含周期事项在各日期的 `completed` 状态）；
+  - `upcoming_reminders`：未来 30 天内最近 **48** 个待触发提醒时间点（`id`、`schedule_id`、`occurrence_date`、`title`、`body`、`start_at`、`fire_at`、`all_day`），供 Android `AlarmManager` 与 iOS `UNUserNotificationCenter` 直接对齐同步；
+  - `today_pending` / `active_total`：今日未完成数与总活跃日程数。
+- **`POST /api/schedules`**：手动新增日程（支持 `all_day`、`remind_before_min`（`0` 准点、`>0` 提前分钟数、`-1` 不响铃）、`recurrence`（`none | daily | weekdays | weekly | monthly | yearly`）与 `recurrence_days`（如 `"1,3,5"`））。
+- **`PATCH /api/schedules/{id}`**：修改日程字段，或传递 `{"completed": true/false, "occurrence_date": "YYYY-MM-DD"}` 切换完成状态（周期日程仅打卡指定日期，后续周期不受影响）。
+- **`DELETE /api/schedules/{id}`**：永久删除单条或周期日程（`204`）。
+- **`DELETE /api/schedules`**：一键清理所有已完成的单次日程，返回 `{"deleted": n}`。
+- **SSE 步骤类型扩展**：`RunStep.kind` 新增 `"skill"`（加载领域技能指南）与 `"schedule"`（查询/添加/修改/完成/取消日程）。
+
+---
+
+## 12. 对话内联组件与原生询问用户接口（v8）
+
+基于 Skills 按需工具引擎新增两个独立技能：
+- **`ui_components`（对话可视化卡片组件）**：按需解锁 `show_weather`（天气预报卡）、`show_todo`（互动打勾清单）、`show_chart`（折线/柱状/环形图表）、`show_quiz`（互动答题揭晓卡）、`show_metrics`（核心指标看板）。
+- **`ask_user`（交互式询问用户偏好）**：按需解锁 `ask_user_question`，在聊天气泡中弹出 1～4 道单选/多选/推荐标记/自定义输入的原生询问卡片，用户确认后自动落库选中状态并发送结构化回复推进下一轮对话。
+
+### 协议与接口变更
+- **`Message` 对象扩展**：新增 `components` 数组（无组件时省略），每项结构为：
+  ```json
+  {
+    "id": "comp_1_01a1f99b",
+    "kind": "weather | todo | chart | quiz | metrics | ask_user",
+    "pos": 18,
+    "data": { "...": "工具生成的结构化展示数据" },
+    "state": { "...": "用户交互可变状态（如 done_ids / selected_index / submitted+answers）" }
+  }
+  ```
+  其中 `pos` 为组件插入时刻对应 `Message.content` 的 Unicode 字符（rune）偏移量，客户端据此实现文字与卡片的流式精确穿插渲染，同时保持 `content` 纯文本干净无标记污染。
+- **SSE 流式事件（`GET /api/messages/{id}/stream`）**：
+  - `snapshot` 新增 `components` 数组；
+  - 生成过程中每当新组件渲染或状态变更时，实时推送 `event: components`（`{"components": [...]}`）；
+  - `RunStep.kind` 新增 `"component"` 与 `"ask_user"`。
+- **`PATCH /api/messages/{id}/components/{compId}`**：需登录（仅限会话所属用户），请求体 `{"state": {...}}`（上限 16KB JSON 对象），原子更新指定消息内对应组件的交互状态（如 Todo 打勾、Quiz 作答、AskUser 提交），若该消息仍在流式生成中同步更新内存 `Run` 快照，返回 `{"component": {...}, "message": {...}}`。

@@ -111,6 +111,27 @@ abstract final class AppIcons {
   static const IconData link = PhosphorIconsLight.linkSimple;
   static const IconData wallet = PhosphorIconsLight.wallet;
   static const IconData listPlus = PhosphorIconsLight.listPlus;
+  static const IconData calendar = PhosphorIconsLight.calendarCheck;
+  static const IconData bell = PhosphorIconsLight.bell;
+  static const IconData bellOff = PhosphorIconsLight.bellSlash;
+  static const IconData clock = PhosphorIconsLight.clock;
+  static const IconData mapPin = PhosphorIconsLight.mapPin;
+  static const IconData sun = PhosphorIconsLight.sun;
+  static const IconData cloudSun = PhosphorIconsLight.cloudSun;
+  static const IconData cloudRain = PhosphorIconsLight.cloudRain;
+  static const IconData cloudSnow = PhosphorIconsLight.cloudSnow;
+  static const IconData cloudLightning = PhosphorIconsLight.cloudLightning;
+  static const IconData wind = PhosphorIconsLight.wind;
+  static const IconData drop = PhosphorIconsLight.drop;
+  static const IconData thermometer = PhosphorIconsLight.thermometer;
+  static const IconData checkSquare = PhosphorIconsRegular.checkSquare;
+  static const IconData square = PhosphorIconsLight.square;
+  static const IconData listChecks = PhosphorIconsLight.listChecks;
+  static const IconData chartLine = PhosphorIconsLight.chartLineUp;
+  static const IconData chartPie = PhosphorIconsLight.chartPieSlice;
+  static const IconData question = PhosphorIconsLight.sealQuestion;
+  static const IconData gauge = PhosphorIconsLight.gauge;
+  static const IconData cards = PhosphorIconsLight.cards;
 
   // ---- provider emblems ----
   static const IconData route = PhosphorIconsLight.gitFork;
@@ -238,6 +259,26 @@ abstract final class AppIcons {
         link => (_set(PhosphorIconsThin.linkSimple, PhosphorIconsLight.linkSimple, PhosphorIconsRegular.linkSimple, PhosphorIconsBold.linkSimple), 1),
         wallet => (_set(PhosphorIconsThin.wallet, PhosphorIconsLight.wallet, PhosphorIconsRegular.wallet, PhosphorIconsBold.wallet), 1),
         listPlus => (_set(PhosphorIconsThin.listPlus, PhosphorIconsLight.listPlus, PhosphorIconsRegular.listPlus, PhosphorIconsBold.listPlus), 1),
+        calendar => (_set(PhosphorIconsThin.calendarCheck, PhosphorIconsLight.calendarCheck, PhosphorIconsRegular.calendarCheck, PhosphorIconsBold.calendarCheck), 1),
+        bell => (_set(PhosphorIconsThin.bell, PhosphorIconsLight.bell, PhosphorIconsRegular.bell, PhosphorIconsBold.bell), 1),
+        bellOff => (_set(PhosphorIconsThin.bellSlash, PhosphorIconsLight.bellSlash, PhosphorIconsRegular.bellSlash, PhosphorIconsBold.bellSlash), 1),
+        clock => (_set(PhosphorIconsThin.clock, PhosphorIconsLight.clock, PhosphorIconsRegular.clock, PhosphorIconsBold.clock), 1),
+        mapPin => (_set(PhosphorIconsThin.mapPin, PhosphorIconsLight.mapPin, PhosphorIconsRegular.mapPin, PhosphorIconsBold.mapPin), 1),
+        sun => (_set(PhosphorIconsThin.sun, PhosphorIconsLight.sun, PhosphorIconsRegular.sun, PhosphorIconsBold.sun), 1),
+        cloudSun => (_set(PhosphorIconsThin.cloudSun, PhosphorIconsLight.cloudSun, PhosphorIconsRegular.cloudSun, PhosphorIconsBold.cloudSun), 1),
+        cloudRain => (_set(PhosphorIconsThin.cloudRain, PhosphorIconsLight.cloudRain, PhosphorIconsRegular.cloudRain, PhosphorIconsBold.cloudRain), 1),
+        cloudSnow => (_set(PhosphorIconsThin.cloudSnow, PhosphorIconsLight.cloudSnow, PhosphorIconsRegular.cloudSnow, PhosphorIconsBold.cloudSnow), 1),
+        cloudLightning => (_set(PhosphorIconsThin.cloudLightning, PhosphorIconsLight.cloudLightning, PhosphorIconsRegular.cloudLightning, PhosphorIconsBold.cloudLightning), 1),
+        wind => (_set(PhosphorIconsThin.wind, PhosphorIconsLight.wind, PhosphorIconsRegular.wind, PhosphorIconsBold.wind), 1),
+        drop => (_set(PhosphorIconsThin.drop, PhosphorIconsLight.drop, PhosphorIconsRegular.drop, PhosphorIconsBold.drop), 1),
+        thermometer => (_set(PhosphorIconsThin.thermometer, PhosphorIconsLight.thermometer, PhosphorIconsRegular.thermometer, PhosphorIconsBold.thermometer), 1),
+        square => (_set(PhosphorIconsThin.square, PhosphorIconsLight.square, PhosphorIconsRegular.square, PhosphorIconsBold.square), 1),
+        listChecks => (_set(PhosphorIconsThin.listChecks, PhosphorIconsLight.listChecks, PhosphorIconsRegular.listChecks, PhosphorIconsBold.listChecks), 1),
+        chartLine => (_set(PhosphorIconsThin.chartLineUp, PhosphorIconsLight.chartLineUp, PhosphorIconsRegular.chartLineUp, PhosphorIconsBold.chartLineUp), 1),
+        chartPie => (_set(PhosphorIconsThin.chartPieSlice, PhosphorIconsLight.chartPieSlice, PhosphorIconsRegular.chartPieSlice, PhosphorIconsBold.chartPieSlice), 1),
+        question => (_set(PhosphorIconsThin.sealQuestion, PhosphorIconsLight.sealQuestion, PhosphorIconsRegular.sealQuestion, PhosphorIconsBold.sealQuestion), 1),
+        gauge => (_set(PhosphorIconsThin.gauge, PhosphorIconsLight.gauge, PhosphorIconsRegular.gauge, PhosphorIconsBold.gauge), 1),
+        cards => (_set(PhosphorIconsThin.cards, PhosphorIconsLight.cards, PhosphorIconsRegular.cards, PhosphorIconsBold.cards), 1),
         route => (_set(PhosphorIconsThin.gitFork, PhosphorIconsLight.gitFork, PhosphorIconsRegular.gitFork, PhosphorIconsBold.gitFork), 1),
         aperture => (_set(PhosphorIconsThin.aperture, PhosphorIconsLight.aperture, PhosphorIconsRegular.aperture, PhosphorIconsBold.aperture), 1),
         waves => (_set(PhosphorIconsThin.waves, PhosphorIconsLight.waves, PhosphorIconsRegular.waves, PhosphorIconsBold.waves), 1),
@@ -253,6 +294,7 @@ abstract final class AppIcons {
         checkCircle => (_set(PhosphorIconsThin.checkCircle, PhosphorIconsLight.checkCircle, PhosphorIconsRegular.checkCircle, PhosphorIconsBold.checkCircle), 2),
         radioOn => (_set(PhosphorIconsThin.radioButton, PhosphorIconsLight.radioButton, PhosphorIconsRegular.radioButton, PhosphorIconsBold.radioButton), 2),
         starActive => (_set(PhosphorIconsThin.star, PhosphorIconsLight.star, PhosphorIconsRegular.star, PhosphorIconsBold.star), 2),
+        checkSquare => (_set(PhosphorIconsThin.checkSquare, PhosphorIconsLight.checkSquare, PhosphorIconsRegular.checkSquare, PhosphorIconsBold.checkSquare), 2),
 
         _ => null,
       };

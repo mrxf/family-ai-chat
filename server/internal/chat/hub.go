@@ -2,9 +2,11 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"nuan/internal/store"
 )
@@ -19,7 +21,7 @@ import (
 // RunStep describes one discrete task performed while preparing an assistant reply
 // (such as recalling memories, searching the web, or reading a web page).
 type RunStep struct {
-	Kind      string `json:"kind"`             // "memory" | "history" | "search" | "fetch" | "image"
+	Kind      string `json:"kind"`             // "memory" | "history" | "search" | "fetch" | "image" | "skill" | "schedule" | "component" | "ask_user"
 	Title     string `json:"title"`            // short human-readable task label
 	Detail    string `json:"detail,omitempty"` // optional outcome summary
 	Status    string `json:"status"`           // "running" | "done" | "error"
@@ -34,34 +36,38 @@ type Run struct {
 	cancel context.CancelCauseFunc
 	done   chan struct{}
 
-	mu          sync.Mutex
-	content     strings.Builder
-	reasoning   strings.Builder
-	title       string
-	modelID     string             // resolved/updated model ID (e.g. Auto mode or fallback)
-	activity    string             // what a tool is doing right now ("正在画图…"), "" when idle
-	activityAt  int64              // unix ms when the activity started
-	steps       []RunStep          // chronological task trace for memory/search/fetch
-	stepsSeq    int                // monotonic counter incremented on step mutations
-	attachments []store.Attachment // pictures drawn so far
-	sources     []store.WebSource  // web pages referenced so far
-	final       any                // set when finished: the final message payload
-	subs        map[chan struct{}]struct{}
+	mu            sync.Mutex
+	content       strings.Builder
+	reasoning     strings.Builder
+	title         string
+	modelID       string                   // resolved/updated model ID (e.g. Auto mode or fallback)
+	activity      string                   // what a tool is doing right now ("正在画图…"), "" when idle
+	activityAt    int64                    // unix ms when the activity started
+	steps         []RunStep                // chronological task trace for memory/search/fetch
+	stepsSeq      int                      // monotonic counter incremented on step mutations
+	attachments   []store.Attachment       // pictures drawn so far
+	sources       []store.WebSource        // web pages referenced so far
+	components    []store.MessageComponent // rich UI cards interleaved in this reply
+	componentsSeq int                      // monotonic counter incremented on component additions/updates
+	final         any                      // set when finished: the final message payload
+	subs          map[chan struct{}]struct{}
 }
 
 // Snapshot is the complete visible state of a run at one point in time.
 type Snapshot struct {
-	Content     string
-	Reasoning   string
-	Title       string
-	ModelID     string
-	Activity    string
-	ActivityAt  int64
-	Steps       []RunStep
-	StepsSeq    int
-	Attachments []store.Attachment
-	Sources     []store.WebSource
-	Final       any // non-nil once the run has finished
+	Content       string
+	Reasoning     string
+	Title         string
+	ModelID       string
+	Activity      string
+	ActivityAt    int64
+	Steps         []RunStep
+	StepsSeq      int
+	Attachments   []store.Attachment
+	Sources       []store.WebSource
+	Components    []store.MessageComponent
+	ComponentsSeq int
+	Final         any // non-nil once the run has finished
 }
 
 func (r *Run) notifyLocked() {
@@ -177,6 +183,34 @@ func (r *Run) addAttachment(a store.Attachment) []store.Attachment {
 	return append([]store.Attachment(nil), r.attachments...)
 }
 
+func (r *Run) addComponent(c store.MessageComponent) []store.MessageComponent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if c.Pos < 0 {
+		c.Pos = utf8.RuneCountInString(r.content.String())
+	}
+	r.components = append(r.components, c)
+	r.componentsSeq++
+	r.notifyLocked()
+	return append([]store.MessageComponent(nil), r.components...)
+}
+
+// UpdateComponentState synchronizes an in-flight run's component state if the user
+// interacts with a rendered card while the message is still streaming.
+func (r *Run) UpdateComponentState(compID string, state json.RawMessage) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.components {
+		if r.components[i].ID == compID {
+			r.components[i].State = append(json.RawMessage(nil), state...)
+			r.componentsSeq++
+			r.notifyLocked()
+			return true
+		}
+	}
+	return false
+}
+
 func (r *Run) contentLen() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -213,9 +247,11 @@ func (r *Run) Snapshot() Snapshot {
 		Content: r.content.String(), Reasoning: r.reasoning.String(), Title: r.title, ModelID: r.modelID,
 		Activity: r.activity, ActivityAt: r.activityAt,
 		Steps: append([]RunStep(nil), r.steps...), StepsSeq: r.stepsSeq,
-		Attachments: append([]store.Attachment(nil), r.attachments...),
-		Sources:     append([]store.WebSource(nil), r.sources...),
-		Final:       r.final,
+		Attachments:   append([]store.Attachment(nil), r.attachments...),
+		Sources:       append([]store.WebSource(nil), r.sources...),
+		Components:    append([]store.MessageComponent(nil), r.components...),
+		ComponentsSeq: r.componentsSeq,
+		Final:         r.final,
 	}
 }
 

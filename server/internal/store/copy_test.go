@@ -102,6 +102,12 @@ func populateCopyStore(t *testing.T, s *Store) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.CreateSchedule(ctx, &Schedule{
+		UserID: u.ID, Title: "复查血压", StartAt: Now() + 3600000, RemindBeforeMin: 30,
+		Recurrence: RecurrenceDaily, CompletedDates: []string{"2026-11-19"}, SourceConvID: &c.ID,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	f := &File{UserID: u.ID, Mime: "image/png", Size: 123, Path: "files/picture.png", SHA256: "abc", Width: 16, Height: 32}
 	if err := s.CreateFile(ctx, f); err != nil {
 		t.Fatal(err)

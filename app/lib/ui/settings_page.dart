@@ -6,12 +6,14 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../core/api.dart';
 import '../state/session.dart';
 import '../state/memories.dart';
+import '../state/schedules.dart';
 import 'admin/asr_page.dart';
 import 'admin/models_page.dart';
 import 'admin/search_page.dart';
 import 'admin/usage_page.dart';
 import 'admin_page.dart';
 import 'icons.dart';
+import 'schedules_page.dart';
 import 'self_host_page.dart';
 import 'sheets.dart';
 import 'memories_page.dart';
@@ -33,6 +35,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   void initState() {
     super.initState();
     ref.invalidate(memoriesProvider);
+    ref.invalidate(schedulesProvider);
   }
 
   @override
@@ -49,6 +52,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       data: (m) => !m.enabled ? '已关闭' : '已记住 ${m.total} 件事${m.newCount > 0 ? ' · ${m.newCount} 条新的' : ''}',
       loading: () => '让小暖记住你的情况，换哪个模型都认识你',
       error: (_, _) => '让小暖记住你的情况，换哪个模型都认识你',
+    );
+    final schedules = ref.watch(schedulesProvider);
+    final scheduleSubtitle = schedules.when(
+      skipLoadingOnRefresh: false,
+      data: (sc) => sc.todayPending > 0
+          ? '今天有 ${sc.todayPending} 项待办 · 共 ${sc.activeTotal} 项日程'
+          : (sc.activeTotal > 0 ? '共 ${sc.activeTotal} 项日程提醒' : '跟小暖说句话就能在手机上定准点提醒'),
+      loading: () => '跟小暖说句话就能在手机上定准点提醒',
+      error: (_, _) => '跟小暖说句话就能在手机上定准点提醒',
     );
 
     return Scaffold(
@@ -84,11 +96,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               clipBehavior: Clip.antiAlias,
               color: p.surface,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: p.line)),
-              child: _Tile(
-                icon: AppIcons.heart,
-                title: '小暖记住的事',
-                subtitle: memorySubtitle,
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MemoriesPage())),
+              child: Column(
+                children: [
+                  _Tile(
+                    icon: AppIcons.heart,
+                    title: '小暖记住的事',
+                    subtitle: memorySubtitle,
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MemoriesPage())),
+                  ),
+                  Divider(height: 1, indent: 56, color: p.line),
+                  _Tile(
+                    icon: AppIcons.calendar,
+                    title: '我的日程',
+                    subtitle: scheduleSubtitle,
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SchedulesPage())),
+                  ),
+                ],
               ),
             ),
           ),

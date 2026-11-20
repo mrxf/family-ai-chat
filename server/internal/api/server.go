@@ -94,6 +94,12 @@ func (s *Server) Routes() http.Handler {
 			r.Delete("/memories/import/preview", s.cancelMemoryImport)
 			r.Post("/memories/import", s.importMemories)
 
+			r.Get("/schedules", s.listSchedules)
+			r.Post("/schedules", s.createSchedule)
+			r.Patch("/schedules/{id}", s.updateSchedule)
+			r.Delete("/schedules/{id}", s.deleteSchedule)
+			r.Delete("/schedules", s.clearCompletedSchedules)
+
 			r.Get("/models", s.listModels)
 			r.Get("/assistants", s.listAssistants)
 			r.Post("/assistants", s.createAssistant)
@@ -110,6 +116,7 @@ func (s *Server) Routes() http.Handler {
 			r.Post("/conversations/{id}/regenerate", s.regenerate)
 			r.Get("/messages/{id}/stream", s.stream)
 			r.Post("/messages/{id}/cancel", s.cancel)
+			r.Patch("/messages/{id}/components/{compId}", s.updateMessageComponent)
 
 			r.Post("/files", s.uploadFile)
 			r.Get("/files/{id}", s.getFile)

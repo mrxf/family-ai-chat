@@ -176,6 +176,29 @@ class Api {
     return (_list(d['memories'], Memory.fromJson), (d['skipped'] as num?)?.toInt() ?? 0);
   }
 
+  // ---- personal schedules & reminders ----
+  Future<SchedulesResult> schedules() async =>
+      SchedulesResult.fromJson((await _req('GET', '/api/schedules') as Map).cast());
+
+  Future<Schedule> createSchedule(ScheduleDraft draft) async =>
+      Schedule.fromJson((await _req('POST', '/api/schedules', body: draft.toJson()) as Map).cast());
+
+  Future<Schedule> updateSchedule(String id, Map<String, dynamic> patch) async =>
+      Schedule.fromJson((await _req('PATCH', '/api/schedules/${Uri.encodeComponent(id)}', body: patch) as Map).cast());
+
+  Future<Schedule> toggleScheduleComplete(String id, {required bool completed, String? occurrenceDate}) async =>
+      Schedule.fromJson((await _req('PATCH', '/api/schedules/${Uri.encodeComponent(id)}', body: {
+        'completed': completed,
+        if (occurrenceDate != null && occurrenceDate.isNotEmpty) 'occurrence_date': occurrenceDate,
+      }) as Map).cast());
+
+  Future<void> deleteSchedule(String id) => _req('DELETE', '/api/schedules/${Uri.encodeComponent(id)}');
+
+  Future<int> clearCompletedSchedules() async {
+    final d = await _req('DELETE', '/api/schedules');
+    return d is Map ? ((d['deleted'] as num?)?.toInt() ?? 0) : 0;
+  }
+
   // ---- conversations ----
   Future<List<Conversation>> conversations({int? before, String? q, int limit = 50}) async {
     final d = await _req('GET', '/api/conversations', query: {
@@ -233,6 +256,20 @@ class Api {
   Future<SendResult> regenerate(String convId, {String? modelId, bool think = false}) async {
     final d = await _req('POST', '/api/conversations/$convId/regenerate', body: {'model_id': ?modelId, 'think': think});
     return SendResult.fromJson((d as Map).cast());
+  }
+
+  Future<MessageComponent> updateMessageComponentState(
+    String messageId,
+    String compId,
+    Map<String, dynamic> state,
+  ) async {
+    final d = await _req(
+      'PATCH',
+      '/api/messages/${Uri.encodeComponent(messageId)}/components/${Uri.encodeComponent(compId)}',
+      body: {'state': state},
+    );
+    final comp = (d as Map)['component'];
+    return comp is Map ? MessageComponent.fromJson(comp.cast()) : MessageComponent(id: compId, kind: '', state: state);
   }
 
   Future<void> cancel(String messageId) => _req('POST', '/api/messages/$messageId/cancel');

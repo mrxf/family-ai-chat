@@ -8,7 +8,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api.dart';
 import '../core/models.dart';
+import '../core/reminders.dart';
 import 'conversations.dart';
+import 'schedules.dart';
 import 'session.dart';
 
 /// Live text of the generation in progress. Only the streaming bubble listens
@@ -59,6 +61,9 @@ class LiveText {
   /// Web pages referenced so far in this reply.
   final List<WebSource> sources;
 
+  /// Interactive rich cards interleaved in this reply.
+  final List<MessageComponent> components;
+
   /// When the current activity started (for the elapsed-seconds counter).
   final DateTime? activitySince;
 
@@ -69,11 +74,12 @@ class LiveText {
     this.steps = const [],
     this.attachments = const [],
     this.sources = const [],
+    this.components = const [],
     this.activitySince,
   });
   static const empty = LiveText('', '');
 
-  LivePhase get phase => content.isNotEmpty
+  LivePhase get phase => (content.isNotEmpty || components.isNotEmpty)
       ? LivePhase.answering
       : reasoning.isNotEmpty
           ? LivePhase.reasoning
@@ -92,6 +98,7 @@ class LiveText {
     List<RunStep>? steps,
     List<Attachment>? attachments,
     List<WebSource>? sources,
+    List<MessageComponent>? components,
   }) {
     final act = activity ?? this.activity;
     DateTime? since;
@@ -107,6 +114,7 @@ class LiveText {
       steps: steps ?? this.steps,
       attachments: attachments ?? this.attachments,
       sources: sources ?? this.sources,
+      components: components ?? this.components,
       activitySince: since,
     );
   }
@@ -275,6 +283,7 @@ class ChatController extends Notifier<ChatState> {
 
   Future<void> _onBeforeLogout(Api api) async {
     _sessionModelId = null;
+    unawaited(ReminderBridge.instance.clearAll());
     if (!state.isPrivate) return;
     await _cleanupPrivateState(apiOverride: api, waitDelete: true);
     _nav++;
@@ -643,11 +652,14 @@ class ChatController extends Notifier<ChatState> {
                 steps: _steps(ev.data['steps']),
                 attachments: _attachments(ev.data['attachments']),
                 sources: _sources(ev.data['sources']),
+                components: _components(ev.data['components']),
               );
             case 'steps':
               live.value = live.value.copyWith(steps: _steps(ev.data['steps']));
             case 'sources':
               live.value = live.value.copyWith(sources: _sources(ev.data['sources']));
+            case 'components':
+              live.value = live.value.copyWith(components: _components(ev.data['components']));
             case 'model':
               final mid = '${ev.data['model_id'] ?? ''}';
               if (mid.isNotEmpty) {
@@ -700,6 +712,56 @@ class ChatController extends Notifier<ChatState> {
   static List<WebSource> _sources(dynamic raw) =>
       raw is List ? [for (final e in raw) if (e is Map) WebSource.fromJson(e.cast())] : const [];
 
+  static List<MessageComponent> _components(dynamic raw) =>
+      raw is List ? [for (final e in raw) if (e is Map) MessageComponent.fromJson(e.cast())] : const [];
+
+  /// Optimistically updates an interactive component's state (e.g. Todo check,
+  /// Quiz choice, AskUser submission) and persists it to the server.
+  Future<void> updateComponentState(String messageId, String compId, Map<String, dynamic> nextState) async {
+    if (messageId.isEmpty || compId.isEmpty) return;
+    if (state.activeId == messageId) {
+      final cur = live.value;
+      live.value = cur.copyWith(
+        components: [
+          for (final c in cur.components) c.id == compId ? c.copyWith(state: nextState) : c,
+        ],
+      );
+    }
+    state = state.copyWith(
+      messages: [
+        for (final m in state.messages)
+          if (m.id == messageId)
+            m.copyWith(
+              components: [
+                for (final c in m.components) c.id == compId ? c.copyWith(state: nextState) : c,
+              ],
+            )
+          else
+            m,
+      ],
+    );
+    _persist();
+    final api = _apiOrNull;
+    if (api != null && !messageId.startsWith('local-')) {
+      try {
+        await api.updateMessageComponentState(messageId, compId, nextState);
+      } catch (_) {}
+    }
+  }
+
+  /// Persists an `ask_user` card selection and sends the formatted answer as the next user message.
+  Future<void> submitAskUserAnswer(
+    String messageId,
+    String compId,
+    Map<String, dynamic> nextState,
+    String replyText,
+  ) async {
+    await updateComponentState(messageId, compId, nextState);
+    if (replyText.trim().isNotEmpty && !state.busy && !state.loading) {
+      await send(replyText);
+    }
+  }
+
   void _finish(String expectedId, Message? finalMsg) {
     if (state.activeId != expectedId) return;
     final v = live.value;
@@ -712,6 +774,7 @@ class ChatController extends Notifier<ChatState> {
                 reasoning: v.reasoning,
                 attachments: v.attachments,
                 sources: v.sources,
+                components: v.components,
                 status: MsgStatus.interrupted,
               )
         else
@@ -729,6 +792,9 @@ class ChatController extends Notifier<ChatState> {
     final boot = ref.read(sessionProvider).boot;
     if ((finalMsg?.attachments.isNotEmpty ?? false) && boot != null && boot.imagesLeft >= 0) {
       ref.read(sessionProvider.notifier).refresh();
+    }
+    if (!state.isPrivate && v.steps.any((s) => s.kind == 'schedule')) {
+      unawaited(syncSchedulesAfterChat(ref));
     }
     _persist();
   }

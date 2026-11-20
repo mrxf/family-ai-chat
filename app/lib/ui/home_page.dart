@@ -4,16 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/models.dart';
+import '../core/reminders.dart';
 import '../core/tts.dart';
 import '../main.dart';
 import '../state/chat.dart';
 import '../state/conversations.dart';
 import '../state/incoming_share.dart';
+import '../state/schedules.dart';
 import '../state/session.dart';
 import 'chat_view.dart';
 import 'composer.dart';
 import 'drawer.dart';
 import 'icons.dart';
+import 'schedules_page.dart';
 import 'share_page.dart';
 import 'sheets.dart';
 import 'theme.dart';
@@ -51,6 +54,18 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) checkForUpdate(context, ref, silent: true);
     });
+    ReminderBridge.instance.attach(onOpenSchedules: _openSchedulesFromNotification);
+    Future.microtask(() async {
+      if (await ReminderBridge.instance.takePendingOpenSchedules()) {
+        _openSchedulesFromNotification();
+      }
+    });
+  }
+
+  void _openSchedulesFromNotification() {
+    if (!mounted || ref.read(sessionProvider).boot == null) return;
+    navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    navigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => const SchedulesPage()));
   }
 
   @override
@@ -102,6 +117,7 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
     if (state == AppLifecycleState.resumed) {
       ref.read(chatProvider.notifier).onResume();
       ref.read(sessionProvider.notifier).refresh();
+      ref.invalidate(schedulesProvider);
     } else if (state == AppLifecycleState.paused) {
       Speaker.instance.stop();
     }
@@ -115,6 +131,8 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) {
     ref.listen(chatProvider.select((s) => s.epoch), (_, _) => _unfocusComposer());
+    // Eagerly keep schedules & local phone notifications synced while logged in.
+    ref.watch(schedulesProvider.select((_) => 0));
     final p = context.pal;
     final chat = ref.watch(chatProvider);
     final boot = ref.watch(sessionProvider).boot;

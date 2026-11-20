@@ -281,6 +281,46 @@ class WebSource {
       };
 }
 
+class MessageComponent {
+  final String id;
+  final String kind; // 'weather' | 'todo' | 'chart' | 'quiz' | 'metrics' | 'ask_user'
+  final int pos; // rune offset in Message.content
+  final Map<String, dynamic> data;
+  final Map<String, dynamic> state;
+
+  const MessageComponent({
+    required this.id,
+    required this.kind,
+    this.pos = 0,
+    this.data = const {},
+    this.state = const {},
+  });
+
+  factory MessageComponent.fromJson(Map<String, dynamic> j) => MessageComponent(
+        id: _str(j['id']),
+        kind: _str(j['kind']),
+        pos: _int(j['pos']),
+        data: j['data'] is Map ? Map<String, dynamic>.from((j['data'] as Map).cast()) : const {},
+        state: j['state'] is Map ? Map<String, dynamic>.from((j['state'] as Map).cast()) : const {},
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'kind': kind,
+        'pos': pos,
+        'data': data,
+        if (state.isNotEmpty) 'state': state,
+      };
+
+  MessageComponent copyWith({Map<String, dynamic>? state}) => MessageComponent(
+        id: id,
+        kind: kind,
+        pos: pos,
+        data: data,
+        state: state ?? this.state,
+      );
+}
+
 enum MsgStatus { done, streaming, error, cancelled, interrupted, sending }
 
 MsgStatus _status(String s) => switch (s) {
@@ -295,6 +335,7 @@ class Message {
   final String id, conversationId, role, content, reasoning, error;
   final List<Attachment> attachments;
   final List<WebSource> sources;
+  final List<MessageComponent> components;
   final MsgStatus status;
   final String? modelId;
   final int durationMs, completionTokens, createdAt;
@@ -308,6 +349,7 @@ class Message {
     this.error = '',
     this.attachments = const [],
     this.sources = const [],
+    this.components = const [],
     this.status = MsgStatus.done,
     this.modelId,
     this.durationMs = 0,
@@ -327,6 +369,7 @@ class Message {
         error: _str(j['error']),
         attachments: ((j['attachments'] as List?) ?? const []).map((e) => Attachment.fromJson((e as Map).cast())).toList(),
         sources: ((j['sources'] as List?) ?? const []).map((e) => WebSource.fromJson((e as Map).cast())).toList(),
+        components: ((j['components'] as List?) ?? const []).map((e) => MessageComponent.fromJson((e as Map).cast())).toList(),
         status: _status(_str(j['status'])),
         modelId: _strN(j['model_id']),
         durationMs: _int(j['duration_ms']),
@@ -343,6 +386,7 @@ class Message {
         'error': error,
         'attachments': attachments.map((a) => a.toJson()).toList(),
         if (sources.isNotEmpty) 'sources': sources.map((s) => s.toJson()).toList(),
+        if (components.isNotEmpty) 'components': components.map((c) => c.toJson()).toList(),
         'status': status.name == 'sending' ? 'done' : status.name,
         'model_id': modelId,
         'duration_ms': durationMs,
@@ -358,6 +402,7 @@ class Message {
     String? error,
     List<Attachment>? attachments,
     List<WebSource>? sources,
+    List<MessageComponent>? components,
     String? modelId,
   }) =>
       Message(
@@ -369,6 +414,7 @@ class Message {
         error: error ?? this.error,
         attachments: attachments ?? this.attachments,
         sources: sources ?? this.sources,
+        components: components ?? this.components,
         status: status ?? this.status,
         modelId: modelId ?? this.modelId,
         durationMs: durationMs,
@@ -495,4 +541,242 @@ class Bootstrap {
     }
     return null;
   }
+}
+
+// ---------------- schedules ----------------
+
+enum ScheduleRecurrence {
+  none('单次'),
+  daily('每天'),
+  weekdays('工作日'),
+  weekly('每周'),
+  monthly('每月'),
+  yearly('每年');
+
+  const ScheduleRecurrence(this.label);
+  final String label;
+  static ScheduleRecurrence parse(dynamic value) =>
+      values.where((r) => r.name == value).firstOrNull ?? none;
+}
+
+class Schedule {
+  final String id, title, note, location, recurrenceDays, status, source;
+  final ScheduleRecurrence recurrence;
+  final int startAt, endAt, remindBeforeMin, recurrenceUntil, completedAt, createdAt, updatedAt;
+  final bool allDay;
+  final List<String> completedDates;
+  final String? sourceConvId;
+
+  const Schedule({
+    required this.id,
+    required this.title,
+    this.note = '',
+    this.location = '',
+    required this.startAt,
+    this.endAt = 0,
+    this.allDay = false,
+    this.remindBeforeMin = 0,
+    this.recurrence = ScheduleRecurrence.none,
+    this.recurrenceDays = '',
+    this.recurrenceUntil = 0,
+    this.completedDates = const [],
+    this.status = 'active',
+    this.completedAt = 0,
+    this.source = 'ai',
+    this.sourceConvId,
+    this.createdAt = 0,
+    this.updatedAt = 0,
+  });
+
+  bool get isRecurring => recurrence != ScheduleRecurrence.none;
+  bool get isCompleted => status == 'completed';
+
+  String get recurrenceSummary {
+    switch (recurrence) {
+      case ScheduleRecurrence.none:
+        return '';
+      case ScheduleRecurrence.daily:
+        return '每天';
+      case ScheduleRecurrence.weekdays:
+        return '每个工作日';
+      case ScheduleRecurrence.weekly:
+        const names = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+        final labels = recurrenceDays
+            .split(',')
+            .map((s) => int.tryParse(s.trim()) ?? 0)
+            .where((n) => n >= 1 && n <= 7)
+            .map((n) => names[n])
+            .toList();
+        return labels.isEmpty ? '每周' : '每${labels.join('、')}';
+      case ScheduleRecurrence.monthly:
+        return '每月';
+      case ScheduleRecurrence.yearly:
+        return '每年';
+    }
+  }
+
+  String get remindLabel {
+    final m = remindBeforeMin;
+    if (m < 0) return '不响铃';
+    if (m == 0) return allDay ? '当天 09:00 提醒' : '准点提醒';
+    if (m % 1440 == 0) return '提前 ${m ~/ 1440} 天提醒';
+    if (m % 60 == 0) return '提前 ${m ~/ 60} 小时提醒';
+    return '提前 $m 分钟提醒';
+  }
+
+  factory Schedule.fromJson(Map<String, dynamic> j) => Schedule(
+        id: _str(j['id']),
+        title: _str(j['title']),
+        note: _str(j['note']),
+        location: _str(j['location']),
+        startAt: _int(j['start_at']),
+        endAt: _int(j['end_at']),
+        allDay: j['all_day'] == true,
+        remindBeforeMin: _int(j['remind_before_min']),
+        recurrence: ScheduleRecurrence.parse(j['recurrence']),
+        recurrenceDays: _str(j['recurrence_days']),
+        recurrenceUntil: _int(j['recurrence_until']),
+        completedDates: ((j['completed_dates'] as List?) ?? const []).map((e) => e.toString()).toList(),
+        status: _str(j['status']).isEmpty ? 'active' : _str(j['status']),
+        completedAt: _int(j['completed_at']),
+        source: _str(j['source']),
+        sourceConvId: _strN(j['source_conv_id']),
+        createdAt: _int(j['created_at']),
+        updatedAt: _int(j['updated_at']),
+      );
+}
+
+class ScheduleOccurrence {
+  final Schedule schedule;
+  final String occurrenceDate;
+  final int startAt, endAt, fireAt;
+  final bool completed;
+
+  const ScheduleOccurrence({
+    required this.schedule,
+    required this.occurrenceDate,
+    required this.startAt,
+    this.endAt = 0,
+    this.fireAt = 0,
+    this.completed = false,
+  });
+
+  factory ScheduleOccurrence.fromJson(Map<String, dynamic> j) => ScheduleOccurrence(
+        schedule: Schedule.fromJson((j['schedule'] as Map?)?.cast<String, dynamic>() ?? const {}),
+        occurrenceDate: _str(j['occurrence_date']),
+        startAt: _int(j['start_at']),
+        endAt: _int(j['end_at']),
+        fireAt: _int(j['fire_at']),
+        completed: j['completed'] == true,
+      );
+}
+
+class ScheduleReminder {
+  final String id, scheduleId, occurrenceDate, title, body;
+  final int startAt, fireAt;
+  final bool allDay;
+
+  const ScheduleReminder({
+    required this.id,
+    required this.scheduleId,
+    required this.occurrenceDate,
+    required this.title,
+    required this.body,
+    required this.startAt,
+    required this.fireAt,
+    this.allDay = false,
+  });
+
+  factory ScheduleReminder.fromJson(Map<String, dynamic> j) => ScheduleReminder(
+        id: _str(j['id']),
+        scheduleId: _str(j['schedule_id']),
+        occurrenceDate: _str(j['occurrence_date']),
+        title: _str(j['title']),
+        body: _str(j['body']),
+        startAt: _int(j['start_at']),
+        fireAt: _int(j['fire_at']),
+        allDay: j['all_day'] == true,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'schedule_id': scheduleId,
+        'occurrence_date': occurrenceDate,
+        'title': title,
+        'body': body,
+        'start_at': startAt,
+        'fire_at': fireAt,
+        'all_day': allDay,
+      };
+}
+
+class ScheduleDraft {
+  final String title, note, location, recurrenceDays;
+  final int startAt, endAt, remindBeforeMin, recurrenceUntil;
+  final bool allDay;
+  final ScheduleRecurrence recurrence;
+
+  const ScheduleDraft({
+    required this.title,
+    required this.startAt,
+    this.endAt = 0,
+    this.allDay = false,
+    this.remindBeforeMin = 0,
+    this.recurrence = ScheduleRecurrence.none,
+    this.recurrenceDays = '',
+    this.recurrenceUntil = 0,
+    this.location = '',
+    this.note = '',
+  });
+
+  Map<String, dynamic> toJson() => {
+        'title': title.trim(),
+        'start_at': startAt,
+        'end_at': endAt,
+        'all_day': allDay,
+        'remind_before_min': remindBeforeMin,
+        'recurrence': recurrence.name,
+        'recurrence_days': recurrenceDays,
+        'recurrence_until': recurrenceUntil,
+        'location': location.trim(),
+        'note': note.trim(),
+      };
+}
+
+class SchedulesResult {
+  final List<Schedule> schedules;
+  final List<ScheduleOccurrence> todayOccurrences;
+  final List<ScheduleOccurrence> tomorrowOccurrences;
+  final List<ScheduleOccurrence> upcomingOccurrences;
+  final List<ScheduleReminder> upcomingReminders;
+  final int todayPending;
+  final int activeTotal;
+
+  const SchedulesResult({
+    this.schedules = const [],
+    this.todayOccurrences = const [],
+    this.tomorrowOccurrences = const [],
+    this.upcomingOccurrences = const [],
+    this.upcomingReminders = const [],
+    this.todayPending = 0,
+    this.activeTotal = 0,
+  });
+
+  factory SchedulesResult.fromJson(Map<String, dynamic> j) => SchedulesResult(
+        schedules: ((j['schedules'] as List?) ?? const []).map((e) => Schedule.fromJson((e as Map).cast())).toList(),
+        todayOccurrences: ((j['today_occurrences'] as List?) ?? const [])
+            .map((e) => ScheduleOccurrence.fromJson((e as Map).cast()))
+            .toList(),
+        tomorrowOccurrences: ((j['tomorrow_occurrences'] as List?) ?? const [])
+            .map((e) => ScheduleOccurrence.fromJson((e as Map).cast()))
+            .toList(),
+        upcomingOccurrences: ((j['upcoming_occurrences'] as List?) ?? const [])
+            .map((e) => ScheduleOccurrence.fromJson((e as Map).cast()))
+            .toList(),
+        upcomingReminders: ((j['upcoming_reminders'] as List?) ?? const [])
+            .map((e) => ScheduleReminder.fromJson((e as Map).cast()))
+            .toList(),
+        todayPending: _int(j['today_pending']),
+        activeTotal: _int(j['active_total']),
+      );
 }

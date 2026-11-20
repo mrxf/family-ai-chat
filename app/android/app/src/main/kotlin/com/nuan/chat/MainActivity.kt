@@ -1,10 +1,15 @@
 package com.nuan.chat
 
+import android.Manifest
+import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Parcelable
+import android.provider.Settings
 import android.webkit.MimeTypeMap
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -16,18 +21,26 @@ import java.util.concurrent.Executors
 class MainActivity : FlutterActivity() {
     companion object {
         private const val CHANNEL = "com.nuan.chat/share"
+        private const val REMINDER_CHANNEL = "com.nuan.chat/reminders"
         private const val CONSUMED_EXTRA = "com.nuan.chat.SHARE_CONSUMED"
+        private const val OPEN_SCHED_CONSUMED_EXTRA = "com.nuan.chat.OPEN_SCHED_CONSUMED"
+        private const val REQ_NOTIF_PERMISSION = 9410
         private const val MAX_IMAGES = 9
         private const val STALE_MS = 60 * 60 * 1000L // 1 hour
     }
 
     private val copyExecutor = Executors.newSingleThreadExecutor()
     private var shareChannel: MethodChannel? = null
+    private var reminderChannel: MethodChannel? = null
     private var dartReady = false
+    private var reminderDartReady = false
     private var pendingPayload: Map<String, Any>? = null
+    private var pendingOpenSchedules = false
+    private var pendingPermResult: MethodChannel.Result? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ReminderScheduler.ensureChannel(applicationContext)
         handleIncomingIntent(intent)
     }
 
@@ -52,12 +65,97 @@ class MainActivity : FlutterActivity() {
             }
         }
         shareChannel = channel
+
+        val rChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, REMINDER_CHANNEL)
+        rChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "takePendingOpenSchedules" -> {
+                    reminderDartReady = true
+                    val open = pendingOpenSchedules
+                    pendingOpenSchedules = false
+                    result.success(open)
+                }
+                "hasPermission" -> {
+                    result.success(hasNotificationPermission())
+                }
+                "requestPermission" -> {
+                    if (hasNotificationPermission()) {
+                        result.success(true)
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        pendingPermResult?.success(false)
+                        pendingPermResult = result
+                        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIF_PERMISSION)
+                    } else {
+                        openAppNotificationSettings()
+                        result.success(false)
+                    }
+                }
+                "openSettings" -> {
+                    openAppNotificationSettings()
+                    result.success(null)
+                }
+                "syncReminders" -> {
+                    val args = call.arguments as? Map<*, *>
+                    val rawList = (args?.get("reminders") as? List<*>)?.filterIsInstance<Map<*, *>>().orEmpty()
+                    ReminderScheduler.sync(applicationContext, rawList)
+                    result.success(null)
+                }
+                "clearAll" -> {
+                    ReminderScheduler.clearAll(applicationContext)
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+        reminderChannel = rChannel
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_NOTIF_PERMISSION) {
+            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED && hasNotificationPermission()
+            pendingPermResult?.success(granted)
+            pendingPermResult = null
+        }
+    }
+
+    private fun hasNotificationPermission(): Boolean {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (!nm.areNotificationsEnabled()) return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        }
+        return true
+    }
+
+    private fun openAppNotificationSettings() {
+        try {
+            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                }
+            } else {
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", packageName, null)
+                }
+            }
+            startActivity(intent)
+        } catch (_: Exception) {
+        }
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         shareChannel?.setMethodCallHandler(null)
         shareChannel = null
+        reminderChannel?.setMethodCallHandler(null)
+        reminderChannel = null
         dartReady = false
+        reminderDartReady = false
+        pendingPermResult = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 
@@ -69,6 +167,20 @@ class MainActivity : FlutterActivity() {
     private fun handleIncomingIntent(intent: Intent?) {
         if (intent == null) return
         if ((intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return
+
+        if (intent.getBooleanExtra(ReminderScheduler.EXTRA_OPEN_SCHEDULES, false) &&
+            !intent.getBooleanExtra(OPEN_SCHED_CONSUMED_EXTRA, false)
+        ) {
+            intent.putExtra(OPEN_SCHED_CONSUMED_EXTRA, true)
+            val rch = reminderChannel
+            if (reminderDartReady && rch != null) {
+                rch.invokeMethod("onOpenSchedules", null)
+            } else {
+                pendingOpenSchedules = true
+            }
+            return
+        }
+
         if (intent.getBooleanExtra(CONSUMED_EXTRA, false)) return
 
         val action = intent.action ?: return

@@ -25,6 +25,7 @@ import (
 
 	"nuan/internal/llm"
 	"nuan/internal/memory"
+	"nuan/internal/skills"
 	"nuan/internal/store"
 )
 
@@ -193,6 +194,10 @@ type toolSet struct {
 	canReadEarlier bool
 	canSearch      bool
 	canFetch       bool
+	canUseSkills   bool
+	skillCatalog   string
+	leasedSkills   map[string]bool
+	leaseNote      string
 }
 
 // toolsFor returns the tools a chat model may use in this reply.
@@ -216,6 +221,30 @@ func (s *Service) toolsFor(ctx context.Context, user *store.User, conv *store.Co
 			if canFetch {
 				ts.canFetch = true
 				ts.tools = append(ts.tools, webFetchTool)
+			}
+		}
+	}
+	if !conv.Private && s.Skills != nil {
+		sctx := s.skillContext(user, conv)
+		if defs := s.Skills.List(sctx); len(defs) > 0 {
+			ts.canUseSkills = true
+			ts.skillCatalog = skills.FormatCatalog(defs)
+			ts.tools = appendUniqueTools(ts.tools, skills.ReadSkillTool)
+			if leasedKeys := s.activeLeasedSkillKeys(conv.ID); len(leasedKeys) > 0 {
+				ts.leasedSkills = map[string]bool{}
+				var summaries []string
+				for _, k := range leasedKeys {
+					if def, ok := s.Skills.Get(k, sctx); ok {
+						ts.leasedSkills[def.Key] = true
+						ts.tools = appendUniqueTools(ts.tools, def.Tools...)
+						if strings.TrimSpace(def.LeaseSummary) != "" {
+							summaries = append(summaries, strings.TrimSpace(def.LeaseSummary))
+						}
+					}
+				}
+				if len(summaries) > 0 {
+					ts.leaseNote = strings.Join(summaries, " ") + " "
+				}
 			}
 		}
 	}
@@ -246,23 +275,30 @@ func (s *Service) markToolsRejected(m *store.Model) { s.noTools.Store(toolKey(m)
 
 // toolTurn carries the state of one reply's tool use.
 type toolTurn struct {
-	user           *store.User
-	convID         string
-	assistantID    *string
-	asstID         string
-	userQuestion   string
-	foldedBeforeID string
-	run            *Run
-	private        bool
-	images         int
-	memCalls       int
-	historyCalls   int
-	searchCalls    int
-	fetchCalls     int
-	sources        []store.WebSource
-	seenSourceURL  map[string]int
-	postActivity   string
-	cost           float64
+	user            *store.User
+	convID          string
+	assistantID     *string
+	asstID          string
+	userQuestion    string
+	foldedBeforeID  string
+	run             *Run
+	private         bool
+	images          int
+	memCalls        int
+	historyCalls    int
+	searchCalls     int
+	fetchCalls      int
+	scheduleCalls   int
+	componentCalls  int
+	activeSkills    map[string]bool
+	activatedSkills map[string]bool
+	usedSkillOwners map[string]bool
+	unlockedTools   []llm.Tool
+	usedReadSkill   bool
+	sources         []store.WebSource
+	seenSourceURL   map[string]int
+	postActivity    string
+	cost            float64
 }
 
 // runTools executes the calls of one round (pictures are drawn in parallel)
@@ -275,6 +311,7 @@ func (s *Service) runTools(ctx context.Context, t *toolTurn, calls []llm.ToolCal
 	var refs []store.Attachment
 	refsLoaded := false
 	usedReadTool := false
+	askedUser := false
 
 	for i, call := range calls {
 		switch call.Name {
@@ -361,6 +398,21 @@ func (s *Service) runTools(ctx context.Context, t *toolTurn, calls []llm.ToolCal
 			usedReadTool = true
 			results[i] = s.execWebFetchCall(ctx, t, call.Arguments)
 
+		case skills.ReadSkillToolName:
+			usedReadTool = true
+			out, unlocked := s.execReadSkillCall(t, call.Arguments)
+			results[i] = out
+			if len(unlocked) > 0 {
+				t.usedReadSkill = true
+				t.unlockedTools = appendUniqueTools(t.unlockedTools, unlocked...)
+				if key := parseReadSkillKey(call.Arguments); key != "" {
+					if t.activatedSkills == nil {
+						t.activatedSkills = map[string]bool{}
+					}
+					t.activatedSkills[strings.ToLower(key)] = true
+				}
+			}
+
 		case imageTool.Name:
 			var args struct {
 				Prompt string `json:"prompt"`
@@ -398,12 +450,46 @@ func (s *Service) runTools(ctx context.Context, t *toolTurn, calls []llm.ToolCal
 			jobs = append(jobs, j)
 
 		default:
+			if s.Skills != nil {
+				if owner, ok := s.Skills.OwnerSkill(call.Name); ok {
+					if t.private {
+						results[i] = "当前是隐私对话模式，为保护隐私不会启用「" + owner.Title + "」相关工具。"
+						continue
+					}
+					if !t.activeSkills[owner.Key] {
+						usedReadTool = true
+						results[i] = fmt.Sprintf(
+							"工具 %q 属于「%s (%s)」技能，当前尚未激活。请先调用 read_skill({\"skill_key\": %q}) 阅读技能指南并解锁对应工具后再操作。",
+							call.Name, owner.Title, owner.Key, owner.Key,
+						)
+						continue
+					}
+					if t.usedSkillOwners == nil {
+						t.usedSkillOwners = map[string]bool{}
+					}
+					t.usedSkillOwners[owner.Key] = true
+					if out, handled := s.execScheduleTool(ctx, t, call.Name, call.Arguments); handled {
+						usedReadTool = true
+						results[i] = out
+						continue
+					}
+					if out, handled, asked := s.execComponentOrAskTool(ctx, t, call.Name, call.Arguments); handled {
+						if asked {
+							askedUser = true
+						} else {
+							usedReadTool = true
+						}
+						results[i] = out
+						continue
+					}
+				}
+			}
 			results[i] = "没有这个工具：" + call.Name
 		}
 	}
 
 	if len(jobs) == 0 {
-		return results, false
+		return results, askedUser && !usedReadTool
 	}
 
 	// Daily limit: refuse what does not fit, draw the rest.

@@ -351,6 +351,16 @@ type WebSource struct {
 	Snippet  string `json:"snippet,omitempty"`
 }
 
+// MessageComponent represents an inline rich UI card (weather, todo, chart, quiz,
+// metrics, or ask_user prompt) embedded inside an assistant message.
+type MessageComponent struct {
+	ID    string          `json:"id"`
+	Kind  string          `json:"kind"`            // "weather" | "todo" | "chart" | "quiz" | "metrics" | "ask_user"
+	Pos   int             `json:"pos"`             // rune offset in Message.Content where the component is interleaved
+	Data  json.RawMessage `json:"data"`            // structured display payload produced by the tool
+	State json.RawMessage `json:"state,omitempty"` // mutable user interaction state (todo checks, quiz choice, ask_user answer)
+}
+
 const (
 	StatusDone        = "done"
 	StatusStreaming   = "streaming"
@@ -360,31 +370,32 @@ const (
 )
 
 type Message struct {
-	ID               string       `json:"id"`
-	ConversationID   string       `json:"conversation_id"`
-	Role             string       `json:"role"`
-	Content          string       `json:"content"`
-	Reasoning        string       `json:"reasoning"`
-	Attachments      []Attachment `json:"attachments"`
-	Sources          []WebSource  `json:"sources,omitempty"`
-	Status           string       `json:"status"`
-	Error            string       `json:"error"`
-	ModelID          *string      `json:"model_id"`
-	PromptTokens     int          `json:"prompt_tokens"`
-	CompletionTokens int          `json:"completion_tokens"`
-	FirstTokenMs     int64        `json:"first_token_ms"`
-	DurationMs       int64        `json:"duration_ms"`
-	Cost             float64      `json:"-"` // USD; only written by FinishMessage, read via usage queries
-	CreatedAt        int64        `json:"created_at"`
-	UpdatedAt        int64        `json:"updated_at"`
+	ID               string             `json:"id"`
+	ConversationID   string             `json:"conversation_id"`
+	Role             string             `json:"role"`
+	Content          string             `json:"content"`
+	Reasoning        string             `json:"reasoning"`
+	Attachments      []Attachment       `json:"attachments"`
+	Sources          []WebSource        `json:"sources,omitempty"`
+	Components       []MessageComponent `json:"components,omitempty"`
+	Status           string             `json:"status"`
+	Error            string             `json:"error"`
+	ModelID          *string            `json:"model_id"`
+	PromptTokens     int                `json:"prompt_tokens"`
+	CompletionTokens int                `json:"completion_tokens"`
+	FirstTokenMs     int64              `json:"first_token_ms"`
+	DurationMs       int64              `json:"duration_ms"`
+	Cost             float64            `json:"-"` // USD; only written by FinishMessage, read via usage queries
+	CreatedAt        int64              `json:"created_at"`
+	UpdatedAt        int64              `json:"updated_at"`
 }
 
-const msgCols = `id, conversation_id, role, content, reasoning, attachments, sources, status, error, model_id, prompt_tokens, completion_tokens, first_token_ms, duration_ms, created_at, updated_at`
+const msgCols = `id, conversation_id, role, content, reasoning, attachments, sources, components, status, error, model_id, prompt_tokens, completion_tokens, first_token_ms, duration_ms, created_at, updated_at`
 
 func scanMsg(row interface{ Scan(...any) error }) (*Message, error) {
 	var m Message
-	var att, src string
-	if err := row.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &m.Reasoning, &att, &src, &m.Status, &m.Error, &m.ModelID,
+	var att, src, comps string
+	if err := row.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &m.Reasoning, &att, &src, &comps, &m.Status, &m.Error, &m.ModelID,
 		&m.PromptTokens, &m.CompletionTokens, &m.FirstTokenMs, &m.DurationMs, &m.CreatedAt, &m.UpdatedAt); err != nil {
 		return nil, notFound(err)
 	}
@@ -395,6 +406,10 @@ func scanMsg(row interface{ Scan(...any) error }) (*Message, error) {
 	_ = json.Unmarshal([]byte(src), &m.Sources)
 	if len(m.Sources) == 0 {
 		m.Sources = nil
+	}
+	_ = json.Unmarshal([]byte(comps), &m.Components)
+	if len(m.Components) == 0 {
+		m.Components = nil
 	}
 	return &m, nil
 }
@@ -417,8 +432,13 @@ func insertMsg(ctx context.Context, tx *Tx, m *Message) error {
 		sources = []WebSource{}
 	}
 	src, _ := json.Marshal(sources)
-	_, err := tx.exec(ctx, `INSERT INTO messages (`+msgCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		m.ID, m.ConversationID, m.Role, m.Content, m.Reasoning, string(att), string(src), m.Status, m.Error, m.ModelID,
+	components := m.Components
+	if components == nil {
+		components = []MessageComponent{}
+	}
+	comps, _ := json.Marshal(components)
+	_, err := tx.exec(ctx, `INSERT INTO messages (`+msgCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		m.ID, m.ConversationID, m.Role, m.Content, m.Reasoning, string(att), string(src), string(comps), m.Status, m.Error, m.ModelID,
 		m.PromptTokens, m.CompletionTokens, m.FirstTokenMs, m.DurationMs, m.CreatedAt, m.UpdatedAt)
 	if isUnique(err) {
 		return ErrConflict
@@ -801,9 +821,14 @@ func (s *Store) FinishMessage(ctx context.Context, m *Message) error {
 		sources = []WebSource{}
 	}
 	src, _ := json.Marshal(sources)
-	_, err := s.exec(ctx, `UPDATE messages SET content=?, reasoning=?, attachments=?, sources=?, status=?, error=?, model_id=?, prompt_tokens=?, completion_tokens=?,
+	components := m.Components
+	if components == nil {
+		components = []MessageComponent{}
+	}
+	comps, _ := json.Marshal(components)
+	_, err := s.exec(ctx, `UPDATE messages SET content=?, reasoning=?, attachments=?, sources=?, components=?, status=?, error=?, model_id=?, prompt_tokens=?, completion_tokens=?,
 		first_token_ms=?, duration_ms=?, cost=?, updated_at=? WHERE id=?`,
-		m.Content, m.Reasoning, string(att), string(src), m.Status, m.Error, m.ModelID, m.PromptTokens, m.CompletionTokens, m.FirstTokenMs, m.DurationMs, m.Cost, m.UpdatedAt, m.ID)
+		m.Content, m.Reasoning, string(att), string(src), string(comps), m.Status, m.Error, m.ModelID, m.PromptTokens, m.CompletionTokens, m.FirstTokenMs, m.DurationMs, m.Cost, m.UpdatedAt, m.ID)
 	return err
 }
 
@@ -823,6 +848,60 @@ func (s *Store) SetSources(ctx context.Context, messageID string, sources []WebS
 	src, _ := json.Marshal(sources)
 	_, err := s.exec(ctx, `UPDATE messages SET sources=?, updated_at=? WHERE id=?`, string(src), Now(), messageID)
 	return err
+}
+
+// SetComponents saves a streaming message's interactive UI components as soon as they exist.
+func (s *Store) SetComponents(ctx context.Context, messageID string, components []MessageComponent) error {
+	if components == nil {
+		components = []MessageComponent{}
+	}
+	raw, _ := json.Marshal(components)
+	_, err := s.exec(ctx, `UPDATE messages SET components=?, updated_at=? WHERE id=?`, string(raw), Now(), messageID)
+	return err
+}
+
+// UpdateMessageComponentState updates the mutable user interaction state of a single
+// component inside a message belonging to userID (e.g. toggling a todo checkbox,
+// selecting a quiz option, or submitting an ask_user answer).
+func (s *Store) UpdateMessageComponentState(ctx context.Context, messageID, userID, compID string, state json.RawMessage) (*Message, *MessageComponent, error) {
+	var updatedMsg *Message
+	var updatedComp *MessageComponent
+	err := s.tx(ctx, func(tx *Tx) error {
+		q := `SELECT ` + prefixCols(msgCols, "m.") + ` FROM messages m
+			JOIN conversations c ON c.id = m.conversation_id
+			WHERE m.id = ? AND c.user_id = ?` + s.forUpdate()
+		m, err := scanMsg(tx.queryRow(ctx, q, messageID, userID))
+		if err != nil {
+			return err
+		}
+		idx := -1
+		for i := range m.Components {
+			if m.Components[i].ID == compID {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return ErrNotFound
+		}
+		m.Components[idx].State = append(json.RawMessage(nil), state...)
+		m.UpdatedAt = Now()
+		raw, err := json.Marshal(m.Components)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.exec(ctx, `UPDATE messages SET components = ?, updated_at = ? WHERE id = ?`, string(raw), m.UpdatedAt, m.ID); err != nil {
+			return err
+		}
+		cp := m.Components[idx]
+		updatedComp = &cp
+		updatedMsg = m
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return updatedMsg, updatedComp, nil
 }
 
 // MarkInterrupted flags messages left in "streaming" state by a previous process.

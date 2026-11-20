@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"nuan/internal/store/storetest/testdb"
@@ -79,7 +80,7 @@ func TestMigrationsRepeatableAndPersistData(t *testing.T) {
 		}
 	}
 	var n int
-	if err := s.queryRow(t.Context(), "SELECT count(*) FROM schema_migrations").Scan(&n); err != nil || n != 12 {
+	if err := s.queryRow(t.Context(), "SELECT count(*) FROM schema_migrations").Scan(&n); err != nil || n != 14 {
 		t.Errorf("migration count=%d err=%v", n, err)
 	}
 	if err := s.Close(); err != nil {
@@ -493,5 +494,54 @@ func TestConversationSummaryAndEarlierSearch(t *testing.T) {
 	}
 	if sum3, cur3, _ := s.GetConversationSummary(ctx, conv.ID); cur3 != "" || sum3 != "" {
 		t.Fatalf("truncate inside compacted range must clear summary, got cur=%q sum=%q", cur3, sum3)
+	}
+}
+
+func TestMessageComponentsAndStateUpdate(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	u := testUser(t, s, "comp_user")
+	other := testUser(t, s, "comp_other")
+	conv := &Conversation{UserID: u.ID}
+	if err := s.CreateConversation(ctx, conv); err != nil {
+		t.Fatal(err)
+	}
+	uMsg := &Message{Role: "user", Content: "周末露营要带什么？", Status: StatusDone}
+	aMsg := &Message{Role: "assistant", Status: StatusStreaming}
+	if err := s.ApplyTurn(ctx, Turn{ConversationID: conv.ID, Append: []*Message{uMsg, aMsg}}); err != nil {
+		t.Fatal(err)
+	}
+
+	comps := []MessageComponent{{
+		ID:    "comp_1",
+		Kind:  "todo",
+		Pos:   12,
+		Data:  json.RawMessage(`{"title":"露营清单","items":[{"id":"i1","text":"帐篷"},{"id":"i2","text":"睡袋"}]}`),
+		State: json.RawMessage(`{"done_ids":["i1"]}`),
+	}}
+	if err := s.SetComponents(ctx, aMsg.ID, comps); err != nil {
+		t.Fatal(err)
+	}
+	aMsg.Content = "先给你整理一份清单：\n\n出发前记得看天气哦～"
+	aMsg.Components = comps
+	aMsg.Status = StatusDone
+	if err := s.FinishMessage(ctx, aMsg); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.GetMessageForUser(ctx, aMsg.ID, u.ID)
+	if err != nil || len(got.Components) != 1 || got.Components[0].Pos != 12 || got.Components[0].Kind != "todo" {
+		t.Fatalf("GetMessageForUser components=%+v err=%v", got, err)
+	}
+
+	// Other user cannot mutate component state.
+	if _, _, err := s.UpdateMessageComponentState(ctx, aMsg.ID, other.ID, "comp_1", json.RawMessage(`{"done_ids":["i1","i2"]}`)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound for other user, got %v", err)
+	}
+
+	// Owner updates component state atomically.
+	updatedMsg, updatedComp, err := s.UpdateMessageComponentState(ctx, aMsg.ID, u.ID, "comp_1", json.RawMessage(`{"done_ids":["i1","i2"]}`))
+	if err != nil || updatedComp == nil || string(updatedComp.State) != `{"done_ids":["i1","i2"]}` {
+		t.Fatalf("UpdateMessageComponentState comp=%+v msg=%+v err=%v", updatedComp, updatedMsg, err)
 	}
 }

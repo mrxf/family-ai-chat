@@ -542,6 +542,7 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 		send("snapshot", map[string]any{
 			"content": msg.Content, "reasoning": msg.Reasoning, "status": msg.Status,
 			"attachments": nonNil(msg.Attachments), "sources": nonNilSources(msg.Sources),
+			"components": nonNilComponents(msg.Components),
 		})
 		send("done", chat.FinalEvent{Message: msg})
 		return
@@ -557,7 +558,8 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 	snapPayload := map[string]any{
 		"content": snap.Content, "reasoning": snap.Reasoning, "status": store.StatusStreaming, "title": snap.Title,
 		"activity": snap.Activity, "activity_at": snap.ActivityAt,
-		"steps": nonNilSteps(snap.Steps), "attachments": nonNil(snap.Attachments), "sources": nonNilSources(snap.Sources),
+		"steps": nonNilSteps(snap.Steps), "attachments": nonNil(snap.Attachments),
+		"sources": nonNilSources(snap.Sources), "components": nonNilComponents(snap.Components),
 	}
 	if snap.ModelID != "" {
 		snapPayload["model_id"] = snap.ModelID
@@ -567,7 +569,7 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	offC, offR, title := len(snap.Content), len(snap.Reasoning), snap.Title
-	activity, stepsSeq, nAtt, nSrc := snap.Activity, snap.StepsSeq, len(snap.Attachments), len(snap.Sources)
+	activity, stepsSeq, compsSeq, nAtt, nSrc := snap.Activity, snap.StepsSeq, snap.ComponentsSeq, len(snap.Attachments), len(snap.Sources)
 	if snap.Final != nil {
 		send("done", snap.Final)
 		return
@@ -620,6 +622,12 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 			if len(delta) > 0 && !send("delta", delta) {
 				return
 			}
+			if snap.ComponentsSeq != compsSeq {
+				compsSeq = snap.ComponentsSeq
+				if !send("components", map[string]any{"components": nonNilComponents(snap.Components)}) {
+					return
+				}
+			}
 			if len(snap.Attachments) != nAtt {
 				nAtt = len(snap.Attachments)
 				send("attachments", map[string]any{"attachments": snap.Attachments})
@@ -659,6 +667,13 @@ func nonNilSources(s []store.WebSource) []store.WebSource {
 		return []store.WebSource{}
 	}
 	return s
+}
+
+func nonNilComponents(c []store.MessageComponent) []store.MessageComponent {
+	if c == nil {
+		return []store.MessageComponent{}
+	}
+	return c
 }
 
 func truncate(s string, n int) string {

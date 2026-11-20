@@ -11,8 +11,8 @@ import '../core/models.dart';
 import '../core/tts.dart';
 import '../state/chat.dart';
 import '../state/session.dart';
+import 'chat_components.dart';
 import 'icons.dart';
-import 'markdown.dart';
 import 'sheets.dart';
 import 'mascot_anim.dart';
 import 'theme.dart';
@@ -409,6 +409,7 @@ class _AssistantMessageState extends ConsumerState<AssistantMessage> {
         final reasoning = isLive ? live.reasoning : m.reasoning;
         final drawn = isLive ? live.attachments : m.attachments;
         final sources = isLive ? live.sources : m.sources;
+        final components = isLive ? live.components : m.components;
         if (isLive && live.steps.isNotEmpty) {
           _settledSteps = [
             for (final s in live.steps)
@@ -438,14 +439,22 @@ class _AssistantMessageState extends ConsumerState<AssistantMessage> {
               if (reasoning.isNotEmpty) ReasoningPanel(text: reasoning, thinking: phase == LivePhase.reasoning, durationMs: m.durationMs),
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 250),
-                child: phase == LivePhase.waiting && !drawing && drawn.isEmpty && !hasStepPanel
+                child: phase == LivePhase.waiting && !drawing && drawn.isEmpty && components.isEmpty && !hasStepPanel
                     ? ThinkingIndicator(
                         label: working ? live.activity : '正在思考…',
                         since: live.activitySince,
                       )
                     : const SizedBox(width: double.infinity),
               ),
-              if (content.isNotEmpty) Md(content, streaming: isLive, animate: _wasLive),
+              if (content.isNotEmpty || components.isNotEmpty)
+                InterleavedAssistantBody(
+                  messageId: m.id,
+                  content: content,
+                  components: components,
+                  streaming: isLive,
+                  animate: _wasLive,
+                  isLastMessage: widget.isLast,
+                ),
               if (working && phase != LivePhase.waiting && !hasRunningStep)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
@@ -453,7 +462,7 @@ class _AssistantMessageState extends ConsumerState<AssistantMessage> {
                 ),
               if (drawn.isNotEmpty || drawing)
                 Padding(
-                  padding: EdgeInsets.only(top: content.isEmpty ? 2 : 10, bottom: 4),
+                  padding: EdgeInsets.only(top: (content.isEmpty && components.isEmpty) ? 2 : 10, bottom: 4),
                   child: Wrap(spacing: 8, runSpacing: 8, children: [
                     if (drawn.isNotEmpty) ImageGrid(attachments: drawn, large: true),
                     if (drawing) DrawingCard(label: live.activity, since: live.activitySince, isPrivate: isPrivate),
@@ -507,7 +516,7 @@ class _Footer extends ConsumerWidget {
         children.add(note(AppIcons.info, '回答被中断了，可以点下方「重新回答」', p.muted));
       default:
     }
-    if (m.content.isNotEmpty || m.attachments.isNotEmpty || isLast) {
+    if (m.content.isNotEmpty || m.attachments.isNotEmpty || m.components.isNotEmpty || isLast) {
       children.add(_ActionRow(message: m, isLast: isLast));
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: children);
@@ -711,6 +720,10 @@ class _TaskAndSourcesPanelState extends State<TaskAndSourcesPanel> {
         'fetch' => AppIcons.article,
         'history' => AppIcons.history,
         'memory' => AppIcons.manageSearch,
+        'schedule' => AppIcons.calendar,
+        'component' => AppIcons.cards,
+        'ask_user' => AppIcons.question,
+        'skill' => AppIcons.sparkles,
         _ => AppIcons.sparkles,
       };
 
@@ -743,14 +756,30 @@ class _TaskAndSourcesPanelState extends State<TaskAndSourcesPanel> {
     }
     final hadMemory = widget.steps.any((s) => s.kind == 'memory');
     final hadHistory = widget.steps.any((s) => s.kind == 'history');
+    final lastSchedule = widget.steps.where((s) => s.kind == 'schedule').lastOrNull;
+    final lastAskUser = widget.steps.where((s) => s.kind == 'ask_user').lastOrNull;
+    final lastComp = widget.steps.where((s) => s.kind == 'component').lastOrNull;
+    final lastSkill = widget.steps.where((s) => s.kind == 'skill').lastOrNull;
     if (widget.sources.isNotEmpty) {
       final prefix = hadHistory && hadMemory
           ? '已翻看记录与记忆 · '
           : (hadHistory ? '已翻看前面的聊天记录 · ' : (hadMemory ? '已翻看记忆 · ' : ''));
       return '$prefix已参考 ${widget.sources.length} 篇网页${_sitePreview(widget.sources)}';
     }
+    if (lastSchedule != null) {
+      return lastSchedule.title.isNotEmpty ? lastSchedule.title : '已处理日程安排';
+    }
+    if (lastAskUser != null) {
+      return lastAskUser.title.isNotEmpty ? lastAskUser.title : '等待确认偏好';
+    }
+    if (lastComp != null) {
+      return lastComp.title.isNotEmpty ? lastComp.title : '已生成交互卡片';
+    }
     final hasSearch = widget.steps.any((s) => s.kind == 'search' || s.kind == 'fetch');
     if (hasSearch) return '已完成联网检索';
+    if (lastSkill != null) {
+      return lastSkill.title.isNotEmpty ? lastSkill.title : '已加载扩展技能';
+    }
     if (hadHistory && hadMemory) return '已翻看前面的聊天与记忆';
     if (hadHistory) return '已翻看前面的聊天记录';
     return '已翻看相关记忆';
@@ -770,7 +799,22 @@ class _TaskAndSourcesPanelState extends State<TaskAndSourcesPanel> {
     final busy = running != null || widget.waitingForReply;
     final open = _userOpen ?? busy;
     final hasWeb = widget.sources.isNotEmpty || widget.steps.any((s) => s.kind == 'search' || s.kind == 'fetch');
-    final onlyHistory = !hasWeb && widget.steps.isNotEmpty && widget.steps.every((s) => s.kind == 'history');
+    final hasSchedule = widget.steps.any((s) => s.kind == 'schedule');
+    final hasAskUser = widget.steps.any((s) => s.kind == 'ask_user');
+    final hasComponent = widget.steps.any((s) => s.kind == 'component');
+    final hasSkill = widget.steps.any((s) => s.kind == 'skill');
+    final onlyHistory = !hasWeb && !hasSchedule && !hasAskUser && !hasComponent && !hasSkill && widget.steps.isNotEmpty && widget.steps.every((s) => s.kind == 'history');
+    final headerIcon = hasWeb
+        ? AppIcons.globe
+        : hasSchedule
+            ? AppIcons.calendar
+            : hasAskUser
+                ? AppIcons.question
+                : hasComponent
+                    ? AppIcons.cards
+                    : hasSkill
+                        ? AppIcons.sparkles
+                        : (onlyHistory ? AppIcons.history : AppIcons.manageSearch);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -797,7 +841,7 @@ class _TaskAndSourcesPanelState extends State<TaskAndSourcesPanel> {
                     )
                   else
                     AppIcon(
-                      hasWeb ? AppIcons.globe : (onlyHistory ? AppIcons.history : AppIcons.manageSearch),
+                      headerIcon,
                       size: 16,
                       color: p.accent,
                     ),

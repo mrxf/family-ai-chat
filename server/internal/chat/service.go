@@ -14,6 +14,7 @@ import (
 
 	"nuan/internal/llm"
 	"nuan/internal/memory"
+	"nuan/internal/skills"
 	"nuan/internal/store"
 )
 
@@ -58,6 +59,10 @@ type Service struct {
 	Memory       MemoryService
 	MemoryWorker MemoryWorker
 	Search       WebSearchService
+	Skills       skills.Provider
+
+	skillMu     sync.Mutex
+	skillLeases map[string]map[string]*skillLease
 
 	clientsMu sync.Mutex
 	clients   map[string]*llm.Client // by provider id + updated_at
@@ -93,6 +98,11 @@ func NewService(st *store.Store, dataDir string, log *slog.Logger) *Service {
 		compactCancel:  ccancel,
 	}
 	svc.RegisterRouter(&llmModelRouter{svc: svc})
+	svc.Skills = skills.NewRegistry(
+		svc.buildScheduleSkill(),
+		svc.buildComponentsSkill(),
+		svc.buildAskUserSkill(),
+	)
 	return svc
 }
 
@@ -686,6 +696,12 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 		}
 
 		ts := s.toolsFor(ctx, user, conv, model)
+		if len(ts.leasedSkills) > 0 {
+			turn.activeSkills = map[string]bool{}
+			for k, v := range ts.leasedSkills {
+				turn.activeSkills[k] = v
+			}
+		}
 		if !conv.Private && s.Memory != nil && s.Memory.Allowed(ctx, user, conv.AssistantID) {
 			run.setActivity("正在翻看相关记忆…")
 		}
@@ -696,10 +712,12 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 		if err == nil && req.recalled {
 			run.addDoneStep("memory", "已关联相关记忆背景", "")
 		}
-		for round := 0; err == nil && round < maxToolRounds; round++ {
+		maxRounds := maxToolRounds
+		skillBonus := 0
+		for round := 0; err == nil && round < maxRounds; round++ {
 			req.ReasoningEffort = effortFor(model, think)
 			req.Tools = tools
-			if round == maxToolRounds-1 {
+			if round == maxRounds-1 {
 				req.Tools = nil // last round: answer in words
 			}
 			if round > 0 {
@@ -740,6 +758,14 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 					if ferr == nil {
 						model, provider, tools, req = fm, fp, freq.tools, freq
 						turn.foldedBeforeID = freq.foldedBeforeID
+						if len(fts.leasedSkills) > 0 {
+							turn.activeSkills = map[string]bool{}
+							for k, v := range fts.leasedSkills {
+								turn.activeSkills[k] = v
+							}
+						} else {
+							turn.activeSkills = nil
+						}
 						id := fm.ID
 						msg.ModelID = &id
 						run.setModelID(id)
@@ -771,9 +797,18 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 				ToolCalls: calls,
 			})
 			turn.postActivity = ""
+			turn.unlockedTools = nil
+			turn.usedReadSkill = false
 			results, stopTools := s.runTools(ctx, turn, calls)
 			for i, result := range results {
 				req.Messages = append(req.Messages, llm.Message{Role: "tool", ToolCallID: calls[i].ID, Content: result})
+			}
+			if len(turn.unlockedTools) > 0 {
+				tools = appendUniqueTools(tools, turn.unlockedTools...)
+			}
+			if turn.usedReadSkill && skillBonus < maxSkillBonusRounds {
+				skillBonus++
+				maxRounds++
 			}
 			if stopTools {
 				tools = nil
@@ -784,18 +819,22 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 				break
 			}
 		}
+		if !conv.Private && err == nil {
+			s.tickSkillLeases(conv.ID, turn.activatedSkills, turn.usedSkillOwners)
+		}
 
 		run.setActivity("")
 		msg.Content, msg.Reasoning = run.text()
 		snap := run.Snapshot()
 		msg.Attachments = snap.Attachments
 		msg.Sources = snap.Sources
-		// The pictures are what the user asked for: a failure while the model
-		// was only wrapping up must not turn the reply into an error.
-		if err != nil && len(msg.Attachments) > 0 && ctx.Err() == nil {
-			s.Log.Warn("reply failed after drawing, keeping the pictures", "message_id", asst.ID, "err", err)
+		msg.Components = snap.Components
+		// Pictures or rich cards already shown to the user must not turn into an error
+		// if the final wrap-up round hiccups.
+		if err != nil && (len(msg.Attachments) > 0 || len(msg.Components) > 0) && ctx.Err() == nil {
+			s.Log.Warn("reply failed after rendering media/components, keeping partial output", "message_id", asst.ID, "err", err)
 			err = nil
-			if strings.TrimSpace(msg.Content) == "" {
+			if strings.TrimSpace(msg.Content) == "" && len(msg.Attachments) > 0 && len(msg.Components) == 0 {
 				msg.Content = "画好啦，看看喜不喜欢～需要调整的话告诉我。"
 			}
 		}
@@ -1028,6 +1067,9 @@ func (s *Service) systemPromptWithTools(ctx context.Context, user *store.User, c
 	if ts.canRecall && !conv.Private {
 		b.WriteString(memoryToolPrompt)
 	}
+	if ts.skillCatalog != "" && !conv.Private {
+		b.WriteString(ts.skillCatalog)
+	}
 	if conv.AssistantID != nil {
 		if a, err := s.Store.GetAssistant(ctx, *conv.AssistantID, user.ID); err == nil && strings.TrimSpace(a.SystemPrompt) != "" {
 			fmt.Fprintf(&b, "\n\n# 本次对话的角色设定（%s）\n%s", a.Name, a.SystemPrompt)
@@ -1150,6 +1192,14 @@ func (s *Service) buildRequestWithOpts(ctx context.Context, user *store.User, co
 	summarySection := formatSummarySection(summaryText, hasOlderInDB, ts.canReadEarlier)
 	sys := s.systemPromptWithTools(ctx, user, conv, ts, mem.Core, summarySection)
 	note := "（系统附注，不是用户说的话，回复时不要写出这种附注：现在是 " + time.Now().In(shanghai).Format("15:04") + "。"
+	if !conv.Private {
+		if schedBrief := s.UpcomingScheduleBrief(ctx, user.ID, time.Now()); schedBrief != "" {
+			note += schedBrief
+		}
+		if ts.leaseNote != "" {
+			note += ts.leaseNote
+		}
+	}
 	if mem.Recall != "" {
 		note += "可能相关的往事（请留意每条前的时间跨度；较早的短期症状、情绪或临时安排通常已结束，仅作背景参考——除非用户本轮主动提起，不要把旧事当成正在发生的新事追问或续聊）：" + mem.Recall
 	}
@@ -1204,12 +1254,16 @@ func (s *Service) buildRequestWithOpts(ctx context.Context, user *store.User, co
 		}
 
 		drew := m.Role == "assistant" && len(m.Attachments) > 0
-		if m.Role == "assistant" && !drew && (m.Status == store.StatusError || strings.TrimSpace(m.Content) == "") {
+		hasComps := m.Role == "assistant" && len(m.Components) > 0
+		if m.Role == "assistant" && !drew && !hasComps && (m.Status == store.StatusError || strings.TrimSpace(m.Content) == "") {
 			continue
 		}
 		lm := llm.Message{Role: m.Role, Content: m.Content}
+		if hasComps {
+			lm.Content = componentNote(m.Components) + lm.Content
+		}
 		if drew {
-			lm.Content = drawnNote(m.Attachments, num) + m.Content
+			lm.Content = drawnNote(m.Attachments, num) + lm.Content
 		}
 		cost := estimateTokens(lm.Content)
 		if m.Role == "user" && len(m.Attachments) > 0 {

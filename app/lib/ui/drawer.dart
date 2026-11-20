@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/models.dart';
 import '../state/chat.dart';
 import '../state/conversations.dart';
+import '../state/schedules.dart';
 import '../state/session.dart';
 import 'admin/common.dart' show Tag;
 import 'icons.dart';
+import 'schedules_page.dart';
 import 'search_page.dart';
 import 'self_host_page.dart';
 import 'settings_page.dart';
@@ -40,6 +42,7 @@ class HistoryDrawer extends ConsumerWidget {
     final session = ref.watch(sessionProvider);
     final user = session.user;
     final items = list.items;
+    final todayPending = ref.watch(schedulesProvider).value?.todayPending ?? 0;
 
     final groups = <String, List<Conversation>>{};
     final now = DateTime.now();
@@ -161,7 +164,35 @@ class HistoryDrawer extends ConsumerWidget {
               ),
             ),
             Divider(color: p.line, height: 1),
-            if (user != null)
+            if (user != null) ...[
+              InkWell(
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SchedulesPage()));
+                },
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 11, 14, 11),
+                  child: Row(children: [
+                    AppIcon(AppIcons.calendar, color: p.accent, size: 21),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text('我的日程', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                    ),
+                    if (todayPending > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(10)),
+                        child: Text(
+                          '今天 $todayPending',
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: p.accent),
+                        ),
+                      ),
+                    const SizedBox(width: 4),
+                    AppIcon(AppIcons.chevronRight, color: p.faint, size: 17),
+                  ]),
+                ),
+              ),
+              Divider(color: p.line, height: 1),
               InkWell(
                 onTap: () {
                   Navigator.pop(context);
@@ -180,6 +211,7 @@ class HistoryDrawer extends ConsumerWidget {
                   ]),
                 ),
               ),
+            ],
           ],
         ),
       ),

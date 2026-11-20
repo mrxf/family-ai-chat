@@ -15,8 +15,8 @@ import '../core/models.dart';
 import '../state/chat.dart';
 import '../state/conversations.dart';
 import '../state/session.dart';
+import 'chat_components.dart';
 import 'icons.dart';
-import 'markdown.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -29,17 +29,18 @@ List<Message> shareableMessages(ChatState chat, LiveText live) {
   final out = <Message>[];
   for (final m in chat.messages) {
     if (m.id == chat.activeId) {
-      if (live.content.trim().isNotEmpty || live.attachments.isNotEmpty) {
+      if (live.content.trim().isNotEmpty || live.attachments.isNotEmpty || live.components.isNotEmpty) {
         out.add(m.copyWith(
           content: live.content,
           reasoning: live.reasoning,
           attachments: live.attachments,
+          components: live.components,
           status: MsgStatus.done,
         ));
       }
       continue;
     }
-    if (m.content.trim().isEmpty && m.attachments.isEmpty) continue;
+    if (m.content.trim().isEmpty && m.attachments.isEmpty && m.components.isEmpty) continue;
     out.add(m);
   }
   return out;
@@ -1269,12 +1270,19 @@ class _PosterMessageItem extends StatelessWidget {
             ],
           ],
         ),
-        if (message.content.isNotEmpty) ...[
+        if (message.content.isNotEmpty || message.components.isNotEmpty) ...[
           const SizedBox(height: 8),
-          Md(message.content, streaming: false, animate: false),
+          InterleavedAssistantBody(
+            messageId: message.id,
+            content: message.content,
+            components: message.components,
+            streaming: false,
+            animate: false,
+            isLastMessage: false,
+          ),
         ],
         if (message.attachments.isNotEmpty) ...[
-          SizedBox(height: message.content.isEmpty ? 8 : 10),
+          SizedBox(height: (message.content.isEmpty && message.components.isEmpty) ? 8 : 10),
           _PosterAttachments(attachments: message.attachments, api: api, large: true, palette: palette),
         ],
       ],
