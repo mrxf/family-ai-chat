@@ -79,7 +79,7 @@ func TestMigrationsRepeatableAndPersistData(t *testing.T) {
 		}
 	}
 	var n int
-	if err := s.queryRow(t.Context(), "SELECT count(*) FROM schema_migrations").Scan(&n); err != nil || n != 10 {
+	if err := s.queryRow(t.Context(), "SELECT count(*) FROM schema_migrations").Scan(&n); err != nil || n != 12 {
 		t.Errorf("migration count=%d err=%v", n, err)
 	}
 	if err := s.Close(); err != nil {
@@ -396,5 +396,102 @@ func TestModelRoutingNoteAndConversationAutoMode(t *testing.T) {
 	updated, err := s.UpdateConversation(ctx, conv.ID, u.ID, ConversationPatch{AutoMode: &off, ModelID: &m.ID})
 	if err != nil || updated.AutoMode || updated.ModelID == nil || *updated.ModelID != m.ID {
 		t.Fatalf("updated=%+v err=%v", updated, err)
+	}
+}
+
+func TestConversationSummaryAndEarlierSearch(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	u := testUser(t, s, "compactor")
+	conv := testConv(t, s, u, "长期用药咨询")
+	ms := []*Message{
+		{Role: "user", Content: "父亲每天早上吃氨氯地平 5mg", Status: StatusDone},
+		{Role: "assistant", Content: "氨氯地平 5mg 建议固定早晨服用。", Status: StatusDone},
+		{Role: "user", Content: "那晚饭后还能吃硝苯地平吗？", Status: StatusDone},
+		{Role: "assistant", Content: "同属钙通道阻滞剂，不要自行叠加。", Status: StatusDone},
+		{Role: "user", Content: "今天晚饭吃西红柿炒鸡蛋可以吗？", Status: StatusDone},
+		{Role: "assistant", Content: "完全可以，注意少盐。", Status: StatusDone},
+	}
+	if err := s.ApplyTurn(ctx, Turn{ConversationID: conv.ID, Append: ms}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Before compaction: SearchUserMessages excludes active uncompacted messages of conv.ID.
+	hitsBefore, err := s.SearchUserMessages(ctx, u.ID, conv.ID, []string{"氨氯地平"}, 10)
+	if err != nil || len(hitsBefore) != 0 {
+		t.Fatalf("uncompacted current conv should be excluded, got=%+v err=%v", hitsBefore, err)
+	}
+
+	beforeUpdatedAt := conv.UpdatedAt
+	gotC, _ := s.GetConversation(ctx, conv.ID, u.ID)
+	beforeUpdatedAt = gotC.UpdatedAt
+
+	ok, err := s.CommitConversationSummary(ctx, conv.ID, "", ms[3].ID, "父亲早餐服氨氯地平5mg；已提醒勿叠加硝苯地平。")
+	if err != nil || !ok {
+		t.Fatalf("CommitConversationSummary ok=%v err=%v", ok, err)
+	}
+	// Stale expectedCursor or non-advancing cursor is rejected cleanly.
+	if ok, err := s.CommitConversationSummary(ctx, conv.ID, "", ms[5].ID, "stale"); err != nil || ok {
+		t.Fatalf("stale cursor should not commit: ok=%v err=%v", ok, err)
+	}
+	gotAfterCommit, _ := s.GetConversation(ctx, conv.ID, u.ID)
+	if gotAfterCommit.UpdatedAt != beforeUpdatedAt {
+		t.Fatalf("compaction must not bump updated_at: got %d want %d", gotAfterCommit.UpdatedAt, beforeUpdatedAt)
+	}
+
+	sum, cur, err := s.GetConversationSummary(ctx, conv.ID)
+	if err != nil || cur != ms[3].ID || sum == "" {
+		t.Fatalf("summary=%q cursor=%q err=%v", sum, cur, err)
+	}
+
+	// ListMessagesAfter returns only messages strictly after summary_cursor and sets hasOlder=true.
+	tail, hasOlder, err := s.ListMessagesAfter(ctx, conv.ID, cur, "", 50)
+	if err != nil || !hasOlder || len(tail) != 2 || tail[0].ID != ms[4].ID {
+		t.Fatalf("ListMessagesAfter tail=%+v hasOlder=%v err=%v", tail, hasOlder, err)
+	}
+
+	// SearchUserMessages now finds compacted early messages (<= summary_cursor) of conv.ID,
+	// while still excluding active tail messages (> summary_cursor).
+	hitsCompacted, err := s.SearchUserMessages(ctx, u.ID, conv.ID, []string{"氨氯地平"}, 10)
+	if err != nil || len(hitsCompacted) == 0 {
+		t.Fatalf("expected compacted message searchable via SearchUserMessages, got=%+v err=%v", hitsCompacted, err)
+	}
+	hitsTail, err := s.SearchUserMessages(ctx, u.ID, conv.ID, []string{"西红柿炒鸡蛋"}, 10)
+	if err != nil || len(hitsTail) != 0 {
+		t.Fatalf("active uncompacted tail must stay excluded, got=%+v err=%v", hitsTail, err)
+	}
+
+	// SearchConversationMessages searches strictly before upperBound.
+	convHits, err := s.SearchConversationMessages(ctx, conv.ID, ms[4].ID, []string{"硝苯地平"}, 10)
+	if err != nil || len(convHits) != 1 || convHits[0].ID != ms[2].ID {
+		t.Fatalf("SearchConversationMessages=%+v err=%v", convHits, err)
+	}
+	around, err := s.ListMessagesAround(ctx, conv.ID, ms[2].ID, ms[4].ID, 1, 1)
+	if err != nil || len(around) != 3 || around[0].ID != ms[1].ID || around[2].ID != ms[3].ID {
+		t.Fatalf("ListMessagesAround=%+v err=%v", around, err)
+	}
+
+	// Regenerating / truncating AFTER summary_cursor preserves summary.
+	if err := s.ApplyTurn(ctx, Turn{
+		ConversationID: conv.ID,
+		TruncateFrom:   ms[5].ID,
+		Append:         []*Message{{Role: "assistant", Content: "可以吃，少放盐即可。", Status: StatusDone}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if sum2, cur2, _ := s.GetConversationSummary(ctx, conv.ID); cur2 != ms[3].ID || sum2 == "" {
+		t.Fatalf("truncate after summary_cursor must preserve summary, got cur=%q sum=%q", cur2, sum2)
+	}
+
+	// Editing / truncating AT OR BEFORE summary_cursor invalidates stale summary atomically.
+	if err := s.ApplyTurn(ctx, Turn{
+		ConversationID: conv.ID,
+		TruncateFrom:   ms[2].ID,
+		Append:         []*Message{{Role: "user", Content: "改问别的问题", Status: StatusDone}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if sum3, cur3, _ := s.GetConversationSummary(ctx, conv.ID); cur3 != "" || sum3 != "" {
+		t.Fatalf("truncate inside compacted range must clear summary, got cur=%q sum=%q", cur3, sum3)
 	}
 }

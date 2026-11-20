@@ -28,6 +28,10 @@ type Memory struct {
 	Pinned          bool      `json:"pinned"`
 	SupersededBy    *string   `json:"-"`
 	ValidUntil      *int64    `json:"-"`
+	EventAt         int64     `json:"-"`
+	LastRecalledAt  *int64    `json:"-"`
+	RecallCount     int64     `json:"-"`
+	Compressed      bool      `json:"-"`
 	CreatedAt       int64     `json:"created_at"`
 	UpdatedAt       int64     `json:"updated_at"`
 }
@@ -71,12 +75,12 @@ func decodeEmbedding(b []byte) []float32 {
 	return v
 }
 
-const memoryCols = `id, user_id, assistant_id, category, content, keywords, keywords_checked, embedding, embedding_model, source, source_conv_id, status, pinned, superseded_by, valid_until, created_at, updated_at`
+const memoryCols = `id, user_id, assistant_id, category, content, keywords, keywords_checked, embedding, embedding_model, source, source_conv_id, status, pinned, superseded_by, valid_until, event_at, last_recalled_at, recall_count, compressed, created_at, updated_at`
 
 func scanMemory(row interface{ Scan(...any) error }) (*Memory, error) {
 	var m Memory
 	var b []byte
-	if err := row.Scan(&m.ID, &m.UserID, &m.AssistantID, &m.Category, &m.Content, &m.Keywords, &m.KeywordsChecked, &b, &m.EmbeddingModel, &m.Source, &m.SourceConvID, &m.Status, &m.Pinned, &m.SupersededBy, &m.ValidUntil, &m.CreatedAt, &m.UpdatedAt); err != nil {
+	if err := row.Scan(&m.ID, &m.UserID, &m.AssistantID, &m.Category, &m.Content, &m.Keywords, &m.KeywordsChecked, &b, &m.EmbeddingModel, &m.Source, &m.SourceConvID, &m.Status, &m.Pinned, &m.SupersededBy, &m.ValidUntil, &m.EventAt, &m.LastRecalledAt, &m.RecallCount, &m.Compressed, &m.CreatedAt, &m.UpdatedAt); err != nil {
 		return nil, notFound(err)
 	}
 	m.Embedding = decodeEmbedding(b)
@@ -88,6 +92,9 @@ func insertMemory(ctx context.Context, db execer, m *Memory) error {
 	}
 	if m.CreatedAt == 0 {
 		m.CreatedAt = Now()
+	}
+	if m.EventAt == 0 {
+		m.EventAt = m.CreatedAt
 	}
 	m.UpdatedAt = Now()
 	if m.Status == "" {
@@ -102,7 +109,7 @@ func insertMemory(ctx context.Context, db execer, m *Memory) error {
 	if m.Category == "episode" {
 		m.Pinned = false
 	}
-	_, err := db.exec(ctx, `INSERT INTO memories (`+memoryCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, m.ID, m.UserID, m.AssistantID, m.Category, m.Content, m.Keywords, m.KeywordsChecked, EncodeEmbedding(m.Embedding), m.EmbeddingModel, m.Source, m.SourceConvID, m.Status, m.Pinned, m.SupersededBy, m.ValidUntil, m.CreatedAt, m.UpdatedAt)
+	_, err := db.exec(ctx, `INSERT INTO memories (`+memoryCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, m.ID, m.UserID, m.AssistantID, m.Category, m.Content, m.Keywords, m.KeywordsChecked, EncodeEmbedding(m.Embedding), m.EmbeddingModel, m.Source, m.SourceConvID, m.Status, m.Pinned, m.SupersededBy, m.ValidUntil, m.EventAt, m.LastRecalledAt, m.RecallCount, m.Compressed, m.CreatedAt, m.UpdatedAt)
 	return err
 }
 func (s *Store) CreateMemories(ctx context.Context, ms []*Memory) error {
@@ -119,7 +126,7 @@ func (s *Store) GetMemory(ctx context.Context, id, user string) (*Memory, error)
 	return scanMemory(s.queryRow(ctx, `SELECT `+memoryCols+` FROM memories WHERE id=? AND user_id=? AND status='active'`, id, user))
 }
 
-const memoryOrder = `CASE category WHEN 'health' THEN 0 WHEN 'family' THEN 1 WHEN 'profile' THEN 2 WHEN 'preference' THEN 3 WHEN 'ongoing' THEN 4 ELSE 5 END, created_at DESC, id DESC`
+const memoryOrder = `CASE category WHEN 'health' THEN 0 WHEN 'family' THEN 1 WHEN 'profile' THEN 2 WHEN 'preference' THEN 3 WHEN 'ongoing' THEN 4 ELSE 5 END, event_at DESC, created_at DESC, id DESC`
 
 func readMemories(rows *sql.Rows, err error) ([]*Memory, error) {
 	if err != nil {
@@ -148,11 +155,14 @@ func (s *Store) UpdateMemory(ctx context.Context, id, user string, category, con
 		if category != nil {
 			m.Category = *category
 			m.Pinned = m.Category != "episode"
+			if m.Category != "ongoing" {
+				m.ValidUntil = nil
+			}
 		}
 		if content != nil {
 			m.Content = *content
 		}
-		return affected(tx.exec(ctx, `UPDATE memories SET category=?,content=?,keywords='',keywords_checked=0,embedding=NULL,embedding_model='',pinned=?,updated_at=? WHERE id=? AND user_id=?`, m.Category, m.Content, m.Pinned, Now(), id, user))
+		return affected(tx.exec(ctx, `UPDATE memories SET category=?,content=?,keywords='',keywords_checked=0,embedding=NULL,embedding_model='',pinned=?,valid_until=?,updated_at=? WHERE id=? AND user_id=?`, m.Category, m.Content, m.Pinned, m.ValidUntil, Now(), id, user))
 	})
 	if err != nil {
 		return nil, err
@@ -220,6 +230,7 @@ type MemoryChange struct {
 type EpisodeSpec struct {
 	Content  string
 	Keywords string
+	EventAt  int64
 }
 
 var ErrMemoryStale = errors.New("memory snapshot changed")
@@ -329,7 +340,7 @@ func (s *Store) ApplyMemoryExtractionEpisodes(ctx context.Context, snap MemorySn
 				c.Memory.ID = NewID()
 				next = c.Memory.ID
 			}
-			res, err := tx.exec(ctx, `UPDATE memories SET status=?,superseded_by=?,updated_at=? WHERE id=? AND user_id=? AND status='active'`, status, next, Now(), c.RefID, snap.UserID)
+			res, err := tx.exec(ctx, `UPDATE memories SET status=?,superseded_by=?,embedding=NULL,embedding_model='',updated_at=? WHERE id=? AND user_id=? AND status='active'`, status, next, Now(), c.RefID, snap.UserID)
 			if err != nil {
 				return err
 			}
@@ -373,18 +384,22 @@ func (s *Store) ApplyMemoryExtractionEpisodes(ctx context.Context, snap MemorySn
 						kw = old.Keywords
 						checked = old.KeywordsChecked
 					}
-					if _, err := tx.exec(ctx, `UPDATE memories SET content=?,keywords=?,keywords_checked=?,embedding=NULL,embedding_model='',updated_at=? WHERE id=?`, ep.Content, kw, checked, now, old.ID); err != nil {
+					evAt := old.EventAt
+					if ep.EventAt > 0 {
+						evAt = ep.EventAt
+					}
+					if _, err := tx.exec(ctx, `UPDATE memories SET content=?,keywords=?,keywords_checked=?,embedding=NULL,embedding_model='',event_at=?,updated_at=? WHERE id=?`, ep.Content, kw, checked, evAt, now, old.ID); err != nil {
 						return err
 					}
 				} else {
-					m := &Memory{UserID: snap.UserID, Category: "episode", Content: ep.Content, Keywords: ep.Keywords, KeywordsChecked: checked, SourceConvID: &snap.ConversationID}
+					m := &Memory{UserID: snap.UserID, Category: "episode", Content: ep.Content, Keywords: ep.Keywords, KeywordsChecked: checked, SourceConvID: &snap.ConversationID, EventAt: ep.EventAt}
 					if err := insertMemory(ctx, tx, m); err != nil {
 						return err
 					}
 				}
 			}
 			for i := len(episodes); i < len(existingEps); i++ {
-				if _, err := tx.exec(ctx, `UPDATE memories SET status='archived',updated_at=? WHERE id=?`, now, existingEps[i].ID); err != nil {
+				if _, err := tx.exec(ctx, `UPDATE memories SET status='archived',embedding=NULL,embedding_model='',updated_at=? WHERE id=?`, now, existingEps[i].ID); err != nil {
 					return err
 				}
 			}

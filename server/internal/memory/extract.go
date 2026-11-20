@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -34,7 +33,7 @@ category 只能是：
 
 写 content 和 keywords 的规则：
 - 一条只写一件事，用第三人称「用户……」，不超过 60 字，脱离上下文也能看懂（写全名称，不写「他」「这个药」「它」）。
-- 写上时间：对话里说「今天」「上周」时，按消息的日期换成具体年月。
+- 写上具体年月，严禁裸写「最近」「近期」「这几天」「正在」等模糊当下词（否则一个月后再看会误当成眼下刚发生的事）：对话里说「今天」「上周」「最近」时，必须按消息日期换成具体年月（例如写成「2026年11月用户准备看房」，不要写「用户最近在看房」）。
 - keywords 写 4–8 个检索词，空格分隔：必须包含日常口语说法、俗称、同义词、上下位词（例如写「柯基」配「小狗 狗狗 宠物 犬」；写「瘙痒」配「痒 痒痒 抓挠 皮肤病」；写「氨氯地平」配「降压药 高血压 血压」）。
 
 最重要的规则：宁可漏记，不要记错。
@@ -48,12 +47,15 @@ category 只能是：
 ` + privateTopics + `
 整段对话都是这类内容时，输出 {"actions":[],"episodes":[]}；只有一部分是时，只记其余部分，episodes 里也不要提到这些内容。
 
-episodes：按话题概括这次对话聊了什么、有什么顾虑和结论，方便以后想起「上次聊过」。
-- 通常写 1 条；只有同一段对话里聊了完全不相关的多个独立话题时，才拆成 2–3 条（最多 3 条），避免把无关话题塞进同一条。
-- 每条 content 不超过 110 字，只写聊的内容、用户顾虑和结论，不要写日期前缀，也不要写「已记录」「未记录」「此前已记下」这类关于记忆整理本身的话。
+episodes：只概括「未来几周可能会再次提起或后续追问」的个人/家庭事件、健康咨询、决策纠结或具体计划。不要每聊一次都记流水账！
+- 下面这些对话一律输出空数组 "episodes":[]（不生成 episode）：
+  1. 闲聊寒暄、讲笑话、讲故事、单纯讨论公共新闻或历史科普常识；
+  2. 一次性的工具型/常识型问答（如查菜谱做法、翻译润色、改文案、写代码/查报错、问软件怎么操作、算账换算、单纯画一张与个人近况无关的图）；
+  3. 只是问小暖记不记得某事、复述或核对已有记忆。
+- 确实值得留档时通常写 1 条；只有同一段对话里聊了完全不相关的多个独立个人话题时，才拆成 2–3 条（最多 3 条），避免把无关话题塞进同一条。
+- 每条 content 不超过 110 字，只写聊的内容、用户顾虑和结论，不要写日期前缀，不要写「最近」「近期」等模糊时间词，也不要写「已记录」「未记录」「此前已记下」这类关于记忆整理本身的话。
 - 每条必须配 keywords（4–10 个空格分隔的口语词、俗称、同义词、上下位词，例如「小狗 狗狗 柯基 宠物 痒 痒痒 抓挠 皮肤 雨后 药浴 宠物医院」）。
 - 如果下面给了这个对话已有的概括，在它的基础上增补更新，不要丢掉原来的要点。
-- 闲聊寒暄、没有实质内容，或者只是问小暖记不记得某事、复述已知信息时，输出空数组 "episodes":[]。
 
 没有要改的事实就输出 {"actions":[],"episodes":[...]}。`
 
@@ -234,8 +236,6 @@ func (s *Service) requestExtraction(ctx context.Context, u *store.User, existing
 	return Parse(text, s.Log)
 }
 
-var episodeDate = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}[ ：:]*)+`)
-
 // A single pasted message can exceed a segment. Maintain a draft between its
 // chunks, then commit all changes against the original, unmodified snapshot.
 func (s *Service) extractLong(ctx context.Context, u *store.User, existing []*store.Memory, episode string, prior []*store.Message, msg *store.Message) (Extraction, error) {
@@ -332,6 +332,15 @@ func (s *Service) extractLong(ctx context.Context, u *store.User, existing []*st
 }
 
 func (s *Service) apply(ctx context.Context, snap store.MemorySnapshot, out Extraction, existing []*store.Memory) error {
+	eventMs := store.Now()
+	if len(snap.Messages) > 0 && snap.Messages[len(snap.Messages)-1].CreatedAt > 0 {
+		eventMs = snap.Messages[len(snap.Messages)-1].CreatedAt
+	}
+	evDay := time.UnixMilli(eventMs).In(zone)
+	evDayStart := time.Date(evDay.Year(), evDay.Month(), evDay.Day(), 0, 0, 0, 0, zone)
+	defaultUntil := evDayStart.AddDate(0, 0, DefaultOngoingDays+1).UnixMilli() - 1
+	maxUntil := evDayStart.AddDate(0, 0, MaxOngoingDays+1).UnixMilli() - 1
+
 	changes := []store.MemoryChange{}
 	for _, a := range out.Actions {
 		var old *store.Memory
@@ -359,6 +368,7 @@ func (s *Service) apply(ctx context.Context, snap store.MemorySnapshot, out Extr
 				Source:          "auto",
 				SourceConvID:    &snap.ConversationID,
 				Pinned:          true,
+				EventAt:         eventMs,
 			}
 			if old != nil {
 				m.Pinned = old.Pinned
@@ -371,9 +381,20 @@ func (s *Service) apply(ctx context.Context, snap store.MemorySnapshot, out Extr
 				m.ValidUntil = nil
 				if *a.ValidUntil != "" {
 					d, _ := time.ParseInLocation("2006-01-02", *a.ValidUntil, zone)
-					v := d.AddDate(0, 0, 1).UnixMilli() - 1
+					v := min(d.AddDate(0, 0, 1).UnixMilli()-1, maxUntil)
 					m.ValidUntil = &v
 				}
+			}
+			if m.Category == "ongoing" {
+				if m.ValidUntil == nil || (a.ValidUntil == nil && *m.ValidUntil < eventMs) {
+					v := defaultUntil
+					m.ValidUntil = &v
+				} else if *m.ValidUntil > maxUntil {
+					v := maxUntil
+					m.ValidUntil = &v
+				}
+			} else {
+				m.ValidUntil = nil
 			}
 			ch.Memory = m
 		}
@@ -384,7 +405,21 @@ func (s *Service) apply(ctx context.Context, snap store.MemorySnapshot, out Extr
 	if len(drafts) == 0 && strings.TrimSpace(out.Episode) != "" {
 		drafts = []EpisodeDraft{{Content: out.Episode}}
 	}
-	datePrefix := time.UnixMilli(snap.Messages[len(snap.Messages)-1].CreatedAt).In(zone).Format("2006-01-02")
+	// Preserve original date & event_at for unchanged episodes when an old thread is reopened.
+	priorByKey := map[string]*store.Memory{}
+	if len(drafts) > 0 {
+		if allMems, err := s.Store.ListMemories(ctx, snap.UserID); err == nil {
+			for _, pm := range allMems {
+				if pm.Category == "episode" && pm.SourceConvID != nil && *pm.SourceConvID == snap.ConversationID {
+					body := strings.TrimSpace(episodeDate.ReplaceAllString(strings.TrimSpace(pm.Content), ""))
+					if k := store.MemoryKey(body); k != "" {
+						priorByKey[k] = pm
+					}
+				}
+			}
+		}
+	}
+	datePrefix := evDay.Format("2006-01-02")
 	var specs []store.EpisodeSpec
 	for _, d := range drafts {
 		// The model sometimes copies the message dates into its summary.
@@ -392,9 +427,18 @@ func (s *Service) apply(ctx context.Context, snap store.MemorySnapshot, out Extr
 		if ep == "" {
 			continue
 		}
+		if prev, ok := priorByKey[store.MemoryKey(ep)]; ok {
+			specs = append(specs, store.EpisodeSpec{
+				Content:  prev.Content,
+				Keywords: strings.TrimSpace(d.Keywords),
+				EventAt:  memoryEventAt(prev),
+			})
+			continue
+		}
 		specs = append(specs, store.EpisodeSpec{
 			Content:  datePrefix + " " + ep,
 			Keywords: strings.TrimSpace(d.Keywords),
+			EventAt:  eventMs,
 		})
 	}
 	return s.Store.ApplyMemoryExtractionEpisodes(ctx, snap, changes, specs)

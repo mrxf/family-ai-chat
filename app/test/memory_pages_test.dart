@@ -139,6 +139,42 @@ void main() {
     expect(find.text('喜欢早上散步'), findsOneWidget);
   });
 
+  testWidgets('episodes beyond 10 fold by default and expand or collapse on tap', (tester) async {
+    final api = _FakeApi()
+      ..items = [
+        _memory('h1', '用户对花生过敏', category: MemoryCategory.health),
+        for (var i = 1; i <= 14; i++)
+          Memory(
+            id: 'ep-$i',
+            category: MemoryCategory.episode,
+            content: '对话摘要第$i条',
+            source: 'auto',
+            pinned: false,
+            isNew: false,
+            createdAt: 1000 - i,
+            updatedAt: 1000 - i,
+          ),
+      ];
+    await tester.pumpWidget(_app(api, const MemoriesPage()));
+    await tester.pumpAndSettle();
+    expect(find.text('健康与用药 · 1'), findsOneWidget);
+    expect(find.text('聊过的事 · 14'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('展开全部 14 条'), 250, scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(find.text('展开全部 14 条'));
+    await tester.pumpAndSettle();
+    expect(find.text('对话摘要第10条'), findsOneWidget);
+    expect(find.text('对话摘要第14条'), findsNothing);
+    await tester.tap(find.text('展开全部 14 条'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('收起较早的记录'));
+    await tester.pumpAndSettle();
+    expect(find.text('对话摘要第14条'), findsOneWidget);
+    expect(find.text('收起较早的记录'), findsOneWidget);
+    await tester.tap(find.text('收起较早的记录'));
+    await tester.pumpAndSettle();
+    expect(find.text('对话摘要第14条'), findsNothing);
+  });
+
   testWidgets('forgetting a memory requires confirmation and refreshes to the empty state', (tester) async {
     final api = _FakeApi()..items = [_memory('m', '喜欢早上散步')];
     await tester.pumpWidget(_app(api, const MemoriesPage()));

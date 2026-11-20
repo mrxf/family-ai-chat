@@ -126,12 +126,13 @@ func (s *Service) InjectTurn(ctx context.Context, u *store.User, in InjectReques
 			category = m.Category
 			fmt.Fprintf(&core, "【%s】\n", labels[category])
 		}
-		content := clip(m.Content, CoreHardLimit-n)
+		content := clip(formatCoreEntry(m), CoreHardLimit-n)
 		fmt.Fprintf(&core, "- %s\n", content)
 		n += utf8.RuneCountInString(content)
 	}
 
 	queries, embedQuery := buildTurnQueries(in, coreItems)
+	retrospective := hasRetrospectiveIntent(in.UserMessages)
 	parts := []string{}
 	usedRunes := 0
 	appendPart := func(text string) bool {
@@ -155,14 +156,20 @@ func (s *Service) InjectTurn(ctx context.Context, u *store.User, in InjectReques
 		if utf8.RuneCountInString(strings.TrimSpace(embedQuery)) >= minVectorQuery {
 			vector, model = s.queryVector(ctx, embedQuery, liveEmbedTimeout)
 		}
-		selected := rankWeighted(queries, vector, model, recall, RecallLimit, true)
+		selected := rankForInject(queries, vector, model, recall, RecallLimit, now, retrospective)
+		var touchIDs []string
 		for _, m := range selected {
-			entry := m.Content
-			if m.SourceConvID != nil && *m.SourceConvID != "" && *m.SourceConvID != in.ConversationID {
-				entry += " [conv:" + *m.SourceConvID + "]"
-			}
+			entry := formatRecallEntry(m, now, in.ConversationID)
 			if !appendPart(entry) {
 				break
+			}
+			if m.LastRecalledAt == nil || now-*m.LastRecalledAt >= RecallTouchCooldownMs {
+				touchIDs = append(touchIDs, m.ID)
+			}
+		}
+		if len(touchIDs) > 0 {
+			if err := s.Store.TouchMemoriesRecall(ctx, u.ID, touchIDs, now, RecallTouchCooldownMs); err != nil {
+				s.Log.Warn("touch memory recall", "err", err)
 			}
 		}
 	}

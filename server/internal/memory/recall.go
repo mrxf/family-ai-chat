@@ -84,6 +84,10 @@ func (s *Service) Recall(ctx context.Context, u *store.User, assistant *string, 
 		}
 		sorted := append([]*store.Memory(nil), candidates...)
 		sort.SliceStable(sorted, func(i, j int) bool {
+			ei, ej := memoryEventAt(sorted[i]), memoryEventAt(sorted[j])
+			if ei != ej {
+				return ei > ej
+			}
 			if sorted[i].CreatedAt != sorted[j].CreatedAt {
 				return sorted[i].CreatedAt > sorted[j].CreatedAt
 			}
@@ -95,7 +99,7 @@ func (s *Service) Recall(ctx context.Context, u *store.User, assistant *string, 
 			shown := min(len(sorted), limit)
 			fmt.Fprintf(&b, "\n【记忆列表（按时间由新到旧，显示 %d/%d 条）】\n", shown, len(sorted))
 			for _, m := range sorted[:shown] {
-				writeMemoryLine(&b, m, currentConvID)
+				writeMemoryLine(&b, m, currentConvID, now)
 			}
 		}
 		s.appendRecentUnextracted(&b, ctx, u.ID, currentConvID, 2*time.Hour)
@@ -146,13 +150,22 @@ func (s *Service) Recall(ctx context.Context, u *store.User, assistant *string, 
 
 	if len(strictHits) > 0 {
 		b.WriteString("\n【匹配的记忆条目】\n")
+		var touchIDs []string
 		for _, m := range strictHits {
-			writeMemoryLine(&b, m, currentConvID)
+			writeMemoryLine(&b, m, currentConvID, now)
+			if m.LastRecalledAt == nil || now-*m.LastRecalledAt >= RecallTouchCooldownMs {
+				touchIDs = append(touchIDs, m.ID)
+			}
+		}
+		if len(touchIDs) > 0 {
+			if err := s.Store.TouchMemoriesRecall(ctx, u.ID, touchIDs, now, RecallTouchCooldownMs); err != nil {
+				s.Log.Warn("recall touch memories", "err", err)
+			}
 		}
 	} else if len(softHits) > 0 {
 		b.WriteString("\n【可能相关的候选记忆（低置信，请甄别）】\n")
 		for _, m := range softHits {
-			writeMemoryLine(&b, m, currentConvID)
+			writeMemoryLine(&b, m, currentConvID, now)
 		}
 	} else {
 		b.WriteString("\n【匹配的记忆条目】\n（没有搜到直接匹配的摘要记忆）\n")
@@ -183,7 +196,11 @@ func (s *Service) Recall(ctx context.Context, u *store.User, assistant *string, 
 						title = "未命名对话"
 					}
 					ts := time.UnixMilli(ex.CreatedAt).In(zone).Format("2006-01-02 15:04")
-					fmt.Fprintf(&b, "- [conv_id: %s] 《%s》(%s) %s：%s\n", ex.ConversationID, title, ts, role, excerptAround(ex.Content, terms, 140))
+					if ex.ConversationID == currentConvID && currentConvID != "" {
+						fmt.Fprintf(&b, "- [本对话早期记录] (%s) %s：%s\n", ts, role, excerptAround(ex.Content, terms, 140))
+					} else {
+						fmt.Fprintf(&b, "- [conv_id: %s] 《%s》(%s) %s：%s\n", ex.ConversationID, title, ts, role, excerptAround(ex.Content, terms, 140))
+					}
 				}
 			}
 		}
@@ -192,22 +209,30 @@ func (s *Service) Recall(ctx context.Context, u *store.User, assistant *string, 
 	return strings.TrimSpace(b.String())
 }
 
-func writeMemoryLine(b *strings.Builder, m *store.Memory, currentConvID string) {
+func writeMemoryLine(b *strings.Builder, m *store.Memory, currentConvID string, nowMs int64) {
 	label := labels[m.Category]
 	if label == "" {
 		label = m.Category
 	}
-	date := time.UnixMilli(m.CreatedAt).In(zone).Format("2006-01-02")
+	evMs := memoryEventAt(m)
+	days := calendarAgeDays(evMs, nowMs)
+	span := relativeSpan(days)
+	date := time.UnixMilli(evMs).In(zone).Format("2006-01-02")
 	convTag := ""
 	if m.SourceConvID != nil && *m.SourceConvID != "" && *m.SourceConvID != currentConvID {
 		convTag = fmt.Sprintf(" (conv_id: %s)", *m.SourceConvID)
 	}
 	content := strings.TrimSpace(m.Content)
-	if m.Category == "episode" && episodeDate.MatchString(content) {
-		fmt.Fprintf(b, "- [%s] %s%s\n", label, content, convTag)
+	if m.Category == "ongoing" && m.ValidUntil != nil && *m.ValidUntil < nowMs {
+		content = sanitizeStaleTemporalWords(content)
+		fmt.Fprintf(b, "- [%s | %s · %s · 已过时效] %s%s\n", label, date, span, content, convTag)
 		return
 	}
-	fmt.Fprintf(b, "- [%s | %s] %s%s\n", label, date, content, convTag)
+	if m.Category == "episode" && episodeDate.MatchString(content) {
+		fmt.Fprintf(b, "- [%s | %s] %s%s\n", label, span, content, convTag)
+		return
+	}
+	fmt.Fprintf(b, "- [%s | %s · %s] %s%s\n", label, date, span, content, convTag)
 }
 
 func (s *Service) appendRecentUnextracted(b *strings.Builder, ctx context.Context, userID, excludeConvID string, window time.Duration) {

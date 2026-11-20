@@ -15,7 +15,7 @@ const (
 	VectorThreshold   = SemanticThreshold
 	KeywordThreshold  = 0.85 // calibrated BM25 gate for standalone lexical matches
 	RecallLimit       = 6
-	RecallRunes       = 700
+	RecallRunes       = 780
 	CoreSoftLimit     = 1500
 	CoreHardLimit     = 3000
 )
@@ -349,13 +349,38 @@ func expandQueryTokens(queries []WeightedQuery, corpusVocab map[string]int) map[
 	return merged
 }
 
+// RankTextDocs scores plain text documents (such as historical messages in the same conversation)
+// against unweighted query strings using the CJK bigram + colloquial synonym BM25 engine.
+func RankTextDocs(queries []string, texts []string) ([]float64, []bool) {
+	if len(queries) == 0 || len(texts) == 0 {
+		return make([]float64, len(texts)), make([]bool, len(texts))
+	}
+	wqs := make([]WeightedQuery, 0, len(queries))
+	for _, q := range queries {
+		if q = strings.TrimSpace(q); q != "" {
+			wqs = append(wqs, WeightedQuery{Text: q, Weight: 1.0})
+		}
+	}
+	docs := make([]docIndex, len(texts))
+	for i, t := range texts {
+		docs[i] = buildDocIndex(t, "")
+	}
+	return bm25Corpus(wqs, docs)
+}
+
 // bm25Corpus scores a slice of documents against weighted queries using dynamic
 // smoothed IDF (virtual corpus floor N_eff >= 12 so 1-memory accounts stay calibrated).
 func bm25Corpus(queries []WeightedQuery, docs []docIndex) ([]float64, []bool) {
+	scores, passed, _ := bm25Detailed(queries, docs)
+	return scores, passed
+}
+
+func bm25Detailed(queries []WeightedQuery, docs []docIndex) ([]float64, []bool, []int) {
 	scores := make([]float64, len(docs))
 	passed := make([]bool, len(docs))
+	strongBigrams := make([]int, len(docs))
 	if len(docs) == 0 || len(queries) == 0 {
-		return scores, passed
+		return scores, passed, strongBigrams
 	}
 	df := map[string]int{}
 	totalLen := 0.0
@@ -371,7 +396,7 @@ func bm25Corpus(queries []WeightedQuery, docs []docIndex) ([]float64, []bool) {
 	}
 	qTokens := expandQueryTokens(queries, df)
 	if len(qTokens) == 0 {
-		return scores, passed
+		return scores, passed, strongBigrams
 	}
 	nEff := math.Max(float64(len(docs)), 12.0)
 	const (
@@ -380,7 +405,7 @@ func bm25Corpus(queries []WeightedQuery, docs []docIndex) ([]float64, []bool) {
 	)
 	for i, d := range docs {
 		score := 0.0
-		strongBigram := false
+		bigramHits := 0
 		strongHits := 0
 		for term, qt := range qTokens {
 			f := d.tf[term]
@@ -395,14 +420,15 @@ func bm25Corpus(queries []WeightedQuery, docs []docIndex) ([]float64, []bool) {
 			if qt.Strong && idf >= 0.85 {
 				strongHits++
 				if qt.Bigram && qt.Weight >= 0.45 {
-					strongBigram = true
+					bigramHits++
 				}
 			}
 		}
 		scores[i] = score
-		passed[i] = strongBigram || (strongHits > 0 && score >= KeywordThreshold)
+		strongBigrams[i] = bigramHits
+		passed[i] = bigramHits > 0 || (strongHits > 0 && score >= KeywordThreshold)
 	}
-	return scores, passed
+	return scores, passed, strongBigrams
 }
 
 // KeywordScore evaluates a single text against query using the calibrated BM25 scorer.
@@ -466,7 +492,45 @@ func rankWeighted(queries []WeightedQuery, vector []float32, model string, ms []
 	return out
 }
 
+type rankOptions struct {
+	threshold     bool
+	ageGate       bool
+	nowMs         int64
+	retrospective bool
+}
+
 func rankScored(queries []WeightedQuery, vector []float32, model string, ms []*store.Memory, limit int, threshold bool) []scoredMemory {
+	return rankWithOptions(queries, vector, model, ms, limit, rankOptions{
+		threshold: threshold,
+		nowMs:     time.Now().UnixMilli(),
+	})
+}
+
+// rankForInject applies Ebbinghaus age-gated thresholds for silent per-turn
+// auto-injection so >30-day episodic chatter is not resurfaced on casual word collisions.
+func rankForInject(queries []WeightedQuery, vector []float32, model string, ms []*store.Memory, limit int, nowMs int64, retrospective bool) []*store.Memory {
+	items := rankWithOptions(queries, vector, model, ms, limit, rankOptions{
+		threshold:     true,
+		ageGate:       true,
+		nowMs:         nowMs,
+		retrospective: retrospective,
+	})
+	out := make([]*store.Memory, 0, len(items))
+	distantCount := 0
+	for _, it := range items {
+		isTimeBound := it.m.Category == "episode" || it.m.Category == "ongoing"
+		if isTimeBound && !retrospective && calendarAgeDays(memoryEventAt(it.m), nowMs) > 30 {
+			if distantCount >= 2 {
+				continue
+			}
+			distantCount++
+		}
+		out = append(out, it.m)
+	}
+	return out
+}
+
+func rankWithOptions(queries []WeightedQuery, vector []float32, model string, ms []*store.Memory, limit int, opts rankOptions) []scoredMemory {
 	if len(ms) == 0 || limit <= 0 {
 		return nil
 	}
@@ -474,7 +538,7 @@ func rankScored(queries []WeightedQuery, vector []float32, model string, ms []*s
 	for i, m := range ms {
 		docs[i] = buildDocIndex(m.Content, m.Keywords)
 	}
-	lexScores, lexOK := bm25Corpus(queries, docs)
+	lexScores, lexOK, strongBigrams := bm25Detailed(queries, docs)
 
 	cosScores := make([]float64, len(ms))
 	vecOK := make([]bool, len(ms))
@@ -515,13 +579,35 @@ func rankScored(queries []WeightedQuery, vector []float32, model string, ms []*s
 		vecRank[idx] = r + 1
 	}
 
-	nowMs := float64(time.Now().UnixMilli())
-	const dayMs = 24 * 3600 * 1000.0
+	nowMs := opts.nowMs
+	if nowMs <= 0 {
+		nowMs = time.Now().UnixMilli()
+	}
+	const dayFloat = 24 * 3600 * 1000.0
 
 	var items []scoredMemory
 	for i, m := range ms {
 		ok := vecOK[i] || lexOK[i]
-		if threshold && !ok {
+		isTimeBound := m.Category == "episode" || m.Category == "ongoing"
+		evMs := memoryEventAt(m)
+		calAgeDays := calendarAgeDays(evMs, nowMs)
+
+		if opts.ageGate && isTimeBound && calAgeDays > 7 {
+			if calAgeDays <= 30 || opts.retrospective {
+				// Cooling window (8-30d) or explicit retrospective query ("上次/之前"):
+				// reject single accidental 2-char word collisions; require multi-bigram or solid semantic match.
+				vecPass := hasVec[i] && cosScores[i] >= 0.50
+				lexPass := strongBigrams[i] >= 2 || lexScores[i] >= 4.0
+				ok = vecPass || lexPass
+			} else {
+				// Distant past (>30d) in ordinary forward-looking chat (no retrospective cue):
+				// stay silent by default so 30+ day old episodes never hijack fresh topics;
+				// only allow near-identical semantic + multi-bigram matches when vectors exist.
+				ok = hasVec[i] && cosScores[i] >= 0.75 && strongBigrams[i] >= 2
+			}
+		}
+
+		if opts.threshold && !ok {
 			continue
 		}
 		rrf := 0.0
@@ -531,9 +617,15 @@ func rankScored(queries []WeightedQuery, vector []float32, model string, ms []*s
 		if lexRank[i] > 0 {
 			rrf += 0.95/float64(20+lexRank[i]) + 0.02*math.Min(lexScores[i], 12.0)
 		}
-		if rrf > 0 && m.UpdatedAt > 0 {
-			ageDays := math.Max(0, (nowMs-float64(m.UpdatedAt))/dayMs)
-			rrf += 0.03 * math.Exp(-ageDays/60.0)
+		if rrf > 0 && evMs > 0 {
+			ageDays := math.Max(0, float64(nowMs-evMs)/dayFloat)
+			rrf += 0.03 * math.Exp(-ageDays/45.0)
+			if m.RecallCount > 0 {
+				rrf += 0.008 * math.Min(math.Log1p(float64(m.RecallCount)), 2.5)
+			}
+			if opts.ageGate && isTimeBound && !opts.retrospective && ageDays > 14 {
+				rrf *= 0.65 + 0.35*math.Exp(-(ageDays-14)/30.0)
+			}
 		}
 		items = append(items, scoredMemory{m: m, score: rrf, ok: ok})
 	}

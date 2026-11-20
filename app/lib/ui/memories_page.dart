@@ -21,7 +21,9 @@ class MemoriesPage extends ConsumerStatefulWidget {
 }
 
 class _MemoriesPageState extends ConsumerState<MemoriesPage> {
+  static const _episodeFoldLimit = 10;
   bool _busy = false;
+  bool _expandEpisodes = false;
 
   Future<void> _refresh() async {
     try {
@@ -213,53 +215,67 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
                           ),
                         ),
                         MemoryPanel(
-                          child: Column(
-                            children: [
-                              for (final (i, memory) in group.value.indexed) ...[
-                                if (i > 0) Divider(height: 1, indent: 18, endIndent: 18, color: p.line),
-                                Pressable(
-                                  scale: 0.99,
-                                  onTap: _busy ? null : () => _actions(memory),
-                                  child: Padding(
-                                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                                      children: [
-                                        if (memory.isNew)
-                                          Align(
-                                            alignment: Alignment.centerLeft,
-                                            child: Container(
-                                              margin: const EdgeInsets.only(bottom: 8),
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                              decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(8)),
-                                              child: Text(
-                                                '新',
-                                                style: TextStyle(color: p.accent, fontSize: 13, fontWeight: FontWeight.w700),
+                          child: Builder(
+                            builder: (context) {
+                              final foldable = group.key == MemoryCategory.episode && group.value.length > _episodeFoldLimit;
+                              final shown = foldable && !_expandEpisodes ? group.value.take(_episodeFoldLimit).toList() : group.value;
+                              return Column(
+                                children: [
+                                  for (final (i, memory) in shown.indexed) ...[
+                                    if (i > 0) Divider(height: 1, indent: 18, endIndent: 18, color: p.line),
+                                    Pressable(
+                                      scale: 0.99,
+                                      onTap: _busy ? null : () => _actions(memory),
+                                      child: Padding(
+                                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                                          children: [
+                                            if (memory.isNew)
+                                              Align(
+                                                alignment: Alignment.centerLeft,
+                                                child: Container(
+                                                  margin: const EdgeInsets.only(bottom: 8),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                  decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(8)),
+                                                  child: Text(
+                                                    '新',
+                                                    style: TextStyle(color: p.accent, fontSize: 13, fontWeight: FontWeight.w700),
+                                                  ),
+                                                ),
                                               ),
-                                            ),
-                                          ),
-                                        Text(memory.content, style: Theme.of(context).textTheme.bodyLarge),
-                                        if (memory.sourceConvId != null)
-                                          Align(
-                                            alignment: Alignment.centerLeft,
-                                            child: TextButton.icon(
-                                              style: TextButton.styleFrom(minimumSize: const Size(44, 44), foregroundColor: p.muted, padding: EdgeInsets.zero),
-                                              onPressed: _busy
-                                                  ? null
-                                                  : () {
-                                                      ref.read(chatProvider.notifier).open(memory.sourceConvId!);
-                                                      Navigator.of(context).popUntil((r) => r.isFirst);
-                                                    },
-                                              icon: const AppIcon(AppIcons.chatBubble, size: 15),
-                                              label: const Text('来自对话'),
-                                            ),
-                                          ),
-                                      ],
+                                            Text(memory.content, style: Theme.of(context).textTheme.bodyLarge),
+                                            if (memory.sourceConvId != null)
+                                              Align(
+                                                alignment: Alignment.centerLeft,
+                                                child: TextButton.icon(
+                                                  style: TextButton.styleFrom(minimumSize: const Size(44, 44), foregroundColor: p.muted, padding: EdgeInsets.zero),
+                                                  onPressed: _busy
+                                                      ? null
+                                                      : () {
+                                                          ref.read(chatProvider.notifier).open(memory.sourceConvId!);
+                                                          Navigator.of(context).popUntil((r) => r.isFirst);
+                                                        },
+                                                  icon: const AppIcon(AppIcons.chatBubble, size: 15),
+                                                  label: const Text('来自对话'),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              ],
-                            ],
+                                  ],
+                                  if (foldable) ...[
+                                    Divider(height: 1, indent: 18, endIndent: 18, color: p.line),
+                                    TextButton(
+                                      style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                                      onPressed: () => setState(() => _expandEpisodes = !_expandEpisodes),
+                                      child: Text(_expandEpisodes ? '收起较早的记录' : '展开全部 ${group.value.length} 条'),
+                                    ),
+                                  ],
+                                ],
+                              );
+                            },
                           ),
                         ),
                       ],

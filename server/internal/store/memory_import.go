@@ -67,7 +67,7 @@ func (s *Store) ImportMemories(ctx context.Context, user string, items []MemoryI
 			m.UserID = user
 			m.AssistantID = nil
 			if item.ReplacesID != "" {
-				if _, err := tx.exec(ctx, `UPDATE memories SET status='superseded',superseded_by=?,updated_at=? WHERE id=? AND user_id=? AND status='active' AND assistant_id IS NULL AND category<>'episode'`, m.ID, now, item.ReplacesID, user); err != nil {
+				if _, err := tx.exec(ctx, `UPDATE memories SET status='superseded',superseded_by=?,embedding=NULL,embedding_model='',updated_at=? WHERE id=? AND user_id=? AND status='active' AND assistant_id IS NULL AND category<>'episode'`, m.ID, now, item.ReplacesID, user); err != nil {
 					return err
 				}
 			}

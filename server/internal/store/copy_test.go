@@ -95,9 +95,10 @@ func populateCopyStore(t *testing.T, s *Store) {
 	if err := s.CreateConversation(ctx, c); err != nil {
 		t.Fatal(err)
 	}
+	recalled := Now() - 3600000
 	if err := s.CreateMemories(ctx, []*Memory{
-		{UserID: u.ID, Category: "health", Content: "用户有高血压", Pinned: true, Embedding: []float32{1, -0.5, 0.25}, EmbeddingModel: "bge", SourceConvID: &c.ID},
-		{UserID: u.ID, Category: "episode", Content: "2026-11-17 聊了健康", SourceConvID: &c.ID},
+		{UserID: u.ID, Category: "health", Content: "用户有高血压", Pinned: true, Embedding: []float32{1, -0.5, 0.25}, EmbeddingModel: "bge", SourceConvID: &c.ID, LastRecalledAt: &recalled, RecallCount: 2},
+		{UserID: u.ID, Category: "episode", Content: "2026-11-17 聊了健康", SourceConvID: &c.ID, Compressed: true},
 	}); err != nil {
 		t.Fatal(err)
 	}

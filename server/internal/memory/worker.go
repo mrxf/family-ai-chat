@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"nuan/internal/llm"
@@ -19,20 +21,31 @@ type kick struct {
 }
 
 type Worker struct {
-	service  *Service
-	ctx      context.Context
-	cancel   context.CancelFunc
-	kicks    chan kick
-	wg       sync.WaitGroup
-	mu       sync.Mutex
-	busy     map[string]bool
-	failures map[string]int
-	slots    chan struct{}
+	service   *Service
+	ctx       context.Context
+	cancel    context.CancelFunc
+	kicks     chan kick
+	wg        sync.WaitGroup
+	mu        sync.Mutex
+	busy      map[string]bool
+	failures  map[string]int
+	slots     chan struct{}
+	startedAt time.Time
+	sleeping  atomic.Bool
 }
 
 func NewWorker(s *Service) *Worker {
 	ctx, cancel := context.WithCancel(context.Background())
-	w := &Worker{service: s, ctx: ctx, cancel: cancel, kicks: make(chan kick, 128), busy: map[string]bool{}, failures: map[string]int{}, slots: make(chan struct{}, 2)}
+	w := &Worker{
+		service:   s,
+		ctx:       ctx,
+		cancel:    cancel,
+		kicks:     make(chan kick, 128),
+		busy:      map[string]bool{},
+		failures:  map[string]int{},
+		slots:     make(chan struct{}, 2),
+		startedAt: time.Now(),
+	}
 	w.wg.Add(1)
 	go w.loop()
 	return w
@@ -90,6 +103,7 @@ func (w *Worker) loop() {
 			reset()
 		case <-ticker.C:
 			w.scan(nil)
+			w.maybeScheduleSleep(time.Now())
 		case <-timer.C:
 			due := map[string]bool{}
 			for id, t := range pending {
@@ -183,6 +197,131 @@ func (w *Worker) scan(immediate map[string]bool) {
 			w.service.Log.Warn("memory embedding backfill", "err", err)
 		}
 	}()
+}
+
+func (w *Worker) maybeScheduleSleep(now time.Time) {
+	// Give startup 2 minutes to settle before launching background sleep consolidation.
+	if !w.startedAt.IsZero() && now.Sub(w.startedAt) < 2*time.Minute {
+		return
+	}
+	if w.sleeping.Load() {
+		return
+	}
+	last := w.service.lastSleepAt(w.ctx)
+	if !shouldRunSleep(now, last) {
+		return
+	}
+	if !w.sleeping.CompareAndSwap(false, true) {
+		return
+	}
+	w.wg.Add(1)
+	go func() {
+		defer w.wg.Done()
+		defer w.sleeping.Store(false)
+		rep, err := w.RunSleep(w.ctx, now.UnixMilli())
+		if err != nil {
+			if w.ctx.Err() == nil {
+				w.service.Log.Warn("memory sleep consolidation", "err", err)
+			}
+			return
+		}
+		if rep.Changed() {
+			w.service.Log.Info("memory sleep consolidation finished",
+				"users", rep.UsersProcessed,
+				"purged_inactive", rep.PurgedInactive,
+				"ongoing_converted", rep.OngoingConverted,
+				"digests_created", rep.DigestsCreated,
+				"episodes_compressed", rep.EpisodesCompressed,
+				"stale_archived", rep.StaleArchived,
+				"core_rewritten", rep.CoreRewritten,
+				"core_dropped", rep.CoreDropped,
+			)
+		}
+	}()
+}
+
+// RunSleep executes nightly sleep consolidation across all users while acquiring
+// the same per-user busy lock and worker slot semaphore used by extraction jobs.
+func (w *Worker) RunSleep(ctx context.Context, nowMs int64) (SleepReport, error) {
+	if nowMs <= 0 {
+		nowMs = store.Now()
+	}
+	var total SleepReport
+	purged, err := w.service.Store.PurgeInactiveMemories(ctx, nowMs-InactivePurgeAgeDays*dayMs)
+	if err != nil {
+		return total, err
+	}
+	total.PurgedInactive = purged
+
+	prevSleepMs := w.service.lastSleepAt(ctx)
+	users, err := w.service.Store.ListMemoryUserIDs(ctx)
+	if err != nil {
+		return total, err
+	}
+	needEmbed := false
+	for _, uid := range users {
+		release, ok := w.acquireUserSlot(ctx, uid)
+		if !ok {
+			return total, ctx.Err()
+		}
+		rep, uErr := w.service.SleepUser(ctx, uid, nowMs, prevSleepMs)
+		release()
+		total.add(rep)
+		if uErr != nil {
+			w.service.Log.Warn("memory sleep user failed", "user", uid, "err", uErr)
+			continue
+		}
+		if rep.OngoingConverted > 0 || rep.DigestsCreated > 0 || rep.CoreRewritten > 0 {
+			needEmbed = true
+		}
+	}
+	if err := w.service.Store.SetSetting(ctx, SettingLastSleepAt, strconv.FormatInt(nowMs, 10)); err != nil {
+		w.service.Log.Warn("save memory_last_sleep_at", "err", err)
+	}
+	if needEmbed && ctx.Err() == nil {
+		w.service.DrainEmbeddings(ctx)
+	}
+	return total, nil
+}
+
+func (w *Worker) acquireUserSlot(ctx context.Context, user string) (func(), bool) {
+	for {
+		if ctx.Err() != nil {
+			return nil, false
+		}
+		w.mu.Lock()
+		if w.busy == nil {
+			w.busy = map[string]bool{}
+		}
+		if !w.busy[user] {
+			w.busy[user] = true
+			w.mu.Unlock()
+			if w.slots != nil {
+				select {
+				case w.slots <- struct{}{}:
+				case <-ctx.Done():
+					w.mu.Lock()
+					delete(w.busy, user)
+					w.mu.Unlock()
+					return nil, false
+				}
+			}
+			return func() {
+				if w.slots != nil {
+					<-w.slots
+				}
+				w.mu.Lock()
+				delete(w.busy, user)
+				w.mu.Unlock()
+			}, true
+		}
+		w.mu.Unlock()
+		select {
+		case <-time.After(50 * time.Millisecond):
+		case <-ctx.Done():
+			return nil, false
+		}
+	}
 }
 
 // Process drains a conversation in chronological segments. The scheduler owns the
