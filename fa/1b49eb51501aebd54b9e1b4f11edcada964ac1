@@ -1,0 +1,40 @@
+README.md
+  h_8f297825d1fe21 79
+app/lib/ui/admin/model_edit_page.dart
+  h_8f297825d1fe21 535
+app/lib/ui/messages.dart
+  h_8f297825d1fe21 385-394,412-418,712,744-745,747-750,754-755,773,799-803
+app/test/web_search_ui_test.dart
+  h_8f297825d1fe21 150-183
+docs/proposal-v6-context-compaction.md
+  h_8f297825d1fe21 1-58
+server/internal/chat/compact.go
+  h_8f297825d1fe21 1-774
+server/internal/chat/compact_test.go
+  h_8f297825d1fe21 1-527
+server/internal/chat/hub.go
+  h_8f297825d1fe21 22
+server/internal/chat/memory_test.go
+  h_8f297825d1fe21 192-260
+server/internal/chat/service.go
+  h_8f297825d1fe21 72-79,83-94,99-105,323-335,588,610-614,692-694,722,739,741-742,823-838,1017-1018,1021-1023,1044-1045,1048-1050,1081-1092,1100-1105,1111,1113-1117,1121,1135-1151,1154,1158-1160,1166-1167,1173-1176,1180-1185,1187-1196,1199-1205,1255-1279,1281-1284,1287-1288,1291-1328,1332,1335-1343
+server/internal/chat/tools.go
+  h_8f297825d1fe21 189-195,203,249-265,352-355,601,605
+server/internal/store/conversations.go
+  h_8f297825d1fe21 451-453,478-488,494-497,503-543,558-787,847-848,881-882
+server/internal/store/migrations/postgres/012_context_compaction.sql
+  h_8f297825d1fe21 1-2
+server/internal/store/migrations/sqlite/012_context_compaction.sql
+  h_8f297825d1fe21 1-2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "fa1b49eb51501aebd54b9e1b4f11edcada964ac1",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
