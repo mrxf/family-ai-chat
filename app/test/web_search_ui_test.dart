@@ -147,4 +147,38 @@ void main() {
     expect(find.text('国内金价跌破800元/克'), findsOneWidget);
     expect(find.text('零售金商报价'), findsOneWidget);
   });
+
+  testWidgets('TaskAndSourcesPanel renders history step live progress and settles to 已翻看前面的聊天记录', (tester) async {
+    Widget wrap(Widget child) => MaterialApp(
+          theme: buildTheme(Brightness.light),
+          home: Scaffold(body: Padding(padding: const EdgeInsets.all(16), child: child)),
+        );
+
+    await tester.pumpWidget(wrap(
+      const TaskAndSourcesPanel(
+        steps: [
+          RunStep(kind: 'history', title: '翻看前面的聊天记录', status: 'running'),
+        ],
+        sources: [],
+        isLive: true,
+        waitingForReply: true,
+        activity: '正在翻看前面的聊天记录…',
+      ),
+    ));
+    expect(find.textContaining('正在翻看前面的聊天记录'), findsOneWidget);
+
+    await tester.pumpWidget(wrap(
+      const TaskAndSourcesPanel(
+        steps: [
+          RunStep(kind: 'history', title: '已翻看前面的聊天记录', status: 'done'),
+        ],
+        sources: [],
+        isLive: false,
+        waitingForReply: false,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    // Settled panel collapses to the single header pill by default.
+    expect(find.text('已翻看前面的聊天记录'), findsOneWidget);
+  });
 }

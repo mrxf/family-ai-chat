@@ -186,11 +186,13 @@ func (s *Service) ImageAvailable(ctx context.Context) bool {
 }
 
 type toolSet struct {
-	tools     []llm.Tool
-	canDraw   bool
-	canRecall bool
-	canSearch bool
-	canFetch  bool
+	tools          []llm.Tool
+	allowTools     bool
+	canDraw        bool
+	canRecall      bool
+	canReadEarlier bool
+	canSearch      bool
+	canFetch       bool
 }
 
 // toolsFor returns the tools a chat model may use in this reply.
@@ -198,7 +200,7 @@ func (s *Service) toolsFor(ctx context.Context, user *store.User, conv *store.Co
 	if !m.Tools || s.toolsRejected(m) {
 		return toolSet{}
 	}
-	var ts toolSet
+	ts := toolSet{allowTools: true}
 	if im, _ := s.imageModel(ctx); im != nil {
 		ts.canDraw = true
 		ts.tools = append(ts.tools, imageTool)
@@ -244,21 +246,23 @@ func (s *Service) markToolsRejected(m *store.Model) { s.noTools.Store(toolKey(m)
 
 // toolTurn carries the state of one reply's tool use.
 type toolTurn struct {
-	user          *store.User
-	convID        string
-	assistantID   *string
-	asstID        string
-	userQuestion  string
-	run           *Run
-	private       bool
-	images        int
-	memCalls      int
-	searchCalls   int
-	fetchCalls    int
-	sources       []store.WebSource
-	seenSourceURL map[string]int
-	postActivity  string
-	cost          float64
+	user           *store.User
+	convID         string
+	assistantID    *string
+	asstID         string
+	userQuestion   string
+	foldedBeforeID string
+	run            *Run
+	private        bool
+	images         int
+	memCalls       int
+	historyCalls   int
+	searchCalls    int
+	fetchCalls     int
+	sources        []store.WebSource
+	seenSourceURL  map[string]int
+	postActivity   string
+	cost           float64
 }
 
 // runTools executes the calls of one round (pictures are drawn in parallel)
@@ -344,6 +348,10 @@ func (s *Service) runTools(ctx context.Context, t *toolTurn, calls []llm.ToolCal
 			t.postActivity = "正在结合历史对话整理回答…"
 			results[i] = s.Memory.ReadConversation(ctx, t.user, t.assistantID, cid, args.Focus)
 			t.run.finishStep(stepIdx, "done", "已查阅历史对话详情", "")
+
+		case readEarlierTool.Name:
+			usedReadTool = true
+			results[i] = s.execReadEarlierCall(ctx, t, call.Arguments)
 
 		case webSearchTool.Name:
 			usedReadTool = true
@@ -590,11 +598,11 @@ func (s *Service) editSource(ctx context.Context, fileID, userID string) ([]byte
 // order: 图N in the prompt is refs[N-1]. Photos the user sent and pictures
 // the assistant drew share one numbering.
 func (s *Service) imageRefs(ctx context.Context, convID, beforeID string) []store.Attachment {
-	history, err := s.Store.ListMessages(ctx, convID, beforeID, 500)
+	refs, err := s.Store.ListConversationImageRefs(ctx, convID, beforeID, 500)
 	if err != nil {
 		return nil
 	}
-	return collectRefs(history)
+	return refs
 }
 
 func collectRefs(history []*store.Message) []store.Attachment {

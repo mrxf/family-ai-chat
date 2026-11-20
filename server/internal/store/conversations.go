@@ -448,6 +448,9 @@ func (s *Store) ApplyTurn(ctx context.Context, t Turn) error {
 			if _, err := tx.exec(ctx, `DELETE FROM messages WHERE conversation_id = ? AND id >= ?`, t.ConversationID, t.TruncateFrom); err != nil {
 				return err
 			}
+			if _, err := tx.exec(ctx, `UPDATE conversations SET summary = '', summary_cursor = '' WHERE id = ? AND summary_cursor >= ?`, t.ConversationID, t.TruncateFrom); err != nil {
+				return err
+			}
 		}
 		for _, m := range t.Append {
 			m.ConversationID = t.ConversationID
@@ -475,13 +478,69 @@ func (s *Store) ListMessages(ctx context.Context, convID, before string, limit i
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
+	msgs, _, err := s.ListMessagesAfter(ctx, convID, "", before, limit)
+	return msgs, err
+}
+
+// ListMessagesAfter returns up to limit messages in (after, before) in ascending order,
+// plus hasOlder reporting whether more messages exist in the conversation at or before the returned slice
+// (either because after != "" or because more than limit rows exist in (after, before)).
+func (s *Store) ListMessagesAfter(ctx context.Context, convID, after, before string, limit int) ([]*Message, bool, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	q := `SELECT ` + msgCols + ` FROM messages WHERE conversation_id = ?`
+	args := []any{convID}
+	if after != "" {
+		q += ` AND id > ?`
+		args = append(args, after)
+	}
+	if before != "" {
+		q += ` AND id < ?`
+		args = append(args, before)
+	}
+	q += ` ORDER BY id DESC LIMIT ?`
+	args = append(args, limit+1)
+	rows, err := s.query(ctx, q, args...)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	out := make([]*Message, 0, min(limit+1, 64))
+	for rows.Next() {
+		m, err := scanMsg(rows)
+		if err != nil {
+			return nil, false, err
+		}
+		out = append(out, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	moreInRange := len(out) > limit
+	if moreInRange {
+		out = out[:limit]
+	}
+	// reverse to ascending
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	return out, after != "" || moreInRange, nil
+}
+
+// ListFirstMessages returns the earliest up to limit messages strictly before cursor (or all when before == ""),
+// in ascending chronological order.
+func (s *Store) ListFirstMessages(ctx context.Context, convID, before string, limit int) ([]*Message, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 10
+	}
 	q := `SELECT ` + msgCols + ` FROM messages WHERE conversation_id = ?`
 	args := []any{convID}
 	if before != "" {
 		q += ` AND id < ?`
 		args = append(args, before)
 	}
-	q += ` ORDER BY id DESC LIMIT ?`
+	q += ` ORDER BY id ASC LIMIT ?`
 	args = append(args, limit)
 	rows, err := s.query(ctx, q, args...)
 	if err != nil {
@@ -496,9 +555,236 @@ func (s *Store) ListMessages(ctx context.Context, convID, before string, limit i
 		}
 		out = append(out, m)
 	}
-	// reverse to ascending
-	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
-		out[i], out[j] = out[j], out[i]
+	return out, rows.Err()
+}
+
+// ListMessagesAround returns messages around centerID within (-inf, upperBound), ordered ascending:
+// up to beforeCount messages before centerID, centerID itself, and up to afterCount messages after centerID.
+func (s *Store) ListMessagesAround(ctx context.Context, convID, centerID, upperBound string, beforeCount, afterCount int) ([]*Message, error) {
+	if beforeCount < 0 {
+		beforeCount = 0
+	}
+	if afterCount < 0 {
+		afterCount = 0
+	}
+	qHead := `SELECT ` + msgCols + ` FROM messages WHERE conversation_id = ? AND id <= ?`
+	argsHead := []any{convID, centerID}
+	if upperBound != "" {
+		qHead += ` AND id < ?`
+		argsHead = append(argsHead, upperBound)
+	}
+	qHead += ` ORDER BY id DESC LIMIT ?`
+	argsHead = append(argsHead, beforeCount+1)
+	rows, err := s.query(ctx, qHead, argsHead...)
+	if err != nil {
+		return nil, err
+	}
+	var head []*Message
+	for rows.Next() {
+		m, err := scanMsg(rows)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		head = append(head, m)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	for i, j := 0, len(head)-1; i < j; i, j = i+1, j-1 {
+		head[i], head[j] = head[j], head[i]
+	}
+	if afterCount == 0 {
+		return head, nil
+	}
+	qTail := `SELECT ` + msgCols + ` FROM messages WHERE conversation_id = ? AND id > ?`
+	argsTail := []any{convID, centerID}
+	if upperBound != "" {
+		qTail += ` AND id < ?`
+		argsTail = append(argsTail, upperBound)
+	}
+	qTail += ` ORDER BY id ASC LIMIT ?`
+	argsTail = append(argsTail, afterCount)
+	trows, err := s.query(ctx, qTail, argsTail...)
+	if err != nil {
+		return nil, err
+	}
+	defer trows.Close()
+	for trows.Next() {
+		m, err := scanMsg(trows)
+		if err != nil {
+			return nil, err
+		}
+		head = append(head, m)
+	}
+	return head, trows.Err()
+}
+
+// ListConversationImageRefs returns chronological image/* attachments from up to limit
+// image-bearing messages before cursor, without scanning message text bodies.
+func (s *Store) ListConversationImageRefs(ctx context.Context, convID, before string, limit int) ([]Attachment, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 500
+	}
+	q := `SELECT attachments FROM messages WHERE conversation_id = ? AND attachments <> '[]'`
+	args := []any{convID}
+	if before != "" {
+		q += ` AND id < ?`
+		args = append(args, before)
+	}
+	q += ` ORDER BY id DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var raws []string
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		raws = append(raws, raw)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	var refs []Attachment
+	for i := len(raws) - 1; i >= 0; i-- {
+		var atts []Attachment
+		if json.Unmarshal([]byte(raws[i]), &atts) != nil {
+			continue
+		}
+		for _, a := range atts {
+			if strings.HasPrefix(a.Mime, "image/") {
+				refs = append(refs, a)
+			}
+		}
+	}
+	return refs, nil
+}
+
+// GetConversationSummary returns the rolling summary and cursor of a conversation.
+func (s *Store) GetConversationSummary(ctx context.Context, convID string) (string, string, error) {
+	var summary, cursor string
+	err := s.queryRow(ctx, `SELECT summary, summary_cursor FROM conversations WHERE id = ?`, convID).Scan(&summary, &cursor)
+	return summary, cursor, notFound(err)
+}
+
+// CommitConversationSummary atomically advances summary_cursor to newCursor when expectedCursor
+// still matches and newCursor still exists in the conversation (was not truncated or deleted).
+// It intentionally leaves updated_at untouched so background compaction neither reorders the
+// conversation list nor extends PrivateConvTTL.
+func (s *Store) CommitConversationSummary(ctx context.Context, convID, expectedCursor, newCursor, summary string) (bool, error) {
+	summary = strings.TrimSpace(summary)
+	if convID == "" || newCursor == "" || summary == "" {
+		return false, nil
+	}
+	committed := false
+	err := s.tx(ctx, func(tx *Tx) error {
+		var curCursor string
+		err := tx.queryRow(ctx, `SELECT summary_cursor FROM conversations WHERE id = ?`+s.forUpdate(), convID).Scan(&curCursor)
+		if err == sql.ErrNoRows {
+			return nil // conversation deleted (e.g. private chat closed while compacting)
+		}
+		if err != nil {
+			return err
+		}
+		if curCursor != expectedCursor || (curCursor != "" && newCursor <= curCursor) {
+			return nil
+		}
+		var msgID string
+		err = tx.queryRow(ctx, `SELECT id FROM messages WHERE conversation_id = ? AND id = ? AND status <> ?`, convID, newCursor, StatusStreaming).Scan(&msgID)
+		if err == sql.ErrNoRows {
+			return nil // message was truncated by concurrent EditOf / Regenerate
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := tx.exec(ctx, `UPDATE conversations SET summary = ?, summary_cursor = ? WHERE id = ?`, summary, newCursor, convID); err != nil {
+			return err
+		}
+		committed = true
+		return nil
+	})
+	return committed, err
+}
+
+// ConversationEpisodes returns active episode memory contents recorded for convID.
+func (s *Store) ConversationEpisodes(ctx context.Context, convID, userID string) ([]string, error) {
+	rows, err := s.query(ctx, `SELECT content FROM memories
+		WHERE source_conv_id = ? AND user_id = ? AND category = 'episode' AND status = 'active'
+		ORDER BY created_at ASC, id ASC LIMIT 5`, convID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return nil, err
+		}
+		if c = strings.TrimSpace(c); c != "" {
+			out = append(out, c)
+		}
+	}
+	return out, rows.Err()
+}
+
+// SearchConversationMessages searches messages strictly before upperBound within a single
+// conversation (including private conversations when called for that active conversation).
+func (s *Store) SearchConversationMessages(ctx context.Context, convID, upperBound string, terms []string, limit int) ([]*Message, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 80
+	}
+	seen := map[string]bool{}
+	clean := make([]string, 0, len(terms))
+	for _, t := range terms {
+		t = strings.TrimSpace(t)
+		if t == "" || seen[t] {
+			continue
+		}
+		seen[t] = true
+		clean = append(clean, t)
+		if len(clean) >= 16 {
+			break
+		}
+	}
+	if len(clean) == 0 {
+		return []*Message{}, nil
+	}
+	q := `SELECT ` + msgCols + ` FROM messages WHERE conversation_id = ?`
+	args := []any{convID}
+	if upperBound != "" {
+		q += ` AND id < ?`
+		args = append(args, upperBound)
+	}
+	q += ` AND status <> ? AND status <> ? AND content <> ''`
+	args = append(args, StatusError, StatusStreaming)
+	likeOp := s.like()
+	clauses := make([]string, 0, len(clean))
+	for _, t := range clean {
+		clauses = append(clauses, `content `+likeOp+` ? ESCAPE '\'`)
+		args = append(args, "%"+escapeLike(t)+"%")
+	}
+	q += ` AND (` + strings.Join(clauses, " OR ") + `) ORDER BY id DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []*Message{}
+	for rows.Next() {
+		m, err := scanMsg(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
 	}
 	return out, rows.Err()
 }
@@ -558,7 +844,8 @@ type MessageHit struct {
 }
 
 // SearchUserMessages finds candidate historical messages in non-private conversations
-// owned by userID matching any of the given terms, excluding excludeConvID.
+// owned by userID matching any of the given terms, excluding active uncompacted turns
+// of excludeConvID while still searching already-compacted early messages of excludeConvID.
 func (s *Store) SearchUserMessages(ctx context.Context, userID, excludeConvID string, terms []string, limit int) ([]*MessageHit, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 80
@@ -591,7 +878,8 @@ func (s *Store) SearchUserMessages(ctx context.Context, userID, excludeConvID st
 	q := `SELECT m.id, m.conversation_id, c.title, m.role, m.content, m.created_at
 		FROM messages m
 		JOIN conversations c ON c.id = m.conversation_id
-		WHERE c.user_id = ? AND c.private = 0 AND m.conversation_id <> ?
+		WHERE c.user_id = ? AND c.private = 0
+		  AND (m.conversation_id <> ? OR (c.summary_cursor <> '' AND m.id <= c.summary_cursor))
 		  AND m.status = 'done' AND m.content <> ''
 		  AND (` + strings.Join(clauses, " OR ") + `)
 		ORDER BY m.id DESC

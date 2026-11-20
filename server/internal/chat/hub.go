@@ -19,7 +19,7 @@ import (
 // RunStep describes one discrete task performed while preparing an assistant reply
 // (such as recalling memories, searching the web, or reading a web page).
 type RunStep struct {
-	Kind      string `json:"kind"`             // "memory" | "search" | "fetch" | "image"
+	Kind      string `json:"kind"`             // "memory" | "history" | "search" | "fetch" | "image"
 	Title     string `json:"title"`            // short human-readable task label
 	Detail    string `json:"detail,omitempty"` // optional outcome summary
 	Status    string `json:"status"`           // "running" | "done" | "error"

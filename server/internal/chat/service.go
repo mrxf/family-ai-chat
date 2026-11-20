@@ -69,12 +69,38 @@ type Service struct {
 
 	drawMu      sync.Mutex
 	drawPending map[string]int // user id -> pictures being drawn (daily limit)
+
+	compactMu      sync.Mutex
+	compactRunning map[string]bool
+	compactSlots   chan struct{}
+	compactWg      sync.WaitGroup
+	compactCtx     context.Context
+	compactCancel  context.CancelFunc
+	compactClosed  bool
 }
 
 func NewService(st *store.Store, dataDir string, log *slog.Logger) *Service {
-	svc := &Service{Store: st, Hub: NewHub(), Log: log, DataDir: dataDir, clients: map[string]*llm.Client{}}
+	cctx, ccancel := context.WithCancel(context.Background())
+	svc := &Service{
+		Store:          st,
+		Hub:            NewHub(),
+		Log:            log,
+		DataDir:        dataDir,
+		clients:        map[string]*llm.Client{},
+		compactRunning: map[string]bool{},
+		compactSlots:   make(chan struct{}, 2),
+		compactCtx:     cctx,
+		compactCancel:  ccancel,
+	}
 	svc.RegisterRouter(&llmModelRouter{svc: svc})
 	return svc
+}
+
+func (s *Service) bgCtx() context.Context {
+	if s.compactCtx != nil {
+		return s.compactCtx
+	}
+	return context.Background()
 }
 
 // SendInput is a new user message.
@@ -294,6 +320,19 @@ func (s *Service) Cancel(userID, messageID string) bool {
 
 func (s *Service) Shutdown(ctx context.Context) {
 	s.Hub.Shutdown(ctx, errShutdown)
+	s.compactMu.Lock()
+	s.compactClosed = true
+	cancel := s.compactCancel
+	s.compactMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	done := make(chan struct{})
+	go func() { s.compactWg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-ctx.Done():
+	}
 	if s.MemoryWorker != nil {
 		s.MemoryWorker.Shutdown(ctx)
 	}
@@ -546,6 +585,7 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 			asstID: asst.ID, userQuestion: userText, run: run, private: conv.Private,
 		}
 
+		autoEscalated := false
 		if autoPlan != nil {
 			var asstMeta *store.Assistant
 			if conv.AssistantID != nil {
@@ -567,6 +607,11 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 				turn.cost += dec.Cost
 			}
 			if rerr == nil && dec != nil && dec.Model != nil && dec.Provider != nil {
+				if dec.Switched && autoPlan.currentModel != nil {
+					prevTier := llm.ProfileModel(autoPlan.currentModel.UpstreamModel, autoPlan.currentModel.DisplayName).Tier
+					newTier := llm.ProfileModel(dec.Model.UpstreamModel, dec.Model.DisplayName).Tier
+					autoEscalated = newTier >= llm.TierStrong && newTier > prevTier
+				}
 				model, provider = dec.Model, dec.Provider
 				id := model.ID
 				msg.ModelID = &id
@@ -641,11 +686,12 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 		}
 
 		ts := s.toolsFor(ctx, user, conv, model)
-		tools := ts.tools
 		if !conv.Private && s.Memory != nil && s.Memory.Allowed(ctx, user, conv.AssistantID) {
 			run.setActivity("正在翻看相关记忆…")
 		}
-		req, err := s.buildRequestWithTools(ctx, user, conv, asst.ID, model, ts)
+		req, err := s.buildRequestWithOpts(ctx, user, conv, asst.ID, model, ts, buildOpts{autoEscalated: autoEscalated})
+		tools := req.tools
+		turn.foldedBeforeID = req.foldedBeforeID
 		run.setActivity("")
 		if err == nil && req.recalled {
 			run.addDoneStep("memory", "已关联相关记忆背景", "")
@@ -673,7 +719,7 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 				s.Log.Warn("upstream rejected tools, retrying without", "message_id", asst.ID, "model", model.UpstreamModel, "err", err)
 				s.markToolsRejected(model)
 				tools, req.Tools = nil, nil
-				req.Messages[0].Content = s.systemPromptWithTools(ctx, user, conv, toolSet{}, req.core)
+				req.Messages[0].Content = s.systemPromptWithTools(ctx, user, conv, toolSet{}, req.core, formatSummarySection(req.summaryText, false, false))
 				res, err = s.streamWithRetry(ctx, s.client(provider), req.Request, onEvent)
 			}
 			// Nothing reached the user yet: let the fallback model answer instead of showing an error.
@@ -690,9 +736,10 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 				if fm != nil {
 					s.Log.Warn("primary model failed, using fallback", "message_id", asst.ID, "model", model.UpstreamModel, "fallback", fm.UpstreamModel, "err", err)
 					fts := s.toolsFor(ctx, user, conv, fm)
-					freq, ferr := s.buildRequestWithTools(ctx, user, conv, asst.ID, fm, fts)
+					freq, ferr := s.buildRequestWithOpts(ctx, user, conv, asst.ID, fm, fts, buildOpts{autoEscalated: autoEscalated})
 					if ferr == nil {
-						model, provider, tools, req = fm, fp, fts.tools, freq
+						model, provider, tools, req = fm, fp, freq.tools, freq
+						turn.foldedBeforeID = freq.foldedBeforeID
 						id := fm.ID
 						msg.ModelID = &id
 						run.setModelID(id)
@@ -773,9 +820,22 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 		defer cancel()
 		if err := s.Store.FinishMessage(pctx, &msg); err != nil {
 			s.Log.Error("persist message", "message_id", msg.ID, "err", err)
-		} else if msg.Status == store.StatusDone && !conv.Private && s.MemoryWorker != nil {
-			if history, err := s.Store.ListMessages(pctx, conv.ID, msg.ID, 1); err == nil && len(history) > 0 && memory.Trigger(history[0].Content) {
-				s.MemoryWorker.Kick(conv.ID, 5*time.Second)
+		} else if msg.Status == store.StatusDone {
+			if !conv.Private && s.MemoryWorker != nil {
+				if history, err := s.Store.ListMessages(pctx, conv.ID, msg.ID, 1); err == nil && len(history) > 0 && memory.Trigger(history[0].Content) {
+					s.MemoryWorker.Kick(conv.ID, 5*time.Second)
+				}
+			}
+			replyTokens := estimateTokens(msg.Content)
+			if req.compactAfterTurn || req.uncompactedTokens+replyTokens >= req.budgets.compactTrigger {
+				s.maybeCompact(compactHint{
+					conv:           conv,
+					user:           user,
+					turnModel:      model,
+					turnProvider:   provider,
+					lowWaterTokens: req.budgets.lowWater,
+					coldTailTokens: req.budgets.coldTail,
+				})
 			}
 		}
 		_ = s.Store.TouchConversation(pctx, conv.ID)
@@ -954,11 +1014,13 @@ const privatePrompt = `
 # 隐私对话模式
 本次对话为「隐私对话」，对话结束后记录与图片会自动清除，系统不会读取也不会保存任何跨对话记忆。如果用户请你在以后的对话里「记住」某件事，请温和说明当前是隐私对话、关闭后不会留存；需要长期记住的内容可以退出隐私对话后再说，或在「设置 → 小暖记住的事」里手动添加。`
 
-func (s *Service) systemPrompt(ctx context.Context, user *store.User, conv *store.Conversation, canDraw bool, core ...string) string {
-	return s.systemPromptWithTools(ctx, user, conv, toolSet{canDraw: canDraw}, core...)
+func (s *Service) systemPrompt(ctx context.Context, user *store.User, conv *store.Conversation, canDraw bool, extra ...string) string {
+	return s.systemPromptWithTools(ctx, user, conv, toolSet{canDraw: canDraw}, extra...)
 }
 
-func (s *Service) systemPromptWithTools(ctx context.Context, user *store.User, conv *store.Conversation, ts toolSet, core ...string) string {
+// systemPromptWithTools assembles the system prompt. extra[0] is core memory (non-private only);
+// extra[1] is the optional conversation rolling summary section (# 本次对话的前情提要).
+func (s *Service) systemPromptWithTools(ctx context.Context, user *store.User, conv *store.Conversation, ts toolSet, extra ...string) string {
 	var b strings.Builder
 	b.WriteString(basePrompt)
 	b.WriteString(s.drawPrompt(ctx, ts.canDraw))
@@ -979,9 +1041,12 @@ func (s *Service) systemPromptWithTools(ctx context.Context, user *store.User, c
 		if user.DisplayName != "" {
 			fmt.Fprintf(&b, "\n正在和你对话的用户称呼是「%s」。", user.DisplayName)
 		}
-		if len(core) > 0 {
-			b.WriteString(core[0])
+		if len(extra) > 0 {
+			b.WriteString(extra[0])
 		}
+	}
+	if len(extra) > 1 && extra[1] != "" {
+		b.WriteString(extra[1])
 	}
 	return b.String()
 }
@@ -1013,8 +1078,18 @@ const imageTokens = 1100
 
 type chatRequest struct {
 	llm.Request
-	core     string
-	recalled bool
+	tools             []llm.Tool
+	core              string
+	summaryText       string
+	foldedBeforeID    string
+	recalled          bool
+	uncompactedTokens int
+	compactAfterTurn  bool
+	budgets           contextBudgets
+}
+
+type buildOpts struct {
+	autoEscalated bool // Auto mode just switched up from a lighter model to T4/T5 flagship
 }
 
 func (s *Service) buildRequest(ctx context.Context, user *store.User, conv *store.Conversation, asstID string, model *store.Model, canDraw bool) (chatRequest, error) {
@@ -1022,18 +1097,28 @@ func (s *Service) buildRequest(ctx context.Context, user *store.User, conv *stor
 }
 
 func (s *Service) buildRequestWithTools(ctx context.Context, user *store.User, conv *store.Conversation, asstID string, model *store.Model, ts toolSet) (chatRequest, error) {
-	history, err := s.Store.ListMessages(ctx, conv.ID, asstID, 500)
+	return s.buildRequestWithOpts(ctx, user, conv, asstID, model, ts, buildOpts{})
+}
+
+func (s *Service) buildRequestWithOpts(ctx context.Context, user *store.User, conv *store.Conversation, asstID string, model *store.Model, ts toolSet, opts buildOpts) (chatRequest, error) {
+	convSummary, summaryCursor, _ := s.Store.GetConversationSummary(ctx, conv.ID)
+	history, hasOlderInDB, err := s.Store.ListMessagesAfter(ctx, conv.ID, summaryCursor, asstID, historyFetchLimit)
 	if err != nil {
 		return chatRequest{}, err
 	}
 	lastUser := -1
 	var recentUsers []string
+	uncompactedTokens := 0
 	for i := len(history) - 1; i >= 0; i-- {
-		if history[i].Role == "user" {
+		m := history[i]
+		if !(m.Role == "assistant" && len(m.Attachments) == 0 && (m.Status == store.StatusError || strings.TrimSpace(m.Content) == "")) {
+			uncompactedTokens += estimateTokens(m.Content) + len(m.Attachments)*imageTokens
+		}
+		if m.Role == "user" {
 			if lastUser < 0 {
 				lastUser = i
 			}
-			if txt := strings.TrimSpace(history[i].Content); txt != "" && len(recentUsers) < 3 {
+			if txt := strings.TrimSpace(m.Content); txt != "" && len(recentUsers) < 3 {
 				recentUsers = append([]string{txt}, recentUsers...)
 			}
 		}
@@ -1047,37 +1132,77 @@ func (s *Service) buildRequestWithTools(ctx context.Context, user *store.User, c
 			UserMessages:      recentUsers,
 		})
 	}
-	sys := s.systemPromptWithTools(ctx, user, conv, ts, mem.Core)
+
+	summaryText := strings.TrimSpace(convSummary)
+	if summaryText == "" && hasOlderInDB && !conv.Private {
+		if eps, eErr := s.Store.ConversationEpisodes(ctx, conv.ID, user.ID); eErr == nil && len(eps) > 0 {
+			summaryText = strings.Join(eps, "\n- ")
+			if len(eps) > 1 {
+				summaryText = "- " + summaryText
+			}
+		}
+	}
+	if hasOlderInDB && ts.allowTools && !ts.canReadEarlier {
+		ts.canReadEarlier = true
+		ts.tools = append(append([]llm.Tool(nil), ts.tools...), readEarlierTool)
+	}
+
+	summarySection := formatSummarySection(summaryText, hasOlderInDB, ts.canReadEarlier)
+	sys := s.systemPromptWithTools(ctx, user, conv, ts, mem.Core, summarySection)
 	note := "（系统附注，不是用户说的话，回复时不要写出这种附注：现在是 " + time.Now().In(shanghai).Format("15:04") + "。"
 	if mem.Recall != "" {
-		note += "可能相关的往事：" + mem.Recall
+		note += "可能相关的往事（请留意每条前的时间跨度；较早的短期症状、情绪或临时安排通常已结束，仅作背景参考——除非用户本轮主动提起，不要把旧事当成正在发生的新事追问或续聊）：" + mem.Recall
 	}
 	note += "）\n"
 
-	budget := model.ContextWindow
-	if budget <= 0 {
-		budget = 128000
+	rawWindow := model.ContextWindow
+	if rawWindow <= 0 {
+		rawWindow = 128000
 	}
 	reserve := model.MaxOutput
 	if reserve <= 0 {
 		reserve = 8192
 	}
-	budget -= reserve + estimateTokens(sys)
+	hardBudget := rawWindow - reserve - estimateTokens(sys)
+	budgets := computeContextBudgets(hardBudget)
 
 	// Pictures are numbered (图N) so the model can name the one to modify.
 	var num map[string]int
 	if ts.canDraw {
 		num = map[string]int{}
-		for i, a := range collectRefs(history) {
-			num[a.FileID] = i + 1
+		if refs, rErr := s.Store.ListConversationImageRefs(ctx, conv.ID, asstID, 500); rErr == nil {
+			for i, a := range refs {
+				num[a.FileID] = i + 1
+			}
 		}
 	}
 
-	// Walk backwards, keeping as much recent history as fits.
-	var picked []llm.Message
+	type pickedItem struct {
+		lm   llm.Message
+		id   string
+		cost int
+	}
+	var picked []pickedItem
 	imagesLeft := maxImageMessages
+	totalCost := 0
+	coldCost := 0
+	coldCount := 0
+	inColdPast := false
+	userTurnsPicked := 0
+	droppedInSlice := false
+	foldedByCold := false
+	var prevCreatedAt int64
+
+	// Walk backwards, keeping recent history within active / cold-resume / escalation budgets.
 	for i := len(history) - 1; i >= 0; i-- {
 		m := history[i]
+		if prevCreatedAt > 0 && m.CreatedAt > 0 && prevCreatedAt-m.CreatedAt >= ColdResumeIdle.Milliseconds() {
+			inColdPast = true
+		}
+		if m.CreatedAt > 0 {
+			prevCreatedAt = m.CreatedAt
+		}
+
 		drew := m.Role == "assistant" && len(m.Attachments) > 0
 		if m.Role == "assistant" && !drew && (m.Status == store.StatusError || strings.TrimSpace(m.Content) == "") {
 			continue
@@ -1127,28 +1252,95 @@ func (s *Service) buildRequestWithTools(ctx context.Context, user *store.User, c
 			}
 			cost += estimateTokens(note)
 		}
-		if budget-cost < 0 && len(picked) > 0 {
-			break
+
+		if len(picked) > 0 {
+			if totalCost+cost > budgets.hardBudget {
+				droppedInSlice = true
+				break
+			}
+			if inColdPast && ((coldCost+cost > budgets.coldTail && coldCount >= 2) || coldCount >= coldResumeTailMessages) {
+				droppedInSlice = true
+				foldedByCold = true
+				break
+			}
+			if opts.autoEscalated && userTurnsPicked >= 1 && totalCost+cost > budgets.lowWater {
+				droppedInSlice = true
+				break
+			}
+			if !inColdPast && userTurnsPicked >= minProtectedUserTurns && totalCost+cost > budgets.activeCap {
+				droppedInSlice = true
+				break
+			}
 		}
-		budget -= cost
-		picked = append(picked, lm)
+
+		totalCost += cost
+		if inColdPast {
+			coldCost += cost
+			coldCount++
+		}
+		if m.Role == "user" {
+			userTurnsPicked++
+		}
+		picked = append(picked, pickedItem{lm: lm, id: m.ID, cost: cost})
 	}
 	// Drop leading assistant messages so history starts with the user.
-	for len(picked) > 0 && picked[len(picked)-1].Role == "assistant" {
+	for len(picked) > 0 && picked[len(picked)-1].lm.Role == "assistant" {
+		totalCost -= picked[len(picked)-1].cost
 		picked = picked[:len(picked)-1]
 	}
+	if len(picked) == 0 {
+		return chatRequest{}, ErrEmptyMessage
+	}
+
+	foldedEarlier := hasOlderInDB || droppedInSlice
+	foldedBeforeID := ""
+	if foldedEarlier {
+		foldedBeforeID = picked[len(picked)-1].id
+		if summaryText == "" && !conv.Private {
+			if eps, eErr := s.Store.ConversationEpisodes(ctx, conv.ID, user.ID); eErr == nil && len(eps) > 0 {
+				summaryText = strings.Join(eps, "\n- ")
+				if len(eps) > 1 {
+					summaryText = "- " + summaryText
+				}
+			}
+		}
+		if ts.allowTools && !ts.canReadEarlier {
+			ts.canReadEarlier = true
+			ts.tools = append(append([]llm.Tool(nil), ts.tools...), readEarlierTool)
+		}
+		if updatedSection := formatSummarySection(summaryText, true, ts.canReadEarlier); updatedSection != summarySection {
+			sys = s.systemPromptWithTools(ctx, user, conv, ts, mem.Core, updatedSection)
+			newHard := rawWindow - reserve - estimateTokens(sys)
+			for len(picked) > 1 && totalCost > newHard {
+				totalCost -= picked[len(picked)-1].cost
+				picked = picked[:len(picked)-1]
+				for len(picked) > 0 && picked[len(picked)-1].lm.Role == "assistant" {
+					totalCost -= picked[len(picked)-1].cost
+					picked = picked[:len(picked)-1]
+				}
+			}
+			if len(picked) == 0 {
+				return chatRequest{}, ErrEmptyMessage
+			}
+			foldedBeforeID = picked[len(picked)-1].id
+		}
+	}
+
 	msgs := make([]llm.Message, 0, len(picked)+1)
 	msgs = append(msgs, llm.Message{Role: "system", Content: sys})
 	for i := len(picked) - 1; i >= 0; i-- {
-		msgs = append(msgs, picked[i])
-	}
-	if len(msgs) == 1 {
-		return chatRequest{}, ErrEmptyMessage
+		msgs = append(msgs, picked[i].lm)
 	}
 	req := chatRequest{
-		Request:  llm.Request{Model: model.UpstreamModel, Messages: msgs, MaxTokens: model.MaxOutput},
-		core:     mem.Core,
-		recalled: mem.Recall != "",
+		Request:           llm.Request{Model: model.UpstreamModel, Messages: msgs, MaxTokens: model.MaxOutput},
+		tools:             ts.tools,
+		core:              mem.Core,
+		summaryText:       summaryText,
+		foldedBeforeID:    foldedBeforeID,
+		recalled:          mem.Recall != "",
+		uncompactedTokens: uncompactedTokens,
+		compactAfterTurn:  foldedByCold || (summaryCursor == "" && hasOlderInDB),
+		budgets:           budgets,
 	}
 	if conv.AssistantID != nil {
 		if a, err := s.Store.GetAssistant(ctx, *conv.AssistantID, user.ID); err == nil && a.Temperature != nil {

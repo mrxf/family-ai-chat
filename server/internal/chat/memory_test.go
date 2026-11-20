@@ -189,3 +189,72 @@ func TestPrivateConversationSkipsMemoryInjectEmbedAndCleanup(t *testing.T) {
 		t.Fatalf("expected private conversation deleted, got err=%v", err)
 	}
 }
+
+func TestTemporalAwarePromptBlocks30DayChatterAndFormatsRelativeDates(t *testing.T) {
+	s, u, c := contextFixture(t)
+	now := store.Now()
+	const dayMs = int64(24 * 3600 * 1000)
+	until := now + 14*dayMs
+
+	ms := []*store.Memory{
+		{
+			UserID: u.ID, Category: "ongoing", Content: "2026年11月用户在准备去三亚过冬",
+			Pinned: true, ValidUntil: &until, EventAt: now - 4*dayMs, CreatedAt: now - 4*dayMs,
+		},
+		{
+			UserID: u.ID, Category: "episode", Content: "2026-11-16 聊了挑羽绒服的充绒量参数",
+			Pinned: false, EventAt: now - 3*dayMs, CreatedAt: now - 3*dayMs,
+		},
+		{
+			UserID: u.ID, Category: "episode", Content: "2026-10-01 聊了想吃铜锅涮肉但牙龈肿痛",
+			Pinned: false, EventAt: now - 48*dayMs, CreatedAt: now - 48*dayMs,
+		},
+	}
+	if err := s.Store.CreateMemories(t.Context(), ms); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Forward-looking message mentioning both 3d-old ("羽绒服") and 48d-old ("铜锅涮肉"):
+	//    3d-old injects with [3天前] + anti-continuation guidance; 48d-old stays silent!
+	id1 := contextHistory(t, s, c, &store.Message{
+		Role:    "user",
+		Content: "穿上羽绒服去吃铜锅涮肉真暖和",
+		Status:  store.StatusDone,
+	})
+	req1, err := s.buildRequest(t.Context(), u, c, id1, &store.Model{UpstreamModel: "fake", ContextWindow: 128000}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sys := req1.Messages[0].Content
+	if !strings.Contains(sys, "记于 ") || !strings.Contains(sys, "预计至 ") {
+		t.Fatalf("system prompt core ongoing missing recorded/expiry date: %s", sys)
+	}
+	userWithNote := req1.Messages[1].Content
+	if !strings.Contains(userWithNote, "[3天前]") || !strings.Contains(userWithNote, "充绒量") {
+		t.Fatalf("missing [3天前] fresh episode in note: %s", userWithNote)
+	}
+	if !strings.Contains(userWithNote, "不要把旧事当成正在发生的新事追问或续聊") {
+		t.Fatalf("missing anti-stale-continuation instruction in note: %s", userWithNote)
+	}
+	if strings.Contains(userWithNote, "牙龈肿痛") {
+		t.Fatalf("48-day-old episode leaked into forward-looking chat note: %s", userWithNote)
+	}
+
+	// 2. Explicit retrospective turn ("还记得之前吃铜锅涮肉那次吗") unlocks the 48d-old episode with [1个月前]!
+	c2 := &store.Conversation{UserID: u.ID}
+	if err := s.Store.CreateConversation(t.Context(), c2); err != nil {
+		t.Fatal(err)
+	}
+	id2 := contextHistory(t, s, c2, &store.Message{
+		Role:    "user",
+		Content: "你还记得之前聊铜锅涮肉那次吗",
+		Status:  store.StatusDone,
+	})
+	req2, err := s.buildRequest(t.Context(), u, c2, id2, &store.Model{UpstreamModel: "fake", ContextWindow: 128000}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(req2.Messages[1].Content, "[1个月前]") || !strings.Contains(req2.Messages[1].Content, "牙龈肿痛") {
+		t.Fatalf("retrospective query should recall 48d episode with [1个月前]: %s", req2.Messages[1].Content)
+	}
+}

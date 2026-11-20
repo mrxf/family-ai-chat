@@ -382,6 +382,16 @@ class _AssistantMessageState extends ConsumerState<AssistantMessage> {
   /// Once a message has streamed in this widget we keep the reveal pipeline,
   /// so finishing doesn't swap the widget tree (no flash at the end).
   bool _wasLive = false;
+  List<RunStep> _settledSteps = const [];
+
+  @override
+  void didUpdateWidget(covariant AssistantMessage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.message.id != widget.message.id) {
+      _wasLive = false;
+      _settledSteps = const [];
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -399,7 +409,13 @@ class _AssistantMessageState extends ConsumerState<AssistantMessage> {
         final reasoning = isLive ? live.reasoning : m.reasoning;
         final drawn = isLive ? live.attachments : m.attachments;
         final sources = isLive ? live.sources : m.sources;
-        final steps = isLive ? live.steps : const <RunStep>[];
+        if (isLive && live.steps.isNotEmpty) {
+          _settledSteps = [
+            for (final s in live.steps)
+              s.running ? RunStep(kind: s.kind, title: s.title, detail: s.detail, status: 'done') : s,
+          ];
+        }
+        final steps = isLive ? live.steps : _settledSteps;
         final hasStepPanel = steps.isNotEmpty || sources.isNotEmpty;
         final hasRunningStep = steps.any((s) => s.running);
         final drawing = isLive && live.drawing;
@@ -693,6 +709,7 @@ class _TaskAndSourcesPanelState extends State<TaskAndSourcesPanel> {
   static IconData _iconForStep(String kind) => switch (kind) {
         'search' => AppIcons.globe,
         'fetch' => AppIcons.article,
+        'history' => AppIcons.history,
         'memory' => AppIcons.manageSearch,
         _ => AppIcons.sparkles,
       };
@@ -724,12 +741,18 @@ class _TaskAndSourcesPanelState extends State<TaskAndSourcesPanel> {
           : 0;
       return secs >= 3 ? '$act（${secs}s）' : act;
     }
+    final hadMemory = widget.steps.any((s) => s.kind == 'memory');
+    final hadHistory = widget.steps.any((s) => s.kind == 'history');
     if (widget.sources.isNotEmpty) {
-      final hadMemory = widget.steps.any((s) => s.kind == 'memory');
-      return '${hadMemory ? '已翻看记忆 · ' : ''}已参考 ${widget.sources.length} 篇网页${_sitePreview(widget.sources)}';
+      final prefix = hadHistory && hadMemory
+          ? '已翻看记录与记忆 · '
+          : (hadHistory ? '已翻看前面的聊天记录 · ' : (hadMemory ? '已翻看记忆 · ' : ''));
+      return '$prefix已参考 ${widget.sources.length} 篇网页${_sitePreview(widget.sources)}';
     }
     final hasSearch = widget.steps.any((s) => s.kind == 'search' || s.kind == 'fetch');
     if (hasSearch) return '已完成联网检索';
+    if (hadHistory && hadMemory) return '已翻看前面的聊天与记忆';
+    if (hadHistory) return '已翻看前面的聊天记录';
     return '已翻看相关记忆';
   }
 
@@ -747,6 +770,7 @@ class _TaskAndSourcesPanelState extends State<TaskAndSourcesPanel> {
     final busy = running != null || widget.waitingForReply;
     final open = _userOpen ?? busy;
     final hasWeb = widget.sources.isNotEmpty || widget.steps.any((s) => s.kind == 'search' || s.kind == 'fetch');
+    final onlyHistory = !hasWeb && widget.steps.isNotEmpty && widget.steps.every((s) => s.kind == 'history');
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -772,7 +796,11 @@ class _TaskAndSourcesPanelState extends State<TaskAndSourcesPanel> {
                       child: CircularProgressIndicator(strokeWidth: 1.9, color: p.accent),
                     )
                   else
-                    AppIcon(hasWeb ? AppIcons.globe : AppIcons.manageSearch, size: 16, color: p.accent),
+                    AppIcon(
+                      hasWeb ? AppIcons.globe : (onlyHistory ? AppIcons.history : AppIcons.manageSearch),
+                      size: 16,
+                      color: p.accent,
+                    ),
                   const SizedBox(width: 7),
                   Flexible(
                     child: Text(

@@ -532,7 +532,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       child: Divider(height: 1, thickness: 0.7, color: p.line.withValues(alpha: 0.75)),
                     ),
-                    const TitleDesc('上下文长度', desc: '每次最多带上多少聊天记录。越大越能记住长对话，但每次回答更贵。'),
+                    const TitleDesc('上下文长度', desc: '单次发送超长文章或资料时的最大容量。日常多轮长对话与搁置老对话会自动整理精简，不会一直占满。'),
                     const SizedBox(height: 12),
                     ListenableBuilder(
                       listenable: _context,
