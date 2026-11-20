@@ -1,0 +1,46 @@
+app/lib/ui/memories_page.dart
+  h_8f297825d1fe21 24,26,218-245,247-273,275-278
+app/test/memory_pages_test.dart
+  h_8f297825d1fe21 142-177
+server/internal/memory/extract.go
+  h_8f297825d1fe21 36,50-56,335-343,371,384-393,396-397,408-422,430-437,441
+server/internal/memory/inject.go
+  h_8f297825d1fe21 129,135,159-160,162,166-173
+server/internal/memory/recall.go
+  h_8f297825d1fe21 87-90,102,153,155-163,168,199-203,212,217-220,226-230,232,235
+server/internal/memory/score.go
+  h_8f297825d1fe21 18,352-370,374-378,381,383,399,408,423,428-429,431,495-501,503-533,541,582-586,591-610,620-628
+server/internal/memory/sleep.go
+  h_8f297825d1fe21 1-651
+server/internal/memory/sleep_test.go
+  h_8f297825d1fe21 1-702
+server/internal/memory/time.go
+  h_8f297825d1fe21 1-168
+server/internal/memory/worker.go
+  h_8f297825d1fe21 8,11,24-34,39-48,106,202-326
+server/internal/store/copy_test.go
+  h_8f297825d1fe21 98,100-101
+server/internal/store/memories.go
+  h_8f297825d1fe21 31-34,78,83,96-98,112,129,158-160,165,233,343,387-391,395,402
+server/internal/store/memories_sleep.go
+  h_8f297825d1fe21 1-374
+server/internal/store/memory_import.go
+  h_8f297825d1fe21 70
+server/internal/store/migrations/postgres/011_memory_lifecycle.sql
+  h_8f297825d1fe21 1-6
+server/internal/store/migrations/sqlite/011_memory_lifecycle.sql
+  h_8f297825d1fe21 1-6
+server/internal/store/store_test.go
+  h_8f297825d1fe21 82,401-497
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "35c5591a6874d63ec4bd5bb21de1bd63aad5bc86",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
