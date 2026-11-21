@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../state/session.dart';
+import '../../adaptive/app_route.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../admin/admin_common.dart';
@@ -87,7 +88,7 @@ Future<void> showSelfHostInfoSheet(BuildContext context, WidgetRef ref) {
                   icon: AppIcons.family,
                   onTap: () {
                     Navigator.pop(ctx);
-                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminUsersPage()));
+                    Navigator.of(context).push(appRoute((_) => const AdminUsersPage()));
                   },
                 ),
               ],

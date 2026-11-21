@@ -6,12 +6,13 @@ import '../../../core/models/models.dart';
 import '../../../state/chat.dart';
 import '../../../state/memories.dart';
 import '../../../state/session.dart';
+import '../../adaptive/app_route.dart';
 import '../../theme/icons.dart';
-import 'memory_editor.dart';
-import 'memory_import_page.dart';
-import '../../widgets/sheets.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
+import '../../widgets/sheets.dart';
+import 'memory_editor.dart';
+import 'memory_import_page.dart';
 
 class MemoriesPage extends ConsumerStatefulWidget {
   const MemoriesPage({super.key});
@@ -68,7 +69,7 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
   }
 
   Future<void> _import() async {
-    final imported = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const MemoryImportPage()));
+    final imported = await Navigator.of(context).push<bool>(appRoute((_) => const MemoryImportPage()));
     if (imported == true && mounted) await _refresh();
   }
 

@@ -8,6 +8,7 @@ import '../../../platform/platform_capabilities.dart';
 import '../../../state/memories.dart';
 import '../../../state/schedules.dart';
 import '../../../state/session.dart';
+import '../../adaptive/app_route.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
@@ -104,14 +105,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     icon: AppIcons.heart,
                     title: '小暖记住的事',
                     subtitle: memorySubtitle,
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MemoriesPage())),
+                    onTap: () => Navigator.of(context).push(appRoute((_) => const MemoriesPage())),
                   ),
                   Divider(height: 1, indent: 56, color: p.line),
                   _Tile(
                     icon: AppIcons.calendar,
                     title: '我的日程',
                     subtitle: scheduleSubtitle,
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SchedulesPage())),
+                    onTap: () => Navigator.of(context).push(appRoute((_) => const SchedulesPage())),
                   ),
                 ],
               ),
@@ -174,13 +175,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 icon: AppIcons.family,
                 title: '家庭成员',
                 subtitle: '给家人创建账号、重置密码',
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminUsersPage())),
+                onTap: () => Navigator.of(context).push(appRoute((_) => const AdminUsersPage())),
               ),
               _Tile(
                 icon: AppIcons.hub,
                 title: '模型与供应商',
                 subtitle: session.boot?.defaultModel == null ? '还没有可用的模型，点这里添加' : '默认：${session.boot!.defaultModel!.displayName} · 共 ${session.boot!.models.length} 个模型${session.boot!.imageGeneration ? (session.boot!.imagesLeft >= 0 ? ' · 今天还能画 ${session.boot!.imagesLeft} 张' : ' · 能画图') : ''}',
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ModelsPage())),
+                onTap: () => Navigator.of(context).push(appRoute((_) => const ModelsPage())),
               ),
               _Tile(
                 icon: AppIcons.mic,
@@ -188,7 +189,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 subtitle: session.boot?.voiceInput == true
                     ? (session.boot?.voiceMode == 'stream' ? '已开启 · 实时边说边出字' : '已开启 · 录音转文字')
                     : '未开启 · 配置密钥后聊天框才会出现麦克风',
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AsrAdminPage())),
+                onTap: () => Navigator.of(context).push(appRoute((_) => const AsrAdminPage())),
               ),
               _Tile(
                 icon: AppIcons.globe,
@@ -196,13 +197,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 subtitle: session.boot?.webSearch == true
                     ? '已开启 · 需要实时新闻、行情或政策时自动上网查证'
                     : '未开启 · 配置密钥后全家人都能查实时信息',
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WebSearchAdminPage())),
+                onTap: () => Navigator.of(context).push(appRoute((_) => const WebSearchAdminPage())),
               ),
               _Tile(
                 icon: AppIcons.chart,
                 title: '用量与花费',
                 subtitle: '每个人、每个模型用了多少钱',
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UsagePage())),
+                onTap: () => Navigator.of(context).push(appRoute((_) => const UsagePage())),
               ),
             ]),
 

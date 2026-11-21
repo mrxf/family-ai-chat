@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/models/admin_models.dart';
 import '../../../core/api.dart';
+import '../../../core/models/admin_models.dart';
 import '../../../state/catalog.dart';
 import '../../../state/session.dart';
+import '../../adaptive/app_route.dart';
 import '../../theme/icons.dart';
-import '../../widgets/sheets.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
+import '../../widgets/sheets.dart';
 import 'admin_common.dart';
 
 /// Edits a model (modelId) or creates one manually under providerId.
@@ -123,7 +124,7 @@ class _ModelEditPageState extends ConsumerState<ModelEditPage> {
       if (!mounted) return m.id;
       setState(() => _dirty = false);
       if (_isNew) {
-        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => ModelEditPage(modelId: m.id)));
+        Navigator.of(context).pushReplacement(appRoute((_) => ModelEditPage(modelId: m.id)));
         showToast(context, '已添加');
       } else if (!quiet) {
         showToast(context, '已保存');

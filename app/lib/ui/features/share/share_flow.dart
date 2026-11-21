@@ -5,6 +5,7 @@ import '../../../core/models/models.dart';
 import '../../../state/chat.dart';
 import '../../../state/conversations.dart';
 import '../../../state/session.dart';
+import '../../adaptive/app_route.dart';
 import '../../widgets/base_widgets.dart';
 import 'share_select_page.dart';
 
@@ -47,8 +48,8 @@ Future<void> openShareChat(BuildContext context, WidgetRef ref, {Message? focusM
   final title = rawTitle != null && rawTitle.trim().isNotEmpty ? rawTitle.trim() : null;
 
   await Navigator.of(context).push(
-    MaterialPageRoute(
-      builder: (_) => ShareSelectPage(
+    appRoute(
+      (_) => ShareSelectPage(
         messages: msgs,
         initialFocusId: focusMessage?.id,
         conversationTitle: title,

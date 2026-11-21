@@ -52,6 +52,7 @@ class _FloatingState extends State<Floating> with SingleTickerProviderStateMixin
 }
 
 /// Scales down slightly while pressed. Gives every tappable surface a tactile feel.
+/// [onLongPress] doubles as the right-click action.
 class Pressable extends StatefulWidget {
   const Pressable({super.key, required this.child, this.onTap, this.onLongPress, this.scale = 0.96, this.haptic = true});
   final Widget child;
@@ -91,6 +92,8 @@ class _PressableState extends State<Pressable> {
               HapticFeedback.mediumImpact();
               widget.onLongPress!();
             },
+      // Right-click opens the same menu as a long press (desktop, mice on tablets).
+      onSecondaryTap: widget.onLongPress,
       child: AnimatedScale(
         scale: _down ? widget.scale : 1,
         duration: const Duration(milliseconds: 120),

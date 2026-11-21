@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/models.dart';
 import '../../../state/chat.dart';
+import '../../adaptive/breakpoints.dart';
+import '../../adaptive/readable_width.dart';
 import '../../theme/icons.dart';
 import 'messages/messages.dart';
 import '../../theme/theme.dart';
@@ -114,9 +116,12 @@ class _ChatViewState extends ConsumerState<ChatView> {
     final centerKey = ValueKey('center-${centerAnchorId ?? 'end'}-${s.epoch}');
     final lastAssistant = msgs.isNotEmpty && !msgs.last.isUser ? msgs.last.id : null;
 
-    Widget item(Message m) => m.isUser
-        ? UserMessage(key: ValueKey('u-${m.id}'), message: m)
-        : AssistantMessage(key: ValueKey('a-${m.id}'), message: m, isLast: m.id == lastAssistant);
+    // Full-width scroll area, messages centered at a readable width.
+    Widget item(Message m) => ReadableWidth(
+          key: ValueKey('${m.isUser ? 'u' : 'a'}-${m.id}'),
+          maxWidth: ContentWidth.chat,
+          child: m.isUser ? UserMessage(message: m) : AssistantMessage(message: m, isLast: m.id == lastAssistant),
+        );
 
     final beforeExtra = topMode ? 0 : 1; // bottom padding lives in the "before" list when bottom-aligned
     final before = SliverList(

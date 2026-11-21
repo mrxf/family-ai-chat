@@ -129,3 +129,35 @@ final conversationsTitlesProvider = Provider<Map<String, String>>((ref) {
   final items = ref.watch(conversationsProvider.select((s) => s.items));
   return {for (final c in items) c.id: c.title};
 });
+
+/// A labelled bucket of the history list ("置顶", "今天", "昨天"...).
+class ConversationGroup {
+  const ConversationGroup(this.label, this.items);
+  final String label;
+  final List<Conversation> items;
+}
+
+/// Buckets [items] by pin state and last activity relative to [now], in
+/// display order. Empty buckets are omitted; order inside a bucket is kept.
+List<ConversationGroup> groupByRecency(List<Conversation> items, DateTime now) {
+  const order = ['置顶', '今天', '昨天', '最近 7 天', '最近 30 天', '更早'];
+  final today = DateTime(now.year, now.month, now.day);
+  String bucket(Conversation c) {
+    if (c.pinned) return '置顶';
+    final d = DateTime.fromMillisecondsSinceEpoch(c.updatedAt);
+    if (!d.isBefore(today)) return '今天';
+    if (!d.isBefore(today.subtract(const Duration(days: 1)))) return '昨天';
+    if (!d.isBefore(today.subtract(const Duration(days: 7)))) return '最近 7 天';
+    if (!d.isBefore(today.subtract(const Duration(days: 30)))) return '最近 30 天';
+    return '更早';
+  }
+
+  final byLabel = <String, List<Conversation>>{};
+  for (final c in items) {
+    (byLabel[bucket(c)] ??= []).add(c);
+  }
+  return [
+    for (final label in order)
+      if (byLabel[label] case final list?) ConversationGroup(label, list),
+  ];
+}

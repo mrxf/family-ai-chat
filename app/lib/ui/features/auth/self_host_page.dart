@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api.dart';
 import '../../../core/invite_code.dart';
 import '../../../state/session.dart';
+import '../../adaptive/app_route.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
@@ -197,7 +198,7 @@ class _SelfHostConfigPageState extends ConsumerState<SelfHostConfigPage> {
     if (!isValidServerUrl(target)) return;
     await ref.read(sessionProvider.notifier).setServer(target);
     if (!mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SetupPage(server: target)));
+    await Navigator.of(context).push(appRoute((_) => SetupPage(server: target)));
   }
 
   @override

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/models/models.dart';
 import '../../../../platform/media/image_input.dart';
+import '../../../../platform/platform_capabilities.dart';
 import '../../../../state/chat.dart';
 import '../../../../state/incoming_share.dart';
 import '../../../../state/session.dart';
@@ -147,6 +148,17 @@ class ComposerState extends ConsumerState<Composer> {
     setState(() => _images.clear());
   }
 
+  KeyEventResult _onDesktopKey(FocusNode node, KeyEvent event) {
+    final enter = event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter;
+    if (!enter || event is KeyUpEvent) return KeyEventResult.ignored;
+    final keyboard = HardwareKeyboard.instance;
+    // Shift/Alt+Enter: newline. While an IME is composing (pinyin), Enter
+    // commits the candidate and must not send.
+    if (keyboard.isShiftPressed || keyboard.isAltPressed || _ctrl.value.composing.isValid) return KeyEventResult.ignored;
+    if (event is KeyDownEvent) _send();
+    return KeyEventResult.handled;
+  }
+
   void _sendVoice(String text) {
     if (ref.read(chatProvider).busy) {
       _ctrl.text = text;
@@ -202,6 +214,7 @@ class ComposerState extends ConsumerState<Composer> {
     final canSend = (_ctrl.text.trim().isNotEmpty || _images.isNotEmpty) && !chat.busy;
     final showMic = boot?.voiceInput == true && !chat.busy && _ctrl.text.trim().isEmpty;
     final canTakePhoto = ref.watch(imageInputProvider).canTakePhoto;
+    final isDesktop = ref.watch(platformCapabilitiesProvider).isDesktop;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 4, 12, 10),
@@ -248,24 +261,30 @@ class ComposerState extends ConsumerState<Composer> {
                     ),
                   ),
           ),
-          TextField(
-            controller: _ctrl,
-            focusNode: _focus,
-            minLines: 1,
-            maxLines: 6,
-            textInputAction: TextInputAction.send,
-            keyboardType: TextInputType.text,
-            onSubmitted: (_) => _send(),
-            style: const TextStyle(fontSize: 17, height: 1.45),
-            decoration: InputDecoration(
-              hintText: chat.isPrivate
-                  ? (_images.isEmpty ? '在隐私对话中提问…' : '想问这张图片什么？（离开后清除）')
-                  : (_images.isEmpty ? '有什么问题尽管问我…' : '想问这张图片什么？'),
-              filled: false,
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              contentPadding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+          Focus(
+            // Desktop: Enter sends, Shift+Enter inserts a newline.
+            canRequestFocus: false,
+            skipTraversal: true,
+            onKeyEvent: isDesktop ? _onDesktopKey : null,
+            child: TextField(
+              controller: _ctrl,
+              focusNode: _focus,
+              minLines: 1,
+              maxLines: 6,
+              textInputAction: TextInputAction.send,
+              keyboardType: TextInputType.text,
+              onSubmitted: (_) => _send(),
+              style: const TextStyle(fontSize: 17, height: 1.45),
+              decoration: InputDecoration(
+                hintText: chat.isPrivate
+                    ? (_images.isEmpty ? '在隐私对话中提问…' : '想问这张图片什么？（离开后清除）')
+                    : (_images.isEmpty ? '有什么问题尽管问我…' : '想问这张图片什么？'),
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+              ),
             ),
           ),
           Padding(

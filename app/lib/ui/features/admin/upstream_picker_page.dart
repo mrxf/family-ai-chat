@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/models/admin_models.dart';
 import '../../../core/api.dart';
+import '../../../core/models/admin_models.dart';
 import '../../../state/catalog.dart';
 import '../../../state/session.dart';
+import '../../adaptive/app_route.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
@@ -234,7 +235,7 @@ class _UpstreamPickerPageState extends ConsumerState<UpstreamPickerPage> {
           extra: Padding(
             padding: const EdgeInsets.only(top: 8),
             child: TextButton(
-              onPressed: () => Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => ModelEditPage(providerId: widget.providerId))),
+              onPressed: () => Navigator.of(context).pushReplacement(appRoute((_) => ModelEditPage(providerId: widget.providerId))),
               child: const Text('这个服务不提供模型列表？手动添加'),
             ),
           ),
@@ -243,7 +244,7 @@ class _UpstreamPickerPageState extends ConsumerState<UpstreamPickerPage> {
             ? ErrorView(
                 message: '这个服务没有返回任何模型',
                 extra: TextButton(
-                  onPressed: () => Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => ModelEditPage(providerId: widget.providerId))),
+                  onPressed: () => Navigator.of(context).pushReplacement(appRoute((_) => ModelEditPage(providerId: widget.providerId))),
                   child: const Text('手动添加模型'),
                 ),
               )

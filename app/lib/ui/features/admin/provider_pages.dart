@@ -2,14 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/models/admin_models.dart';
 import '../../../core/api.dart';
+import '../../../core/models/admin_models.dart';
 import '../../../state/catalog.dart';
 import '../../../state/session.dart';
+import '../../adaptive/app_route.dart';
 import '../../theme/icons.dart';
-import '../../widgets/sheets.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
+import '../../widgets/sheets.dart';
 import 'admin_common.dart';
 import 'model_edit_page.dart';
 import 'models_page.dart' show ModelRow;
@@ -21,7 +22,7 @@ const _addRoute = '/add-provider';
 /// provider's page with the model picker on top.
 void openAddProvider(BuildContext context) => Navigator.of(context).push(addProviderRoute());
 
-Route<void> addProviderRoute() => MaterialPageRoute(settings: const RouteSettings(name: _addRoute), builder: (_) => const PresetPickerPage());
+Route<void> addProviderRoute() => appRoute((_) => const PresetPickerPage(), settings: const RouteSettings(name: _addRoute));
 
 // ---------------------------------------------------------------------------
 // Step 1: choose what kind of provider.
@@ -53,7 +54,7 @@ class PresetPickerPage extends ConsumerWidget {
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Pressable(
                   scale: 0.985,
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ProviderFormPage(preset: pr))),
+                  onTap: () => Navigator.of(context).push(appRoute((_) => ProviderFormPage(preset: pr))),
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -169,8 +170,8 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
       final nav = Navigator.of(context);
       nav.popUntil((r) => r.settings.name == _addRoute || r.isFirst);
       if (nav.canPop()) nav.pop();
-      nav.push(MaterialPageRoute(builder: (_) => ProviderDetailPage(providerId: created.id)));
-      nav.push(MaterialPageRoute(builder: (_) => UpstreamPickerPage(providerId: created.id, firstTime: true)));
+      nav.push(appRoute((_) => ProviderDetailPage(providerId: created.id)));
+      nav.push(appRoute((_) => UpstreamPickerPage(providerId: created.id, firstTime: true)));
     } on ApiError catch (e) {
       if (mounted) setState(() => _error = e.message);
     } finally {
@@ -493,7 +494,7 @@ class _ProviderDetailPageState extends ConsumerState<ProviderDetailPage> {
                 child: PrimaryButton(
                   label: '从列表添加',
                   icon: AppIcons.listPlus,
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => UpstreamPickerPage(providerId: pr.id))),
+                  onTap: () => Navigator.of(context).push(appRoute((_) => UpstreamPickerPage(providerId: pr.id))),
                 ),
               ),
               const SizedBox(width: 10),
@@ -501,7 +502,7 @@ class _ProviderDetailPageState extends ConsumerState<ProviderDetailPage> {
                 child: SecondaryButton(
                   label: '手动添加',
                   icon: AppIcons.editNote,
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ModelEditPage(providerId: pr.id))),
+                  onTap: () => Navigator.of(context).push(appRoute((_) => ModelEditPage(providerId: pr.id))),
                 ),
               ),
             ]),

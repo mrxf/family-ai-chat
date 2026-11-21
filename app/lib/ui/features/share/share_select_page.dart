@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 
 import '../../../core/models/models.dart';
+import '../../adaptive/app_route.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
@@ -96,8 +97,8 @@ class _ShareSelectPageState extends State<ShareSelectPage> {
     final chosen = [for (final m in widget.messages) if (_selected.contains(m.id)) m];
     if (chosen.isEmpty) return;
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => SharePosterPage(
+      appRoute(
+        (_) => SharePosterPage(
           messages: chosen,
           conversationTitle: widget.conversationTitle,
           assistant: widget.assistant,

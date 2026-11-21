@@ -5,8 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/models.dart';
 import '../../state/chat.dart';
 import '../../state/session.dart';
-import '../theme/icons.dart';
+import '../adaptive/app_route.dart';
 import '../features/share/share_page.dart';
+import '../theme/icons.dart';
 import '../theme/theme.dart';
 import 'base_widgets.dart';
 
@@ -139,7 +140,7 @@ void showAssistantMessageActions(BuildContext context, WidgetRef ref, Message m,
       showToast(context, '已复制');
     }),
     SheetAction(AppIcons.selectText, '选择部分文字', () {
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => SelectTextPage(text: m.content)));
+      Navigator.of(context).push(appRoute((_) => SelectTextPage(text: m.content)));
     }),
     if (isLast)
       SheetAction(AppIcons.swap, '换个模型重新回答', () async {

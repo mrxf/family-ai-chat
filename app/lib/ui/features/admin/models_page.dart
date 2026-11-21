@@ -2,15 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/models/admin_models.dart';
 import '../../../core/api.dart';
+import '../../../core/models/admin_models.dart';
 import '../../../core/models/models.dart';
 import '../../../state/catalog.dart';
 import '../../../state/session.dart';
+import '../../adaptive/app_route.dart';
 import '../../theme/icons.dart';
-import '../../widgets/sheets.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
+import '../../widgets/sheets.dart';
 import 'admin_common.dart';
 import 'model_edit_page.dart';
 import 'provider_pages.dart';
@@ -402,7 +403,7 @@ class ModelRow extends ConsumerWidget {
 
     return Pressable(
       scale: 0.985,
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ModelEditPage(modelId: m.id))),
+      onTap: () => Navigator.of(context).push(appRoute((_) => ModelEditPage(modelId: m.id))),
       child: Container(
         padding: EdgeInsets.fromLTRB(16, 13, dragIndex == null ? 10 : 6, 13),
         decoration: BoxDecoration(
@@ -492,7 +493,7 @@ class ProviderCard extends StatelessWidget {
     final pr = provider;
     return Pressable(
       scale: 0.985,
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ProviderDetailPage(providerId: pr.id))),
+      onTap: () => Navigator.of(context).push(appRoute((_) => ProviderDetailPage(providerId: pr.id))),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(color: p.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: p.line)),

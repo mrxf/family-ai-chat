@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/models.dart';
 import '../../../state/chat.dart';
 import '../../../state/session.dart';
+import '../../adaptive/app_route.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
@@ -221,7 +222,7 @@ class _NoModels extends StatelessWidget {
     final p = context.pal;
     return Pressable(
       scale: 0.98,
-      onTap: isAdmin ? () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ModelsPage())) : null,
+      onTap: isAdmin ? () => Navigator.of(context).push(appRoute((_) => const ModelsPage())) : null,
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(18), border: Border.all(color: p.accent.withValues(alpha: 0.4))),

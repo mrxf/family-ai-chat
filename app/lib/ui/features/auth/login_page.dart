@@ -8,6 +8,7 @@ import '../../../core/api.dart';
 import '../../../core/invite_code.dart';
 import '../../../state/incoming_share.dart';
 import '../../../state/session.dart';
+import '../../adaptive/app_route.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
@@ -206,7 +207,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with WidgetsBindingObserv
   Future<void> _openSelfHostConfig() async {
     FocusScope.of(context).unfocus();
     await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => SelfHostConfigPage(initialServer: _activeServer)),
+      appRoute((_) => SelfHostConfigPage(initialServer: _activeServer)),
     );
   }
 
@@ -314,7 +315,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with WidgetsBindingObserv
                               child: Pressable(
                                 scale: 0.98,
                                 onTap: () => Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => SetupPage(server: server)),
+                                  appRoute((_) => SetupPage(server: server)),
                                 ),
                                 child: Container(
                                   padding: const EdgeInsets.all(16),
