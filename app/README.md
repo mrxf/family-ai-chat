@@ -1,6 +1,9 @@
 # 小暖 · Flutter 客户端
 
-Android 优先（iOS 工程已生成但未调试）。Flutter 3.44 / Dart 3.12。
+一套代码支持 Android、iOS、macOS、Windows：Android 是主力平台；iOS 工程已生成但还没调试过；
+macOS 能编译运行；Windows 工程已生成，需要在 Windows 机器上编译验证。Flutter 3.44 / Dart 3.12。
+
+开发约定（跨端要求、分层、单文件 ≤ 800 行）见仓库根目录 [AGENTS.md](../AGENTS.md)。
 
 ## 开发
 
@@ -8,7 +11,18 @@ Android 优先（iOS 工程已生成但未调试）。Flutter 3.44 / Dart 3.12�
 flutter pub get
 flutter run                 # 模拟器访问本机服务端填 10.0.2.2:8080
 flutter analyze && flutter test
+flutter run -d macos        # 电脑端（窗口拉宽到 ≥ 840 是侧栏布局，拉窄回到手机布局）
 ```
+
+电脑端打包：
+
+```bash
+flutter build macos --release   # build/macos/Build/Products/Release/XiaoNuan.app，最低 macOS 11
+flutter build windows --release # 需在 Windows 上执行，产物在 build/windows/x64/runner/Release/
+```
+
+没有公证的 macOS 包拷到别的 Mac 上，第一次打开会被拦下：到「系统设置 → 隐私与安全性」点「仍要打开」（macOS 14 及更早也可以在 Finder 里右键 →「打开」）。桌面图标由 `scripts/make_desktop_icons.py` 生成。
+电脑端暂不支持：拍照（直接打开文件选择）、日程本地响铃（由手机端提醒）、从其他应用分享进来、App 内自动更新。
 
 网络慢时在命令前加代理，例如 `https_proxy=http://127.0.0.1:7892 flutter pub get`。
 
@@ -40,30 +54,18 @@ release 包用 `android/nuan-release.jks` 签名，密码在 `android/key.proper
 
 ```
 lib/
-├── main.dart               入口：主题、字号缩放、登录态路由
-├── core/
-│   ├── api.dart            REST + SSE 客户端（dio）
-│   ├── models.dart         数据类
-│   ├── storage.dart        token（安全存储）、偏好、JSON 文件缓存
-│   └── tts.dart            朗读（去掉 Markdown 符号）
-├── state/                  Riverpod
-│   ├── session.dart        登录态、bootstrap、App 设置
-│   ├── conversations.dart  历史列表
-│   └── chat.dart           当前对话：乐观更新、上传、SSE 订阅与重连、停止/重答/编辑
+├── main.dart        启动
+├── app/             NuanApp（主题、字号、登录态路由）、navigatorKey
+├── core/            API 客户端、存储、数据模型（与平台无关）
+├── state/           Riverpod：会话、当前对话（乐观更新/SSE 重连）、历史、日程…
+├── platform/        平台能力表 + 提醒、分享进来、选图/存图、朗读等平台服务
 └── ui/
-    ├── home_page.dart      主界面（顶栏选模型、欢迎页/消息列表、输入框）
-    ├── chat_view.dart      消息列表（中心锚点滚动）
-    ├── messages.dart       用户气泡、助手回答、思考中动画、深度思考面板、操作栏
-    ├── markdown.dart       gpt_markdown 封装（流式渐显）
-    ├── composer.dart       输入框（图片、深度思考、发送/停止）
-    ├── welcome.dart        空对话欢迎页（建议问题、助手）
-    ├── drawer.dart         历史抽屉（分组、搜索、置顶/重命名/删除）
-    ├── settings_page.dart  设置
-    ├── admin_page.dart     家庭成员管理、用量统计
-    ├── sheets.dart         底部弹窗、模型选择、编辑框
-    ├── update.dart         检查更新
-    ├── widgets.dart        吉祥物、按压缩放、头像等通用组件
-    └── theme.dart          颜色与主题
+    ├── theme/  widgets/  adaptive/     主题、通用组件、断点与自适应路由
+    ├── features/<功能>/               两端共享的页面：chat、conversations、share、auth、settings…
+    ├── mobile/                        窄窗口外壳（抽屉）
+    └── desktop/                       宽窗口外壳（常驻侧栏 + 快捷键）
 ```
+
+各层职责和依赖方向见 [AGENTS.md](../AGENTS.md)。
 
 设计约定：正在生成的那条回答只通过 `ChatController.live`（ValueNotifier）刷新，token 不会触发整个列表重建。

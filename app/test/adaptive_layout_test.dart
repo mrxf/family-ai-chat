@@ -7,6 +7,7 @@ import 'package:family_chat/state/session.dart';
 import 'package:family_chat/ui/desktop/desktop_home_layout.dart';
 import 'package:family_chat/ui/features/chat/composer/composer.dart';
 import 'package:family_chat/ui/features/conversations/conversation_panel.dart';
+import 'package:family_chat/ui/features/conversations/search_page.dart';
 import 'package:family_chat/ui/features/home/home_page.dart';
 import 'package:family_chat/ui/mobile/mobile_home_layout.dart';
 import 'package:family_chat/ui/theme/theme.dart';
@@ -155,6 +156,15 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump(const Duration(milliseconds: 300));
     expect(api.sent, ['第一行']);
+  });
+
+  testWidgets('desktop: Cmd+K opens history search on macOS', (tester) async {
+    await _pumpHome(tester, size: const Size(1280, 800), platform: TargetPlatform.macOS);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+    await tester.pumpAndSettle();
+    expect(find.byType(SearchPage), findsOneWidget);
   });
 
   testWidgets('phones keep Enter for the keyboard; only the send action sends', (tester) async {

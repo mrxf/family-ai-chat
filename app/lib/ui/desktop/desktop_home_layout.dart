@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../platform/platform_capabilities.dart';
 import '../../state/chat.dart';
 import '../adaptive/breakpoints.dart';
 import '../features/chat/chat_app_bar.dart';
@@ -28,8 +29,8 @@ class DesktopHomeLayout extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final p = context.pal;
-    final isMac = Theme.of(context).platform == TargetPlatform.macOS;
-    SingleActivator key(LogicalKeyboardKey k) => SingleActivator(k, meta: isMac, control: !isMac);
+    final cmd = ref.watch(platformCapabilitiesProvider).usesCommandKey;
+    SingleActivator key(LogicalKeyboardKey k) => SingleActivator(k, meta: cmd, control: !cmd);
     return CallbackShortcuts(
       bindings: {
         key(LogicalKeyboardKey.keyN): () {

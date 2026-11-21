@@ -70,6 +70,9 @@ class PlatformCapabilities {
   bool get isDesktop => platform == TargetPlatform.macOS || platform == TargetPlatform.windows || platform == TargetPlatform.linux;
   bool get isMobile => !isDesktop;
 
+  /// Keyboard shortcuts use ⌘ (Apple) rather than Ctrl.
+  bool get usesCommandKey => platform == TargetPlatform.macOS || platform == TargetPlatform.iOS;
+
   /// Sent to the server on login so the sessions list can tell devices apart.
   String get deviceLabel => switch (platform) {
         TargetPlatform.android => 'Android',
