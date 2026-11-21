@@ -1,0 +1,139 @@
+app/lib/app/app.dart
+  s_431e77d183e6c0::t_a7aac01eebce05 1-72
+app/lib/app/navigation.dart
+  s_431e77d183e6c0::t_96d40d36af48af 1-5
+app/lib/core/api.dart
+  s_431e77d183e6c0::t_0c16a8b3e92c6e 7-8
+app/lib/main.dart
+  s_431e77d183e6c0::t_275f0d694a9d67 5,8,15
+app/lib/platform/reminders/reminder_bridge.dart
+  s_431e77d183e6c0::t_f59f79e9072370 3
+app/lib/state/catalog.dart
+  s_431e77d183e6c0::t_8b0b68ded7eb13 5
+app/lib/state/chat.dart
+  s_431e77d183e6c0::t_c545224b8bf00e 10-11
+app/lib/state/conversations.dart
+  s_431e77d183e6c0::t_1c6e7bb27f4dd5 6
+app/lib/state/memories.dart
+  s_431e77d183e6c0::t_2a4ea1919225cd 3
+app/lib/state/schedules.dart
+  s_431e77d183e6c0::t_459ab62cce72ba 5-6
+app/lib/state/session.dart
+  s_431e77d183e6c0::t_406fae655ce9d3 8
+app/lib/ui/features/admin/admin_common.dart
+  s_431e77d183e6c0::t_bc33572855bfe2 5-8
+app/lib/ui/features/admin/admin_users_page.dart
+  s_431e77d183e6c0::t_1a8a5877bb5587 6-14
+app/lib/ui/features/admin/asr_page.dart
+  s_431e77d183e6c0::t_0760179b148d96 5-12
+app/lib/ui/features/admin/model_edit_page.dart
+  s_431e77d183e6c0::t_830870bd4b66de 4-12
+app/lib/ui/features/admin/models_page.dart
+  s_431e77d183e6c0::t_2fa9cbc3632a58 5-14
+app/lib/ui/features/admin/provider_pages.dart
+  s_431e77d183e6c0::t_d958f3a6332a0e 5-13
+app/lib/ui/features/admin/upstream_picker_page.dart
+  s_431e77d183e6c0::t_aa8386a9809097 5-12
+app/lib/ui/features/admin/usage_page.dart
+  s_431e77d183e6c0::t_5869e28cdb51c4 4-11
+app/lib/ui/features/admin/web_search_page.dart
+  s_431e77d183e6c0::t_9ee4c10861232f 5-11
+app/lib/ui/features/auth/login_page.dart
+  s_431e77d183e6c0::t_f62bf93e241738 7-13,16-17
+app/lib/ui/features/auth/self_host_page.dart
+  s_431e77d183e6c0::t_550993dcd5af7b 5-10,12-13
+app/lib/ui/features/auth/setup_page.dart
+  s_431e77d183e6c0::t_e32760bbcb340a 5-11
+app/lib/ui/features/chat/chat_view.dart
+  s_431e77d183e6c0::t_f383aae4941cbc 7-12
+app/lib/ui/features/chat/components/chat_components.dart
+  s_431e77d183e6c0::t_2c411f3a9021ca 7-12
+app/lib/ui/features/chat/composer/composer.dart
+  s_431e77d183e6c0::t_9e37619cb55c19 11-17
+app/lib/ui/features/chat/composer/voice_button.dart
+  s_431e77d183e6c0::t_1382cfc87f54b7 13-17
+app/lib/ui/features/chat/messages/messages.dart
+  s_431e77d183e6c0::t_77ee8a0ad30865 10-19
+app/lib/ui/features/chat/welcome.dart
+  s_431e77d183e6c0::t_35ebaa8685e28e 6-14
+app/lib/ui/features/conversations/conversation_panel.dart
+  s_431e77d183e6c0::t_f77f5d5a177263 4-11,13-16
+app/lib/ui/features/conversations/search_page.dart
+  s_431e77d183e6c0::t_80275c99c7d3ff 6-13
+app/lib/ui/features/home/home_page.dart
+  s_431e77d183e6c0::t_3ae7553e76224f 6-25
+app/lib/ui/features/memories/memories_page.dart
+  s_431e77d183e6c0::t_b598c06eafadb9 4-9,12-14
+app/lib/ui/features/memories/memory_editor.dart
+  s_431e77d183e6c0::t_41f94dd1756bd5 4-7
+app/lib/ui/features/memories/memory_import_page.dart
+  s_431e77d183e6c0::t_7cbd3c16af039b 7-10,12-13
+app/lib/ui/features/schedules/schedule_editor.dart
+  s_431e77d183e6c0::t_b5597fda378e78 3-7
+app/lib/ui/features/schedules/schedules_page.dart
+  s_431e77d183e6c0::t_463da5867abe86 4-9,11-13
+app/lib/ui/features/settings/settings_page.dart
+  s_431e77d183e6c0::t_526085a30d33c3 6-20,22
+app/lib/ui/features/settings/update.dart
+  s_431e77d183e6c0::t_360512f5fcc3dc 6-7
+app/lib/ui/features/share/share_page.dart
+  s_431e77d183e6c0::t_c1dedaba9ce298 13-21
+app/lib/ui/widgets/base_widgets.dart
+  s_431e77d183e6c0::t_5a6ed2a9f6f6e6 4-5
+app/lib/ui/widgets/markdown.dart
+  s_431e77d183e6c0::t_26a03c69d3efb2 5
+app/lib/ui/widgets/mascot/mascot_anim.dart
+  s_431e77d183e6c0::t_166e5d551488c6 9
+app/lib/ui/widgets/sheets.dart
+  s_431e77d183e6c0::t_2693dc16489e2c 5-11
+app/test/app_icons_test.dart
+  s_431e77d183e6c0::t_bcf2fa702fed78 1
+app/test/auto_mode_test.dart
+  s_431e77d183e6c0::t_825ad0d32f0fe4 4,6,9-11
+app/test/chat_components_test.dart
+  s_431e77d183e6c0::t_dd431fe1843623 1,5-7
+app/test/chat_ux_fixes_test.dart
+  s_431e77d183e6c0::t_1e91eed928ef3f 2,7-10
+app/test/chat_view_test.dart
+  s_431e77d183e6c0::t_8116cffab7baeb 2,5-7
+app/test/incoming_share_test.dart
+  s_431e77d183e6c0::t_180179616c34bf 6,8,12-13
+app/test/login_self_host_test.dart
+  s_431e77d183e6c0::t_6720ca03c65355 5,7
+app/test/mascot_anim_test.dart
+  s_431e77d183e6c0::t_66ca0905fc4a93 3-5
+app/test/memory_pages_test.dart
+  s_431e77d183e6c0::t_1c05f314ab7cbe 1,3,6-11
+app/test/memory_test.dart
+  s_431e77d183e6c0::t_717a458cfb2cd6 5,7
+app/test/private_chat_test.dart
+  s_431e77d183e6c0::t_4612fe9ffc55d8 6,11-12
+app/test/schedules_ui_test.dart
+  s_431e77d183e6c0::t_09a425fa5eec84 1,4-7
+app/test/search_page_test.dart
+  s_431e77d183e6c0::t_7a6185c5ccc4ea 2,5-7
+app/test/share_chat_test.dart
+  s_431e77d183e6c0::t_552c9279d1d8f5 5,9-11
+app/test/web_search_ui_test.dart
+  s_431e77d183e6c0::t_14228defcb295b 1-2,4-6
+app/test/widget_test.dart
+  s_431e77d183e6c0::t_a06027025d3f0b 2-3
+scripts/pack_mascot.py
+  s_431e77d183e6c0::t_e4f97acb2e705d 6,127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "96c8e178277198cf33920860ab8ec1318426502c",
+  "prompts": {},
+  "sessions": {
+    "s_431e77d183e6c0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d95711ce-c7d9-422c-b8e4-23e6074f8c2a",
+        "model": "unknown"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
