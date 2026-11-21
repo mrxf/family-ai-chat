@@ -6,12 +6,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/models.dart';
 import '../../../state/chat.dart';
 import '../../../state/session.dart';
-import '../admin/models_page.dart';
 import '../../theme/icons.dart';
-import '../../widgets/mascot/mascot_anim.dart';
-import '../auth/self_host_page.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
+import '../../widgets/mascot/mascot_anim.dart';
+import '../admin/models_page.dart';
+import '../auth/self_host_info_sheet.dart';
 
 const _defaultSuggestions = [
   ('🎂', '帮我写一段给家人的生日祝福'),

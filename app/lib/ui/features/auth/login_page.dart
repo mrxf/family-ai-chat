@@ -8,13 +8,15 @@ import '../../../core/api.dart';
 import '../../../core/invite_code.dart';
 import '../../../state/incoming_share.dart';
 import '../../../state/session.dart';
-import '../admin/admin_common.dart' show PrimaryButton, ResultBanner, Tag;
 import '../../theme/icons.dart';
-import '../../widgets/mascot/mascot_anim.dart';
-import 'self_host_page.dart';
-import 'setup_page.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
+import '../../widgets/mascot/mascot_anim.dart';
+import 'invite_generator_sheet.dart';
+import 'invite_login_dialogs.dart';
+import 'self_host_page.dart';
+import 'self_host_status_card.dart';
+import 'setup_page.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -22,8 +24,6 @@ class LoginPage extends ConsumerStatefulWidget {
   @override
   ConsumerState<LoginPage> createState() => _LoginPageState();
 }
-
-enum _Reach { unknown, checking, ok, fail }
 
 class _LoginPageState extends ConsumerState<LoginPage> with WidgetsBindingObserver {
   late final _user = TextEditingController(text: ref.read(sessionProvider.notifier).lastUsername);
@@ -34,7 +34,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with WidgetsBindingObserv
   bool _hide = true;
   bool _inviteDialogOpen = false;
   String? _error;
-  _Reach _reach = _Reach.unknown;
+  ServerReach _reach = ServerReach.unknown;
   bool _needsSetup = false;
   Timer? _checkTimer;
   Timer? _focusRetryTimer;
@@ -96,7 +96,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with WidgetsBindingObserv
     _checkTimer?.cancel();
     final s = effectiveServer(serverUrl);
     setState(() {
-      _reach = _Reach.checking;
+      _reach = ServerReach.checking;
       _needsSetup = false;
     });
     _checkTimer = Timer(Duration(milliseconds: immediate ? 20 : 350), () async {
@@ -105,7 +105,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with WidgetsBindingObserv
       final setup = ok && await api.needsSetup();
       if (mounted && _activeServer == s) {
         setState(() {
-          _reach = ok ? _Reach.ok : _Reach.fail;
+          _reach = ok ? ServerReach.ok : ServerReach.fail;
           _needsSetup = setup;
         });
       }
@@ -168,7 +168,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with WidgetsBindingObserv
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
-        builder: (_) => _AutoLoginDialog(
+        builder: (_) => InviteLoginDialog(
           invite: invite,
           fingerprint: fp,
           onFallbackPrefill: () {
@@ -186,7 +186,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with WidgetsBindingObserv
     final pasted = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _ManualPasteSheet(
+      builder: (_) => ManualInvitePasteSheet(
         initialError: initialError,
         onOpenGenerator: () {
           Navigator.of(context).pop();
@@ -293,7 +293,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with WidgetsBindingObserv
                           ? const SizedBox(width: double.infinity)
                           : Padding(
                               padding: const EdgeInsets.only(bottom: 18),
-                              child: _SelfHostCard(
+                              child: SelfHostStatusCard(
                                 host: displayHost(server),
                                 reach: _reach,
                                 onConfigure: _openSelfHostConfig,
@@ -465,388 +465,6 @@ class _FooterActionButton extends StatelessWidget {
             const SizedBox(width: 5),
             Text(label, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.muted)),
           ]),
-        ),
-      ),
-    );
-  }
-}
-
-/// Displayed on the login screen whenever the user has configured a self-hosted server,
-/// surfacing live reachability, server configuration, and one-tap family invite generation.
-class _SelfHostCard extends StatelessWidget {
-  const _SelfHostCard({
-    required this.host,
-    required this.reach,
-    required this.onConfigure,
-    required this.onInvite,
-    required this.onResetDefault,
-  });
-
-  final String host;
-  final _Reach reach;
-  final VoidCallback onConfigure;
-  final VoidCallback onInvite;
-  final VoidCallback onResetDefault;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    final (statusLabel, statusColor) = switch (reach) {
-      _Reach.ok => ('已连通', p.good),
-      _Reach.fail => ('连不上', p.bad),
-      _Reach.checking => ('检测中', p.muted),
-      _Reach.unknown => ('待检测', p.muted),
-    };
-
-    return Container(
-      decoration: BoxDecoration(
-        color: p.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: reach == _Reach.fail ? p.bad.withValues(alpha: 0.45) : p.line),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 13, 12, 12),
-            child: Row(children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(12)),
-                child: AppIcon(AppIcons.server, color: p.accent, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    const Flexible(
-                      child: Text('自托管服务器', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700)),
-                    ),
-                    const SizedBox(width: 7),
-                    Tag(
-                      statusLabel,
-                      color: statusColor,
-                      icon: reach == _Reach.ok ? AppIcons.checkBold : (reach == _Reach.fail ? AppIcons.error : null),
-                    ),
-                  ]),
-                  const SizedBox(height: 3),
-                  Text(
-                    host,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 13.5, color: p.muted, fontFamily: 'monospace'),
-                  ),
-                ]),
-              ),
-              const SizedBox(width: 8),
-              Pressable(
-                scale: 0.95,
-                onTap: onConfigure,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-                  decoration: BoxDecoration(color: p.surfaceAlt, borderRadius: BorderRadius.circular(11)),
-                  child: Text('配置', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: p.accent)),
-                ),
-              ),
-            ]),
-          ),
-          Divider(height: 1, color: p.line),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            child: Row(children: [
-              Expanded(
-                child: Pressable(
-                  scale: 0.97,
-                  onTap: onInvite,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-                    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      AppIcon(AppIcons.magicWand, size: 16, color: p.accent),
-                      const SizedBox(width: 5),
-                      Flexible(
-                        child: Text(
-                          '生成家人口令',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: p.text),
-                        ),
-                      ),
-                    ]),
-                  ),
-                ),
-              ),
-              Container(width: 1, height: 18, color: p.line),
-              Expanded(
-                child: Pressable(
-                  scale: 0.97,
-                  onTap: onResetDefault,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-                    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      AppIcon(AppIcons.repeat, size: 15, color: p.muted),
-                      const SizedBox(width: 5),
-                      Flexible(
-                        child: Text(
-                          '切回默认服务',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500, color: p.muted),
-                        ),
-                      ),
-                    ]),
-                  ),
-                ),
-              ),
-            ]),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Elder-friendly confirmation dialog popped automatically when `#xn...xn#` is detected.
-class _AutoLoginDialog extends ConsumerStatefulWidget {
-  const _AutoLoginDialog({
-    required this.invite,
-    required this.fingerprint,
-    required this.onFallbackPrefill,
-  });
-
-  final InvitePayload invite;
-  final String? fingerprint;
-  final VoidCallback onFallbackPrefill;
-
-  @override
-  ConsumerState<_AutoLoginDialog> createState() => _AutoLoginDialogState();
-}
-
-class _AutoLoginDialogState extends ConsumerState<_AutoLoginDialog> {
-  bool _submitting = false;
-  String? _error;
-
-  Future<void> _confirm() async {
-    final inv = widget.invite;
-    final prefs = ref.read(storageProvider).prefs;
-    setState(() {
-      _submitting = true;
-      _error = null;
-    });
-
-    try {
-      if (inv.hasCredentials) {
-        await ref.read(sessionProvider.notifier).login(inv.server, inv.username, inv.password);
-        await InviteCodeGuard.markConsumed(prefs, widget.fingerprint);
-        // Wipe the encrypted credential from the system clipboard after a successful login.
-        try {
-          await Clipboard.setData(const ClipboardData(text: ''));
-        } catch (_) {}
-        HapticFeedback.mediumImpact();
-        if (mounted) Navigator.of(context).pop();
-      } else {
-        await ref.read(sessionProvider.notifier).setServer(inv.server);
-        await InviteCodeGuard.markConsumed(prefs, widget.fingerprint);
-        try {
-          await Clipboard.setData(const ClipboardData(text: ''));
-        } catch (_) {}
-        HapticFeedback.selectionClick();
-        if (mounted) {
-          showToast(context, '已切换到自托管服务器：${inv.serverHost}');
-          Navigator.of(context).pop();
-        }
-      }
-    } on ApiError catch (e) {
-      await ref.read(sessionProvider.notifier).setServer(inv.server);
-      widget.onFallbackPrefill();
-      if (mounted) {
-        setState(() {
-          _submitting = false;
-          _error = e.message;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _submitting = false;
-          _error = '连接失败：$e';
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    final inv = widget.invite;
-    final fullLogin = inv.hasCredentials;
-    final title = fullLogin
-        ? (inv.displayName.isNotEmpty ? '你好，${inv.displayName}！' : '识别到登录口令')
-        : '识别到自托管配置';
-    final subtitle = fullLogin
-        ? '家人已为你配好小暖账号，点下面按钮就能直接进入'
-        : '点下面按钮即可切换到家人配置好的自托管服务器';
-
-    return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 400),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Center(child: Mascot(size: 72)),
-              const SizedBox(height: 14),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                subtitle,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 15.5, color: p.muted, height: 1.45),
-              ),
-              const SizedBox(height: 18),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-                decoration: BoxDecoration(
-                  color: p.surfaceAlt,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: p.line),
-                ),
-                child: Column(
-                  children: [
-                    if (fullLogin) ...[
-                      _InfoLine(label: '登录账号', value: inv.username),
-                      const SizedBox(height: 8),
-                    ],
-                    _InfoLine(
-                      label: '连接服务',
-                      value: inv.isSelfHosted ? '自托管 · ${inv.serverHost}' : '官方默认服务',
-                    ),
-                  ],
-                ),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 14),
-                ResultBanner(ok: false, title: _error!),
-              ],
-              const SizedBox(height: 20),
-              PrimaryButton(
-                label: fullLogin ? '立即自动登录' : '使用这台服务器',
-                icon: fullLogin ? AppIcons.checkBold : AppIcons.server,
-                busy: _submitting,
-                onTap: _confirm,
-              ),
-              const SizedBox(height: 8),
-              Center(
-                child: TextButton(
-                  onPressed: _submitting ? null : () => Navigator.of(context).pop(),
-                  child: Text('暂不使用', style: TextStyle(fontSize: 15, color: p.muted)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _InfoLine extends StatelessWidget {
-  const _InfoLine({required this.label, required this.value});
-  final String label, value;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    return Row(children: [
-      Text(label, style: TextStyle(fontSize: 14.5, color: p.muted)),
-      const SizedBox(width: 12),
-      Expanded(
-        child: Text(
-          value,
-          textAlign: TextAlign.right,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600, color: p.text),
-        ),
-      ),
-    ]);
-  }
-}
-
-/// Fallback paste sheet when the phone OS blocks silent clipboard reading or clipboard is empty.
-class _ManualPasteSheet extends StatefulWidget {
-  const _ManualPasteSheet({this.initialError, required this.onOpenGenerator});
-  final String? initialError;
-  final VoidCallback onOpenGenerator;
-
-  @override
-  State<_ManualPasteSheet> createState() => _ManualPasteSheetState();
-}
-
-class _ManualPasteSheetState extends State<_ManualPasteSheet> {
-  final _ctrl = TextEditingController();
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(20, 4, 20, MediaQuery.viewInsetsOf(context).bottom + 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('粘贴登录口令', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 6),
-            Text(
-              '把家人发在微信里的整段消息粘贴到下方框内（包含 #xn...xn#），点「识别并登录」即可。',
-              style: TextStyle(fontSize: 14.5, color: p.muted, height: 1.45),
-            ),
-            if (widget.initialError != null) ...[
-              const SizedBox(height: 12),
-              ResultBanner(ok: false, title: widget.initialError!),
-            ],
-            const SizedBox(height: 14),
-            TextField(
-              controller: _ctrl,
-              autofocus: true,
-              minLines: 3,
-              maxLines: 5,
-              style: const TextStyle(fontSize: 16, height: 1.45),
-              decoration: InputDecoration(
-                hintText: '长按此处点「粘贴」…',
-                fillColor: p.surfaceAlt,
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-              ),
-            ),
-            const SizedBox(height: 16),
-            PrimaryButton(
-              label: '识别并登录',
-              icon: AppIcons.checkBold,
-              onTap: () => Navigator.of(context).pop(_ctrl.text),
-            ),
-            const SizedBox(height: 8),
-            Center(
-              child: TextButton.icon(
-                onPressed: widget.onOpenGenerator,
-                icon: AppIcon(AppIcons.magicWand, size: 16, color: p.accent),
-                label: Text('我是家人管理员，制作登录口令', style: TextStyle(fontSize: 14, color: p.muted)),
-              ),
-            ),
-          ],
         ),
       ),
     );

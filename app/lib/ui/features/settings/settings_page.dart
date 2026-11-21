@@ -4,22 +4,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/api.dart';
-import '../../../state/session.dart';
 import '../../../state/memories.dart';
 import '../../../state/schedules.dart';
+import '../../../state/session.dart';
+import '../../theme/icons.dart';
+import '../../theme/theme.dart';
+import '../../widgets/base_widgets.dart';
+import '../../widgets/sheets.dart';
+import '../admin/admin_users_page.dart';
 import '../admin/asr_page.dart';
 import '../admin/models_page.dart';
-import '../admin/web_search_page.dart';
 import '../admin/usage_page.dart';
-import '../admin/admin_users_page.dart';
-import '../../theme/icons.dart';
-import '../schedules/schedules_page.dart';
-import '../auth/self_host_page.dart';
-import '../../widgets/sheets.dart';
+import '../admin/web_search_page.dart';
+import '../auth/invite_generator_sheet.dart';
+import '../auth/self_host_info_sheet.dart';
 import '../memories/memories_page.dart';
-import '../../theme/theme.dart';
+import '../schedules/schedules_page.dart';
 import 'update.dart';
-import '../../widgets/base_widgets.dart';
 
 const avatarChoices = ['', '👵', '👴', '👩', '👨', '👧', '👦', '🧑', '🐱', '🐶', '🐼', '🐰', '🦊', '🐻', '🌻', '🌈', '⭐', '🍀'];
 

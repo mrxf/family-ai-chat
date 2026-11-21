@@ -6,14 +6,14 @@ import '../../../state/chat.dart';
 import '../../../state/conversations.dart';
 import '../../../state/schedules.dart';
 import '../../../state/session.dart';
-import '../admin/admin_common.dart' show Tag;
 import '../../theme/icons.dart';
-import '../schedules/schedules_page.dart';
-import 'search_page.dart';
-import '../auth/self_host_page.dart';
-import '../settings/settings_page.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
+import '../admin/admin_common.dart' show Tag;
+import '../auth/self_host_info_sheet.dart';
+import '../schedules/schedules_page.dart';
+import '../settings/settings_page.dart';
+import 'search_page.dart';
 
 class HistoryDrawer extends ConsumerWidget {
   const HistoryDrawer({super.key});

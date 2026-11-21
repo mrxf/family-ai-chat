@@ -7,11 +7,11 @@ import '../../../core/api.dart';
 import '../../../core/models/models.dart';
 import '../../../state/session.dart';
 import '../../theme/icons.dart';
-import '../auth/self_host_page.dart';
-import '../settings/settings_page.dart' show avatarChoices;
-import '../../widgets/sheets.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
+import '../../widgets/sheets.dart';
+import '../auth/invite_generator_sheet.dart';
+import '../settings/settings_page.dart' show avatarChoices;
 
 final _usersProvider = FutureProvider.autoDispose<List<User>>((ref) => ref.watch(apiProvider).adminUsers());
 

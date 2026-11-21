@@ -4,11 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api.dart';
 import '../../../state/session.dart';
-import '../admin/admin_common.dart';
-import '../admin/provider_pages.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
+import '../admin/admin_common.dart';
+import '../admin/provider_pages.dart';
 
 /// First-run setup of a fresh server: setup code from the server log + the admin account.
 /// Afterwards the user lands in the app and is taken straight to "add provider".

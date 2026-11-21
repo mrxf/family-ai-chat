@@ -8,13 +8,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../../../core/models/models.dart';
 import '../../../../state/chat.dart';
 import '../../../../state/session.dart';
 import '../../../theme/icons.dart';
-import '../../../widgets/sheets.dart';
 import '../../../theme/theme.dart';
-import 'voice_button.dart';
 import '../../../widgets/base_widgets.dart';
+import '../../../widgets/sheets.dart';
+import 'voice_button.dart';
 
 /// The input area: text, photos, deep-thinking toggle and send / stop.
 class Composer extends ConsumerStatefulWidget {
