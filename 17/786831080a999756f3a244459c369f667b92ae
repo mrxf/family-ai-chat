@@ -1,0 +1,159 @@
+app/.metadata
+  s_431e77d183e6c0::t_6bd3633f7ce602 24-29
+app/lib/core/storage.dart
+  s_431e77d183e6c0::t_3f916eac82f8d5 22-25
+app/lib/state/conversations.dart
+  s_431e77d183e6c0::t_3830e710db4c2c 132-163
+app/lib/ui/adaptive/app_route.dart
+  s_431e77d183e6c0::t_f0ff2c88903c6d 1-41
+app/lib/ui/adaptive/breakpoints.dart
+  s_431e77d183e6c0::t_d88341560f8d59 1-42
+app/lib/ui/adaptive/readable_width.dart
+  s_431e77d183e6c0::t_78b491d70b136a 1-21
+app/lib/ui/desktop/desktop_home_layout.dart
+  s_431e77d183e6c0::t_9af3b524051733 1-67
+app/lib/ui/features/admin/model_edit_page.dart
+  s_431e77d183e6c0::t_84361365b51ac5 5,8,12,127
+app/lib/ui/features/admin/models_page.dart
+  s_431e77d183e6c0::t_2a75a87c1462c8 6,10,14,406,496
+app/lib/ui/features/admin/provider_pages.dart
+  s_431e77d183e6c0::t_39835c66f755f7 6,9,13,25,57,173-174,497,505
+app/lib/ui/features/admin/upstream_picker_page.dart
+  s_431e77d183e6c0::t_717ce31b4b3228 6,9,238,247
+app/lib/ui/features/auth/login_page.dart
+  s_431e77d183e6c0::t_0ae8e47db97f86 11,210,318
+app/lib/ui/features/auth/self_host_info_sheet.dart
+  s_431e77d183e6c0::t_ab5accb1114bd8 5,91
+app/lib/ui/features/auth/self_host_page.dart
+  s_431e77d183e6c0::t_a0ba39e6465ac4 8,201
+app/lib/ui/features/chat/chat_app_bar.dart
+  s_431e77d183e6c0::t_72feffd34159c4 1-183
+app/lib/ui/features/chat/chat_pane.dart
+  s_431e77d183e6c0::t_f109758c8806d7 1-87
+app/lib/ui/features/chat/chat_view.dart
+  s_431e77d183e6c0::t_0a17603e224d50 9-10,119-124
+app/lib/ui/features/chat/composer/composer.dart
+  s_431e77d183e6c0::t_dd9e09f54de313 7,151-161,217,264-287
+app/lib/ui/features/chat/messages/user_message.dart
+  s_431e77d183e6c0::t_0d8eff25ce4180 9,22-65,67,71-78,81-84
+app/lib/ui/features/chat/welcome.dart
+  s_431e77d183e6c0::t_9ba8b8eecfe70e 9,225
+app/lib/ui/features/conversations/conversation_panel.dart
+  s_431e77d183e6c0::t_0a4b782caaa7ab 9,19-20,23-39,42,50,66,68-80,82-83,85,87-93,95-100,102-121,123-135,137-178,180-186,188-206,208-214
+app/lib/ui/features/memories/memories_page.dart
+  s_431e77d183e6c0::t_15757b38ae7bcf 9,13-15,72
+app/lib/ui/features/settings/settings_page.dart
+  s_431e77d183e6c0::t_22f8e7116fc065 11,108,115,178,184,192,200,206
+app/lib/ui/features/share/share_flow.dart
+  s_431e77d183e6c0::t_d6dcfa51601cf0 8,51-52
+app/lib/ui/features/share/share_select_page.dart
+  s_431e77d183e6c0::t_e988c3eba958db 5,100-101
+app/lib/ui/mobile/mobile_home_layout.dart
+  s_431e77d183e6c0::t_277cab6b55082d 1-43
+app/lib/ui/widgets/base_widgets.dart
+  s_431e77d183e6c0::t_5b19bf2222d7f8 55,95-96
+app/lib/ui/widgets/sheets.dart
+  s_431e77d183e6c0::t_af8354f3e2f288 8,10,143
+app/macos/.gitignore
+  s_431e77d183e6c0::t_de2639c3cad05f 1-7
+app/macos/Flutter/Flutter-Debug.xcconfig
+  s_431e77d183e6c0::t_a337d2e4a49896 1-2
+app/macos/Flutter/Flutter-Release.xcconfig
+  s_431e77d183e6c0::t_2bd3ba423a0dfa 1-2
+app/macos/Flutter/GeneratedPluginRegistrant.swift
+  s_431e77d183e6c0::t_e1927cc6f64116 1-28
+app/macos/Podfile
+  s_431e77d183e6c0::t_af03212d707802 1-42
+app/macos/Podfile.lock
+  s_431e77d183e6c0::t_ef9ab3aa66eaae 1-22
+app/macos/Runner.xcodeproj/project.pbxproj
+  s_431e77d183e6c0::t_0e4312974d7822 1-825
+app/macos/Runner.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+  s_431e77d183e6c0::t_9826cda73eae59 1-8
+app/macos/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme
+  s_431e77d183e6c0::t_3fad437083bbfb 1-117
+app/macos/Runner.xcworkspace/contents.xcworkspacedata
+  s_431e77d183e6c0::t_cd6ec1aa785e64 1-10
+app/macos/Runner.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+  s_431e77d183e6c0::t_f280fae657a2bf 1-8
+app/macos/Runner/AppDelegate.swift
+  s_431e77d183e6c0::t_621ec02b41394c 1-13
+app/macos/Runner/Assets.xcassets/AppIcon.appiconset/Contents.json
+  s_431e77d183e6c0::t_d50c322840e847 1-68
+app/macos/Runner/Base.lproj/MainMenu.xib
+  s_431e77d183e6c0::t_648d3dd01c6a3d 1-343
+app/macos/Runner/Configs/AppInfo.xcconfig
+  s_431e77d183e6c0::t_e5390d46af994a 1-14
+app/macos/Runner/Configs/Debug.xcconfig
+  s_431e77d183e6c0::t_91cb1ad2e0b324 1-2
+app/macos/Runner/Configs/Release.xcconfig
+  s_431e77d183e6c0::t_ceea637beb196c 1-2
+app/macos/Runner/Configs/Warnings.xcconfig
+  s_431e77d183e6c0::t_b825af3cde1008 1-13
+app/macos/Runner/DebugProfile.entitlements
+  s_431e77d183e6c0::t_deea82153a14cd 1-27
+app/macos/Runner/Info.plist
+  s_431e77d183e6c0::t_57588c386c55a4 1-40
+app/macos/Runner/MainFlutterWindow.swift
+  s_431e77d183e6c0::t_9618c909c36f3e 1-25
+app/macos/Runner/Release.entitlements
+  s_431e77d183e6c0::t_02043a50b55920 1-23
+app/macos/RunnerTests/RunnerTests.swift
+  s_431e77d183e6c0::t_193c541c2617d5 1-12
+app/test/adaptive_layout_test.dart
+  s_431e77d183e6c0::t_55efe2fd61a8cc 1-186
+app/windows/.gitignore
+  s_431e77d183e6c0::t_648c12268813a2 1-17
+app/windows/CMakeLists.txt
+  s_431e77d183e6c0::t_886ad64d45c88a 1-108
+app/windows/flutter/CMakeLists.txt
+  s_431e77d183e6c0::t_bc0099cf234a0e 1-109
+app/windows/flutter/generated_plugin_registrant.cc
+  s_431e77d183e6c0::t_80f0ac6794d54c 1-29
+app/windows/flutter/generated_plugin_registrant.h
+  s_431e77d183e6c0::t_75174a78013be3 1-15
+app/windows/flutter/generated_plugins.cmake
+  s_431e77d183e6c0::t_95128053d9cef3 1-30
+app/windows/runner/CMakeLists.txt
+  s_431e77d183e6c0::t_9f9034a00af730 1-40
+app/windows/runner/Runner.rc
+  s_431e77d183e6c0::t_21a4cba39426af 1-121
+app/windows/runner/flutter_window.cpp
+  s_431e77d183e6c0::t_2f008ee900744f 1-71
+app/windows/runner/flutter_window.h
+  s_431e77d183e6c0::t_900639482e4795 1-33
+app/windows/runner/main.cpp
+  s_431e77d183e6c0::t_12687a09b19353 1-46
+app/windows/runner/resource.h
+  s_431e77d183e6c0::t_9364d47e39f7ad 1-16
+app/windows/runner/runner.exe.manifest
+  s_431e77d183e6c0::t_bec2de30cdb097 1-14
+app/windows/runner/utils.cpp
+  s_431e77d183e6c0::t_c6046212795f7d 1-69
+app/windows/runner/utils.h
+  s_431e77d183e6c0::t_2ef2b2403edc5b 1-19
+app/windows/runner/win32_window.cpp
+  s_431e77d183e6c0::t_48ce246dc9821e 1-288
+app/windows/runner/win32_window.h
+  s_431e77d183e6c0::t_dd6d4faf0710c9 1-102
+scripts/make_desktop_icons.py
+  s_431e77d183e6c0::t_e63e29a796c932 1-57
+app/lib/ui/features/home/home_page.dart
+  s_431e77d183e6c0::t_d245bf8f9eb5f4 6,13-17,22-27,70,136,139,141-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "17786831080a999756f3a244459c369f667b92ae",
+  "prompts": {},
+  "sessions": {
+    "s_431e77d183e6c0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d95711ce-c7d9-422c-b8e4-23e6074f8c2a",
+        "model": "unknown"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
