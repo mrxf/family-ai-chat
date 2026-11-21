@@ -3,7 +3,7 @@
 
 usage: pack.py <work_dir> <app_dir>
   reads  <work_dir>/out_<action>/frames/keyed/keyed_NNN.png (full-res RGBA, 24fps, 97 frames, first==last)
-  writes <app_dir>/assets/mascot/<action>.webp and <app_dir>/lib/ui/mascot_sheets.dart
+  writes <app_dir>/assets/mascot/<action>.webp and <app_dir>/lib/ui/widgets/mascot/mascot_sheets.dart
 """
 import math, os, subprocess, sys, tempfile
 import cv2
@@ -124,4 +124,4 @@ for name, fps, n, cols, fw, fh, (rl, rt, rr, rb) in entries:
     lines.append(f"  MascotMotion.{name}: MascotSheet(asset: 'assets/mascot/{name}.webp', fps: {fps}, frames: {n}, cols: {cols}, "
                  f"frameW: {fw}, frameH: {fh}, rest: Rect.fromLTRB({rl:.1f}, {rt:.1f}, {rr:.1f}, {rb:.1f})),")
 lines.append("};")
-open(f"{app}/lib/ui/mascot_sheets.dart", "w").write("\n".join(lines) + "\n")
+open(f"{app}/lib/ui/widgets/mascot/mascot_sheets.dart", "w").write("\n".join(lines) + "\n")

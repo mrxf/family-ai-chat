@@ -1,6 +1,6 @@
 import 'package:family_chat/core/api.dart';
-import 'package:family_chat/core/models.dart';
-import 'package:family_chat/core/tts.dart';
+import 'package:family_chat/core/models/models.dart';
+import 'package:family_chat/platform/speech/speaker.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

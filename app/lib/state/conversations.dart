@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api.dart';
-import '../core/models.dart';
+import '../core/models/models.dart';
 import 'session.dart';
 
 class ConvListState {

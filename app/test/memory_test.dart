@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
-import 'package:family_chat/core/admin_models.dart';
+import 'package:family_chat/core/models/admin_models.dart';
 import 'package:family_chat/core/api.dart';
-import 'package:family_chat/core/models.dart';
+import 'package:family_chat/core/models/models.dart';
 import 'package:family_chat/state/catalog.dart';
 import 'package:family_chat/state/chat.dart';
 import 'package:flutter_test/flutter_test.dart';

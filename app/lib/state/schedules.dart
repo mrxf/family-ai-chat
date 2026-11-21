@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/models.dart';
-import '../core/reminders.dart';
+import '../core/models/models.dart';
+import '../platform/reminders/reminder_bridge.dart';
 import 'session.dart';
 
 /// Loads the user's schedules and automatically keeps phone local notifications in sync.

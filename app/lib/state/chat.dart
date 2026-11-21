@@ -7,8 +7,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api.dart';
-import '../core/models.dart';
-import '../core/reminders.dart';
+import '../core/models/models.dart';
+import '../platform/reminders/reminder_bridge.dart';
 import 'conversations.dart';
 import 'schedules.dart';
 import 'session.dart';

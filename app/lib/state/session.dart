@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api.dart';
 import '../core/invite_code.dart';
-import '../core/models.dart';
+import '../core/models/models.dart';
 import '../core/storage.dart';
 
 /// Overridden in main() once storage is opened.
