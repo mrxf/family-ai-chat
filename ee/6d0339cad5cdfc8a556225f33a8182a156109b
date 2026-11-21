@@ -1,0 +1,21 @@
+app/lib/ui/adaptive/readable_width.dart
+  s_431e77d183e6c0::t_00270ff85f1db3 18-21
+app/test/adaptive_layout_test.dart
+  s_431e77d183e6c0::t_6e4736f24c293a 5,56-66,191-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "ee6d0339cad5cdfc8a556225f33a8182a156109b",
+  "prompts": {},
+  "sessions": {
+    "s_431e77d183e6c0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d95711ce-c7d9-422c-b8e4-23e6074f8c2a",
+        "model": "unknown"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
