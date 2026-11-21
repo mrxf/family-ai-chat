@@ -1,0 +1,97 @@
+app/lib/ui/features/admin/admin_users_page.dart
+  s_431e77d183e6c0::t_55491606cca14e 12-14
+app/lib/ui/features/auth/invite_generator_sheet.dart
+  s_431e77d183e6c0::t_a445559eb23da1 1-345
+app/lib/ui/features/auth/invite_login_dialogs.dart
+  s_431e77d183e6c0::t_e52cc02b561bc5 1-261
+app/lib/ui/features/auth/login_page.dart
+  s_431e77d183e6c0::t_49ab8fbcd717ff 12-13,15-16,18,37,99,108,171,189,296
+app/lib/ui/features/auth/self_host_info_sheet.dart
+  s_431e77d183e6c0::t_9e40e4c41b8e9b 1-125
+app/lib/ui/features/auth/self_host_page.dart
+  s_431e77d183e6c0::t_85fe983fa33ce4 11-13
+app/lib/ui/features/auth/self_host_status_card.dart
+  s_431e77d183e6c0::t_e2a427755a26b1 1-145
+app/lib/ui/features/auth/setup_page.dart
+  s_431e77d183e6c0::t_16cb758657e6a1 10-11
+app/lib/ui/features/chat/components/ask_user_card.dart
+  s_431e77d183e6c0::t_da1b1bf8d1e01b 1-653
+app/lib/ui/features/chat/components/assistant_body.dart
+  s_431e77d183e6c0::t_de7cca5d366ad2 1-117
+app/lib/ui/features/chat/components/chart_card.dart
+  s_431e77d183e6c0::t_0d208226205ed6 1-569
+app/lib/ui/features/chat/components/component_card.dart
+  s_431e77d183e6c0::t_05845c3591e61d 1-40
+app/lib/ui/features/chat/components/metrics_card.dart
+  s_431e77d183e6c0::t_7c5405e025f90b 1-181
+app/lib/ui/features/chat/components/quiz_card.dart
+  s_431e77d183e6c0::t_4eff15c5ba7b37 1-250
+app/lib/ui/features/chat/components/todo_card.dart
+  s_431e77d183e6c0::t_978f4b94baa008 1-216
+app/lib/ui/features/chat/components/weather_card.dart
+  s_431e77d183e6c0::t_41827dd6fc052f 1-563
+app/lib/ui/features/chat/messages/activity_panels.dart
+  s_431e77d183e6c0::t_9bd2f650d439e8 1-535
+app/lib/ui/features/chat/messages/assistant_message.dart
+  s_431e77d183e6c0::t_9cb46bcce5f834 1-230
+app/lib/ui/features/chat/messages/message_images.dart
+  s_431e77d183e6c0::t_e2fe12211d1672 1-289
+app/lib/ui/features/chat/messages/user_message.dart
+  s_431e77d183e6c0::t_da68e143303d39 1-82
+app/lib/ui/features/chat/welcome.dart
+  s_431e77d183e6c0::t_ab1bcbf79a5581 12-14
+app/lib/ui/features/conversations/conversation_panel.dart
+  s_431e77d183e6c0::t_cd4bfcedcb2bf0 12-16
+app/lib/ui/features/settings/settings_page.dart
+  s_431e77d183e6c0::t_fc5761392bed46 9-14,18-20,22
+app/lib/ui/features/share/share_flow.dart
+  s_431e77d183e6c0::t_bf1ce4c9029e46 1-59
+app/lib/ui/features/share/share_poster_page.dart
+  s_431e77d183e6c0::t_b4416288b65299 1-333
+app/lib/ui/features/share/share_select_page.dart
+  s_431e77d183e6c0::t_1a4f03561c9436 1-391
+app/lib/core/models/account.dart
+  s_431e77d183e6c0::t_2d029b978cb676 1-183
+app/lib/core/models/json_read.dart
+  s_431e77d183e6c0::t_d60d05d809df8b 1-7
+app/lib/core/models/memory.dart
+  s_431e77d183e6c0::t_1b5e249dcb6b34 1-127
+app/lib/core/models/message.dart
+  s_431e77d183e6c0::t_300dece6bb5d5a 1-233
+app/lib/core/models/models.dart
+  s_431e77d183e6c0::t_32af657460dd0a 1-8
+app/lib/core/models/picked_image.dart
+  s_431e77d183e6c0::t_a9268d00e06a2d 1-11
+app/lib/core/models/schedule.dart
+  s_431e77d183e6c0::t_68ebc5aad31327 1-237
+app/lib/state/chat.dart
+  s_431e77d183e6c0::t_3a07da49aed01a 12,17
+app/lib/state/chat_state.dart
+  s_431e77d183e6c0::t_aa2a0f1dbd991c 1-185
+app/lib/ui/features/chat/components/chat_components.dart
+  s_431e77d183e6c0::t_113e5391f2b32a 1-11
+app/lib/ui/features/chat/composer/composer.dart
+  s_431e77d183e6c0::t_9a9dd34360f016 11,17-18
+app/lib/ui/features/chat/messages/messages.dart
+  s_431e77d183e6c0::t_b61cb49de61533 1-2,4-7
+app/lib/ui/features/share/share_page.dart
+  s_431e77d183e6c0::t_648601a7810e61 1-2,4-7
+app/lib/ui/features/share/share_poster_card.dart
+  s_431e77d183e6c0::t_aded557def07b3 1-733
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "fc4f8c295253fccf5c323abc9a31ab5f73066467",
+  "prompts": {},
+  "sessions": {
+    "s_431e77d183e6c0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d95711ce-c7d9-422c-b8e4-23e6074f8c2a",
+        "model": "unknown"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
