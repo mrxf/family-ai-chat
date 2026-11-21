@@ -8,7 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api.dart';
 import '../core/models/models.dart';
-import '../platform/reminders/reminder_bridge.dart';
+import '../platform/reminders/reminder_service.dart';
 import 'chat_state.dart';
 import 'conversations.dart';
 import 'schedules.dart';
@@ -96,7 +96,7 @@ class ChatController extends Notifier<ChatState> {
 
   Future<void> _onBeforeLogout(Api api) async {
     _sessionModelId = null;
-    unawaited(ReminderBridge.instance.clearAll());
+    unawaited(ref.read(reminderServiceProvider).clearAll());
     if (!state.isPrivate) return;
     await _cleanupPrivateState(apiOverride: api, waitDelete: true);
     _nav++;

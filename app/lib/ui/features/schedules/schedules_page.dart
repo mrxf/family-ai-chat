@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api.dart';
 import '../../../core/models/models.dart';
-import '../../../platform/reminders/reminder_bridge.dart';
+import '../../../platform/platform_capabilities.dart';
+import '../../../platform/reminders/reminder_service.dart';
 import '../../../state/schedules.dart';
 import '../../../state/session.dart';
 import '../../theme/icons.dart';
@@ -73,9 +74,10 @@ class _SchedulesPageState extends ConsumerState<SchedulesPage> with WidgetsBindi
   }
 
   Future<void> _enableNotifications() async {
-    final granted = await ReminderBridge.instance.requestPermission();
+    final reminders = ref.read(reminderServiceProvider);
+    final granted = await reminders.requestPermission();
     if (!granted && mounted) {
-      await ReminderBridge.instance.openSettings();
+      await reminders.openSettings();
     }
     if (mounted) {
       ref.invalidate(notificationPermissionProvider);
@@ -95,11 +97,13 @@ class _SchedulesPageState extends ConsumerState<SchedulesPage> with WidgetsBindi
         } else {
           await api.updateSchedule(existing.id, draft.toJson());
         }
-        if (mounted) {
-          final hasPerm = await ReminderBridge.instance.hasPermission();
-          if (!hasPerm && draft.remindBeforeMin >= 0) {
-            await ReminderBridge.instance.requestPermission();
+        if (mounted && ref.read(platformCapabilitiesProvider).localReminders) {
+          final reminders = ref.read(reminderServiceProvider);
+          if (!await reminders.hasPermission() && draft.remindBeforeMin >= 0) {
+            await reminders.requestPermission();
           }
+        }
+        if (mounted) {
           await _refresh();
         }
       },
@@ -168,7 +172,8 @@ class _SchedulesPageState extends ConsumerState<SchedulesPage> with WidgetsBindi
             },
             danger: true,
           ),
-        SheetAction(AppIcons.bell, '检查手机通知设置', () => ReminderBridge.instance.openSettings()),
+        if (ref.read(platformCapabilitiesProvider).localReminders)
+          SheetAction(AppIcons.bell, '检查手机通知设置', () => ref.read(reminderServiceProvider).openSettings()),
       ],
     );
   }
@@ -177,7 +182,9 @@ class _SchedulesPageState extends ConsumerState<SchedulesPage> with WidgetsBindi
   Widget build(BuildContext context) {
     final p = context.pal;
     final asyncData = ref.watch(schedulesProvider);
-    final hasPerm = ref.watch(notificationPermissionProvider).value ?? true;
+    final caps = ref.watch(platformCapabilitiesProvider);
+    // Devices without local notifications have nothing to grant.
+    final hasPerm = !caps.localReminders || (ref.watch(notificationPermissionProvider).value ?? true);
     final data = asyncData.value ?? const SchedulesResult();
 
     final completedItems = data.schedules.where((s) => s.isCompleted).toList();
@@ -245,7 +252,9 @@ class _SchedulesPageState extends ConsumerState<SchedulesPage> with WidgetsBindi
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      '聊天时直接跟小暖说「明天早上八点提醒我吃药」或说出你的安排，小暖就会自动记在这里并在手机上准点提醒你。',
+                      caps.localReminders
+                          ? '聊天时直接跟小暖说「明天早上八点提醒我吃药」或说出你的安排，小暖就会自动记在这里并在手机上准点提醒你。'
+                          : '聊天时直接跟小暖说「明天早上八点提醒我吃药」或说出你的安排，小暖就会自动记在这里，到点由手机上的小暖响铃提醒（电脑端暂不响铃）。',
                       style: TextStyle(fontSize: 15, height: 1.45, color: p.muted),
                     ),
                   ),

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/api.dart';
+import '../../../platform/platform_capabilities.dart';
 import '../../../state/memories.dart';
 import '../../../state/schedules.dart';
 import '../../../state/session.dart';
@@ -206,7 +207,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ]),
 
           _Section('关于', children: [
-            _Tile(icon: AppIcons.update, title: '检查更新', onTap: () => checkForUpdate(context, ref)),
+            if (ref.watch(platformCapabilitiesProvider).selfUpdateViaApk)
+              _Tile(icon: AppIcons.update, title: '检查更新', onTap: () => checkForUpdate(context, ref)),
             FutureBuilder<PackageInfo>(
               future: PackageInfo.fromPlatform(),
               builder: (_, snap) => _Tile(icon: AppIcons.info, title: '版本', trailing: Text(snap.data?.version ?? '', style: TextStyle(color: p.muted))),

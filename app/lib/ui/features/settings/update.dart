@@ -3,12 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../platform/platform_capabilities.dart';
 import '../../../state/session.dart';
 import '../../widgets/base_widgets.dart';
 
 /// Checks the server for a newer APK (see server README: data/app/latest.json).
 /// Family members install the app outside any store, so the app updates itself.
+/// Only platforms that install via APK take part; others update through their
+/// own channel and never see the prompt.
 Future<void> checkForUpdate(BuildContext context, WidgetRef ref, {bool silent = false}) async {
+  if (!ref.read(platformCapabilitiesProvider).selfUpdateViaApk) return;
   final session = ref.read(sessionProvider);
   final api = session.api;
   if (api == null) return;

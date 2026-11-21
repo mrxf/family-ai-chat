@@ -1,15 +1,11 @@
-import 'dart:io';
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../../../core/models/models.dart';
+import '../../../../platform/media/image_input.dart';
 import '../../../../state/chat.dart';
+import '../../../../state/incoming_share.dart';
 import '../../../../state/session.dart';
 import '../../../theme/icons.dart';
 import '../../../theme/theme.dart';
@@ -57,9 +53,7 @@ class ComposerState extends ConsumerState<Composer> {
   /// Clears unsent text and removes any locally compressed draft images.
   void clearDraft() {
     for (final img in _images) {
-      if (img.path.isNotEmpty) {
-        File(img.path).delete().catchError((_) => File(img.path));
-      }
+      ImageInput.discard(img.path);
     }
     _ctrl.clear();
     if (_images.isNotEmpty && mounted) setState(() => _images.clear());
@@ -97,9 +91,11 @@ class ComposerState extends ConsumerState<Composer> {
     var decodeFailed = failedImages;
     final room = 9 - _images.length;
     final overflow = totalImages > room || imagePaths.length > room;
+    final input = ref.read(imageInputProvider);
     for (final path in imagePaths.take(room)) {
+      final temporary = SharedPayload.isTemporaryCopy(path);
       try {
-        final img = await _compress(path);
+        final img = await input.prepare(path, sourceIsTemporary: temporary);
         if (img != null && mounted) {
           setState(() => _images.add(img));
           added++;
@@ -109,15 +105,11 @@ class ComposerState extends ConsumerState<Composer> {
       } catch (_) {
         decodeFailed++;
       } finally {
-        if (path.contains('shared_incoming')) {
-          File(path).delete().catchError((_) => File(path));
-        }
+        if (temporary) ImageInput.discard(path);
       }
     }
     for (final extra in imagePaths.skip(room)) {
-      if (extra.contains('shared_incoming')) {
-        File(extra).delete().catchError((_) => File(extra));
-      }
+      if (SharedPayload.isTemporaryCopy(extra)) ImageInput.discard(extra);
     }
 
     if (!mounted) return;
@@ -164,60 +156,34 @@ class ComposerState extends ConsumerState<Composer> {
     setState(() => _images.clear());
   }
 
-  Future<void> _pick(ImageSource source) async {
+  Future<void> _pick({required bool camera}) async {
     if (_picking) return;
     _picking = true;
+    final input = ref.read(imageInputProvider);
     try {
-      final picker = ImagePicker();
-      final files = source == ImageSource.camera
-          ? [?await picker.pickImage(source: ImageSource.camera)]
-          : await picker.pickMultiImage(limit: 9 - _images.length);
-      for (final f in files.take(9 - _images.length)) {
-        final img = await _compress(f.path);
+      final room = 9 - _images.length;
+      final paths = camera ? [?await input.takePhoto()] : await input.pickFromGallery(limit: room);
+      for (final path in paths.take(room)) {
+        final img = await input.prepare(path);
         if (img != null && mounted) setState(() => _images.add(img));
       }
     } catch (e) {
-      if (mounted) showToast(context, '没能打开${source == ImageSource.camera ? '相机' : '相册'}，请检查权限');
+      if (mounted) showToast(context, '没能打开${camera ? '相机' : '相册'}，请检查权限');
     } finally {
       _picking = false;
     }
   }
 
-  /// Re-encodes to JPEG (long edge ≤ 2048, keeps small print legible) and strips EXIF.
-  /// Falls back to original image bytes (≤ 20MB, e.g. GIF stickers) if native re-encoding is unavailable.
-  Future<PickedImage?> _compress(String path) async {
-    Uint8List? bytes;
-    var ext = 'jpg';
-    try {
-      bytes = await FlutterImageCompress.compressWithFile(path, minWidth: 2048, minHeight: 2048, quality: 85, keepExif: false, format: CompressFormat.jpeg);
-    } catch (_) {}
-    if (bytes == null) {
-      final raw = await File(path).readAsBytes();
-      if (raw.isEmpty || raw.length > 20 * 1024 * 1024) return null;
-      bytes = raw;
-      final dot = path.lastIndexOf('.');
-      if (dot != -1 && dot < path.length - 1) ext = path.substring(dot + 1).toLowerCase();
-    }
-    String out = '';
-    try {
-      final dir = await getTemporaryDirectory();
-      out = '${dir.path}/nuan_${DateTime.now().microsecondsSinceEpoch}.$ext';
-      await File(out).writeAsBytes(bytes);
-    } catch (_) {
-      out = path.contains('shared_incoming') ? '' : path;
-    }
-    final codec = await ui.instantiateImageCodec(bytes);
-    final frame = await codec.getNextFrame();
-    final w = frame.image.width, h = frame.image.height;
-    frame.image.dispose();
-    return PickedImage(bytes: bytes, path: out, width: w, height: h);
-  }
-
-  void _photoMenu() {
+  void _addPhotos() {
     FocusScope.of(context).unfocus();
+    if (!ref.read(imageInputProvider).canTakePhoto) {
+      // No camera here (desktop): go straight to the file chooser.
+      _pick(camera: false);
+      return;
+    }
     showActionSheet(context, actions: [
-      SheetAction(AppIcons.camera, '拍照', () => _pick(ImageSource.camera)),
-      SheetAction(AppIcons.image, '从相册选择', () => _pick(ImageSource.gallery)),
+      SheetAction(AppIcons.camera, '拍照', () => _pick(camera: true)),
+      SheetAction(AppIcons.image, '从相册选择', () => _pick(camera: false)),
     ]);
   }
 
@@ -235,6 +201,7 @@ class ComposerState extends ConsumerState<Composer> {
     final model = boot?.effectiveModel(chat.modelId, chat.assistantId);
     final canSend = (_ctrl.text.trim().isNotEmpty || _images.isNotEmpty) && !chat.busy;
     final showMic = boot?.voiceInput == true && !chat.busy && _ctrl.text.trim().isEmpty;
+    final canTakePhoto = ref.watch(imageInputProvider).canTakePhoto;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 4, 12, 10),
@@ -305,7 +272,11 @@ class ComposerState extends ConsumerState<Composer> {
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
             child: Row(
               children: [
-                _ToolButton(icon: AppIcons.camera, label: '拍照/图片', onTap: chat.busy ? null : _photoMenu),
+                _ToolButton(
+                  icon: canTakePhoto ? AppIcons.camera : AppIcons.image,
+                  label: canTakePhoto ? '拍照/图片' : '添加图片',
+                  onTap: chat.busy ? null : _addPhotos,
+                ),
                 if (model?.think == true) ...[
                   const SizedBox(width: 6),
                   _ThinkChip(on: chat.think, onTap: () => ref.read(chatProvider.notifier).setThink(!chat.think)),

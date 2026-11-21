@@ -1,16 +1,15 @@
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter/services.dart' show HapticFeedback, MissingPluginException, Uint8List;
+import 'package:flutter/services.dart' show HapticFeedback, Uint8List;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:gal/gal.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../../core/models/models.dart';
+import '../../../platform/media/image_saver.dart';
+import '../../../platform/platform_capabilities.dart';
 import '../../../state/session.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
@@ -76,14 +75,19 @@ class _SharePosterPageState extends ConsumerState<SharePosterPage> {
         return;
       }
       final bytes = byteData.buffer.asUint8List();
-      final name = 'xiaonuan_share_${DateTime.now().millisecondsSinceEpoch}';
 
+      final place = ref.read(platformCapabilitiesProvider).savedImagesPlace;
       if (debugShareSaveOverride != null) {
         await debugShareSaveOverride!(bytes);
       } else {
-        final ok = await _persistImageBytes(bytes, name);
-        if (!ok) {
-          if (mounted) showToast(context, '没有相册权限，请在手机设置里允许小暖保存照片');
+        final res = await ref.read(imageSaverProvider).save([bytes], namePrefix: 'xiaonuan_share');
+        if (!res.ok) {
+          if (mounted) {
+            showToast(
+              context,
+              res.status == SaveImagesStatus.permissionDenied ? '没有$place权限，请在系统设置里允许小暖保存照片' : '保存失败，请再试一次',
+            );
+          }
           return;
         }
       }
@@ -91,37 +95,12 @@ class _SharePosterPageState extends ConsumerState<SharePosterPage> {
       if (mounted) {
         HapticFeedback.mediumImpact();
         setState(() => _justSaved = true);
-        showToast(context, '分享图片已保存到本地相册，可以去微信发给家人啦');
-      }
-    } on GalException catch (e) {
-      if (mounted) {
-        showToast(
-          context,
-          e.type == GalExceptionType.permissionDenied ? '没有相册权限，请在手机设置里允许小暖保存照片' : '保存失败，请再试一次',
-        );
+        showToast(context, '分享图片已保存到$place，可以去微信发给家人啦');
       }
     } catch (_) {
       if (mounted) showToast(context, '保存图片失败，请再试一次');
     } finally {
       if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  Future<bool> _persistImageBytes(Uint8List bytes, String name) async {
-    try {
-      if (!await Gal.hasPermission() && !await Gal.requestPermission()) {
-        return false;
-      }
-      await Gal.putImageBytes(bytes, name: name);
-      return true;
-    } on MissingPluginException {
-      final dir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
-      await File('${dir.path}/$name.png').writeAsBytes(bytes);
-      return true;
-    } on UnsupportedError {
-      final dir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
-      await File('${dir.path}/$name.png').writeAsBytes(bytes);
-      return true;
     }
   }
 
@@ -256,8 +235,8 @@ class _SharePosterPageState extends ConsumerState<SharePosterPage> {
                             _saving
                                 ? '正在生成高清长图…'
                                 : _justSaved
-                                    ? '已保存到相册（点此再存一张）'
-                                    : '保存图片到本地相册',
+                                    ? '已保存到${ref.watch(platformCapabilitiesProvider).savedImagesPlace}（点此再存一张）'
+                                    : '保存图片到${ref.watch(platformCapabilitiesProvider).savedImagesPlace}',
                             style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w600, color: Colors.white),
                           ),
                         ],

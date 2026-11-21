@@ -7,6 +7,7 @@ import '../core/api.dart';
 import '../core/invite_code.dart';
 import '../core/models/models.dart';
 import '../core/storage.dart';
+import '../platform/platform_capabilities.dart';
 
 /// Overridden in main() once storage is opened.
 final storageProvider = Provider<Storage>((ref) => throw UnimplementedError());
@@ -167,7 +168,7 @@ class SessionNotifier extends Notifier<Session> {
   Future<void> login(String server, String username, String password) async {
     final base = effectiveServer(server);
     final anon = _apiFactory(base);
-    final (token, _) = await anon.login(username.trim(), password, 'Android');
+    final (token, _) = await anon.login(username.trim(), password, ref.read(platformCapabilitiesProvider).deviceLabel);
     await loginWithToken(base, username, token);
   }
 

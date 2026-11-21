@@ -3,23 +3,25 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/models/models.dart';
-import '../platform/reminders/reminder_bridge.dart';
+import '../platform/platform_capabilities.dart';
+import '../platform/reminders/reminder_service.dart';
 import 'session.dart';
 
-/// Loads the user's schedules and automatically keeps phone local notifications in sync.
+/// Loads the user's schedules and automatically keeps local notifications in sync.
 final schedulesProvider = FutureProvider<SchedulesResult>((ref) async {
   final api = ref.watch(sessionProvider.select((s) => s.api));
+  final reminders = ref.watch(reminderServiceProvider);
   if (api == null) {
-    unawaited(ReminderBridge.instance.clearAll());
+    unawaited(reminders.clearAll());
     return const SchedulesResult();
   }
   final res = await api.schedules();
-  unawaited(ReminderBridge.instance.syncReminders(res.upcomingReminders));
+  unawaited(reminders.syncReminders(res.upcomingReminders));
   return res;
 });
 
 final notificationPermissionProvider = FutureProvider.autoDispose<bool>((ref) {
-  return ReminderBridge.instance.hasPermission();
+  return ref.watch(reminderServiceProvider).hasPermission();
 });
 
 bool _askedPermissionThisSession = false;
@@ -30,13 +32,14 @@ Future<void> syncSchedulesAfterChat(Ref ref) async {
   try {
     ref.invalidate(schedulesProvider);
     final res = await ref.read(schedulesProvider.future);
-    if (res.upcomingReminders.isNotEmpty && !_askedPermissionThisSession) {
-      final hasPerm = await ReminderBridge.instance.hasPermission();
+    final reminders = ref.read(reminderServiceProvider);
+    if (res.upcomingReminders.isNotEmpty && !_askedPermissionThisSession && ref.read(platformCapabilitiesProvider).localReminders) {
+      final hasPerm = await reminders.hasPermission();
       if (!hasPerm) {
         _askedPermissionThisSession = true;
-        final granted = await ReminderBridge.instance.requestPermission();
+        final granted = await reminders.requestPermission();
         if (granted) {
-          await ReminderBridge.instance.syncReminders(res.upcomingReminders);
+          await reminders.syncReminders(res.upcomingReminders);
         }
         ref.invalidate(notificationPermissionProvider);
       }

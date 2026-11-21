@@ -3,17 +3,16 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback, Uint8List;
-import 'package:gal/gal.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/models/models.dart';
+import '../../../../platform/media/image_saver.dart';
+import '../../../../platform/platform_capabilities.dart';
 import '../../../../state/session.dart';
 import '../../../theme/icons.dart';
-import '../../../widgets/mascot/mascot_anim.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/base_widgets.dart';
-
-// ======================= images =======================
+import '../../../widgets/mascot/mascot_anim.dart';
 
 class ImageGrid extends ConsumerWidget {
   const ImageGrid({super.key, required this.attachments, this.alignEnd = false, this.large = false});
@@ -246,7 +245,7 @@ class _ImageViewerState extends ConsumerState<ImageViewer> {
                 icon: _saving
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const AppIcon(AppIcons.download),
-                label: const Text('保存到相册'),
+                label: Text('保存到${ref.watch(platformCapabilitiesProvider).savedImagesPlace}'),
               ),
             ),
           ),
@@ -255,35 +254,34 @@ class _ImageViewerState extends ConsumerState<ImageViewer> {
   }
 }
 
-/// Saves pictures to the phone's gallery and tells the user where they went.
+/// Saves pictures where this device keeps photos and tells the user where they went.
 Future<void> saveToGallery(BuildContext context, WidgetRef ref, List<Attachment> list) async {
   HapticFeedback.lightImpact();
+  final caps = ref.read(platformCapabilitiesProvider);
+  final api = ref.read(sessionProvider).api;
+  final images = <Uint8List>[];
   try {
-    if (!await Gal.hasPermission() && !await Gal.requestPermission()) {
-      if (context.mounted) showToast(context, '没有相册权限，请在手机设置里允许小暖保存照片');
-      return;
-    }
-    final api = ref.read(sessionProvider).api;
-    var saved = 0;
     for (final a in list) {
       final local = a.localPath;
-      final Uint8List bytes;
       if (local != null && File(local).existsSync()) {
-        bytes = await File(local).readAsBytes();
+        images.add(await File(local).readAsBytes());
       } else if (api != null && a.fileId.isNotEmpty) {
-        bytes = await api.fileBytes(a.fileId);
-      } else {
-        continue;
+        images.add(await api.fileBytes(a.fileId));
       }
-      await Gal.putImageBytes(bytes, name: 'xiaonuan_${DateTime.now().millisecondsSinceEpoch}_$saved');
-      saved++;
-    }
-    if (saved > 0 && context.mounted) showToast(context, '${saved > 1 ? '$saved 张图' : '已'}保存到相册，可以去微信发给家人了');
-  } on GalException catch (e) {
-    if (context.mounted) {
-      showToast(context, e.type == GalExceptionType.permissionDenied ? '没有相册权限，请在手机设置里允许小暖保存照片' : '保存失败，请再试一次');
     }
   } catch (_) {
     if (context.mounted) showToast(context, '图片下载失败，请检查网络后再试');
+    return;
+  }
+  if (images.isEmpty) return;
+  final res = await ref.read(imageSaverProvider).save(images);
+  if (!context.mounted) return;
+  switch (res.status) {
+    case SaveImagesStatus.saved:
+      showToast(context, '${res.count > 1 ? '${res.count} 张图' : '已'}保存到${caps.savedImagesPlace}，可以去微信发给家人了');
+    case SaveImagesStatus.permissionDenied:
+      showToast(context, '没有${caps.savedImagesPlace}权限，请在系统设置里允许小暖保存照片');
+    case SaveImagesStatus.failed:
+      showToast(context, '保存失败，请再试一次');
   }
 }

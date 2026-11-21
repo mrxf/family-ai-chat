@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/models.dart';
-import '../../../platform/reminders/reminder_bridge.dart';
+import '../../../platform/reminders/reminder_service.dart';
 import '../../../platform/speech/speaker.dart';
 import '../../../app/navigation.dart';
 import '../../../state/chat.dart';
@@ -54,9 +54,10 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) checkForUpdate(context, ref, silent: true);
     });
-    ReminderBridge.instance.attach(onOpenSchedules: _openSchedulesFromNotification);
+    final reminders = ref.read(reminderServiceProvider);
+    reminders.attach(onOpenSchedules: _openSchedulesFromNotification);
     Future.microtask(() async {
-      if (await ReminderBridge.instance.takePendingOpenSchedules()) {
+      if (await reminders.takePendingOpenSchedules()) {
         _openSchedulesFromNotification();
       }
     });

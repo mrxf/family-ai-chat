@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api.dart';
+import '../../../platform/platform_capabilities.dart';
 import '../../../state/session.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
@@ -57,7 +58,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
         username: _user.text.trim(),
         password: _pass.text,
         displayName: _name.text.trim(),
-        device: 'Android',
+        device: ref.read(platformCapabilitiesProvider).deviceLabel,
       );
       final nav = Navigator.of(context);
       await ref.read(sessionProvider.notifier).loginWithToken(widget.server, _user.text.trim(), token);

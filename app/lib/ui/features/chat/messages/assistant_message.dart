@@ -3,14 +3,15 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/models/models.dart';
+import '../../../../platform/platform_capabilities.dart';
 import '../../../../platform/speech/speaker.dart';
 import '../../../../state/chat.dart';
 import '../../../../state/session.dart';
-import '../components/chat_components.dart';
 import '../../../theme/icons.dart';
-import '../../../widgets/sheets.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/base_widgets.dart';
+import '../../../widgets/sheets.dart';
+import '../components/chat_components.dart';
 import 'activity_panels.dart';
 import 'message_images.dart';
 
@@ -210,7 +211,7 @@ class _ActionRow extends ConsumerWidget {
                 final on = speakingId == m.id;
                 return btn(on ? AppIcons.stopCircle : AppIcons.speaker, on ? '停止朗读' : '朗读', () async {
                   final ok = await Speaker.instance.toggle(m.id, m.content, rate: ref.read(settingsProvider).ttsRate);
-                  if (!ok && context.mounted) showToast(context, '这台手机暂时不支持朗读，可以在系统设置里安装中文语音');
+                  if (!ok && context.mounted) showToast(context, '这台${ref.read(platformCapabilitiesProvider).deviceNoun}暂时不支持朗读，可以在系统设置里安装中文语音');
                 }, color: on ? p.accent : null);
               },
             ),
