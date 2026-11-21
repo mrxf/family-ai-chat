@@ -2,6 +2,7 @@ import 'package:family_chat/core/api.dart';
 import 'package:family_chat/core/models/models.dart';
 import 'package:family_chat/core/storage.dart';
 import 'package:family_chat/platform/platform_capabilities.dart';
+import 'package:family_chat/state/chat.dart';
 import 'package:family_chat/state/conversations.dart';
 import 'package:family_chat/state/session.dart';
 import 'package:family_chat/ui/desktop/desktop_home_layout.dart';
@@ -51,6 +52,17 @@ class _FakeApi extends Api {
   Future<List<Conversation>> conversations({int? before, String? q, int limit = 50}) async => before != null
       ? const []
       : [Conversation(id: 'c1', title: '周末去哪玩', pinned: false, isPrivate: false, createdAt: now, updatedAt: now)];
+
+  @override
+  Future<ConversationDetail> conversation(String id) async => ConversationDetail(
+        conversation: Conversation(id: id, title: '周末去哪玩', pinned: false, isPrivate: false, createdAt: now, updatedAt: now),
+        messages: [
+          Message(id: 'u1', conversationId: id, role: 'user', content: '周末去哪', createdAt: now),
+          Message(id: 'a1', conversationId: id, role: 'assistant', content: '可以去公园走走', createdAt: now),
+        ],
+        hasMore: false,
+        activeMessageId: '',
+      );
 
   @override
   Future<SendResult> send({
@@ -175,6 +187,20 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(api.sent, isEmpty);
   });
+
+  for (final (label, size, minRight) in [('phone', const Size(400, 800), 340.0), ('desktop', const Size(1280, 800), 1150.0)]) {
+    testWidgets('$label: user bubbles hug the right edge of the chat column', (tester) async {
+      await _pumpHome(tester, size: size, platform: size.width > 840 ? TargetPlatform.macOS : TargetPlatform.android);
+      final container = ProviderScope.containerOf(tester.element(find.byType(HomePage)));
+      await container.read(chatProvider.notifier).open('c1');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+      final user = tester.getRect(find.text('周末去哪'));
+      final reply = tester.getRect(find.text('可以去公园走走'));
+      expect(user.right, greaterThan(minRight), reason: 'right-aligned, not centered');
+      expect(reply.left, lessThan(user.left), reason: 'assistant text starts on the left');
+    });
+  }
 
   test('history is bucketed by pin state and recency', () {
     final now = DateTime(2026, 11, 21, 15);

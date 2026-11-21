@@ -15,7 +15,10 @@ class ReadableWidth extends StatelessWidget {
     heightFactor: 1,
     child: ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxWidth),
-      child: child,
+      // Fill the column (up to maxWidth) so children keep their own
+      // alignment: user bubbles stay right-aligned instead of the whole
+      // message shrinking to its content and being centered.
+      child: SizedBox(width: double.infinity, child: child),
     ),
   );
 }
