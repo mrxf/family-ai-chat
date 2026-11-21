@@ -1,0 +1,16 @@
+server/internal/chat/service.go
+  h_8f297825d1fe21 717-718,720-724,741-749,751-752,755-757,759-767,918-949
+server/internal/chat/service_test.go
+  h_8f297825d1fe21 4-5,8,12,15,145-260
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "70726c27254d08d1a3d288999fdbdf077e139283",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
