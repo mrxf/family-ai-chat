@@ -1,10 +1,10 @@
-import 'package:family_chat/core/models.dart';
+import 'package:family_chat/core/models/models.dart';
 import 'package:family_chat/state/chat.dart';
 import 'package:family_chat/state/schedules.dart';
-import 'package:family_chat/ui/icons.dart';
-import 'package:family_chat/ui/messages.dart';
-import 'package:family_chat/ui/schedules_page.dart';
-import 'package:family_chat/ui/theme.dart';
+import 'package:family_chat/ui/theme/icons.dart';
+import 'package:family_chat/ui/features/chat/messages/messages.dart';
+import 'package:family_chat/ui/features/schedules/schedules_page.dart';
+import 'package:family_chat/ui/theme/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

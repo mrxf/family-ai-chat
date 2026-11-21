@@ -1,4 +1,4 @@
-import 'package:family_chat/ui/icons.dart';
+import 'package:family_chat/ui/theme/icons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';

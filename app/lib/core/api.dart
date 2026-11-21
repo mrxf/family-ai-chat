@@ -4,8 +4,8 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
-import 'admin_models.dart';
-import 'models.dart';
+import 'models/admin_models.dart';
+import 'models/models.dart';
 
 class ApiError implements Exception {
   final int status;

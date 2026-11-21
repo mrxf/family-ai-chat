@@ -1,10 +1,10 @@
 import 'package:family_chat/core/api.dart';
-import 'package:family_chat/core/models.dart';
+import 'package:family_chat/core/models/models.dart';
 import 'package:family_chat/state/conversations.dart';
 import 'package:family_chat/state/session.dart';
-import 'package:family_chat/ui/drawer.dart';
-import 'package:family_chat/ui/search_page.dart';
-import 'package:family_chat/ui/theme.dart';
+import 'package:family_chat/ui/features/conversations/conversation_panel.dart';
+import 'package:family_chat/ui/features/conversations/search_page.dart';
+import 'package:family_chat/ui/theme/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/admin_models.dart';
+import '../core/models/admin_models.dart';
 import 'session.dart';
 
 /// Everything the admin "models & providers" screens show, loaded together.

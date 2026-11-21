@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:family_chat/ui/mascot_anim.dart';
-import 'package:family_chat/ui/mascot_sheets.dart';
-import 'package:family_chat/ui/widgets.dart';
+import 'package:family_chat/ui/widgets/mascot/mascot_anim.dart';
+import 'package:family_chat/ui/widgets/mascot/mascot_sheets.dart';
+import 'package:family_chat/ui/widgets/base_widgets.dart';
 
 Widget _host(Widget child, {bool reduceMotion = false}) => MediaQuery(
       data: MediaQueryData(disableAnimations: reduceMotion),

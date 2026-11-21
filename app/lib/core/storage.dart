@@ -19,7 +19,10 @@ class Storage {
 
   final SharedPreferences prefs;
   final Directory _cacheDir;
-  static const _secure = FlutterSecureStorage();
+  // macOS: the legacy keychain needs no keychain-access-groups entitlement,
+  // so unsigned / ad-hoc signed builds keep the login across launches and run
+  // on any Mac. Other platforms ignore mOptions.
+  static const _secure = FlutterSecureStorage(mOptions: MacOsOptions(usesDataProtectionKeychain: false));
 
   // ---- token ----
   Future<String?> readToken() async {

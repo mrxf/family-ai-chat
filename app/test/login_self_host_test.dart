@@ -2,9 +2,9 @@ import 'dart:convert';
 
 import 'package:family_chat/core/api.dart';
 import 'package:family_chat/core/invite_code.dart';
-import 'package:family_chat/core/models.dart';
+import 'package:family_chat/core/models/models.dart';
 import 'package:family_chat/core/storage.dart';
-import 'package:family_chat/main.dart';
+import 'package:family_chat/app/app.dart';
 import 'package:family_chat/state/session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
