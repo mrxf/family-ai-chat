@@ -1,0 +1,55 @@
+app/lib/platform/media/image_input.dart
+  s_431e77d183e6c0::t_338e3cf1baf592 1-87
+app/lib/platform/media/image_saver.dart
+  s_431e77d183e6c0::t_90727e5f2429ff 1-75
+app/lib/platform/platform_capabilities.dart
+  s_431e77d183e6c0::t_31c0eaf748f063 1-95
+app/lib/platform/reminders/reminder_service.dart
+  s_431e77d183e6c0::t_2da488cfdc669b 2,5,7-14,16-33,36,39,43,46,52,55,57,62,65,73,80,89,96-115
+app/lib/platform/share_intake/share_intake.dart
+  s_431e77d183e6c0::t_191d08cd31d246 1-93
+app/lib/state/chat.dart
+  s_431e77d183e6c0::t_81e663094c8eff 11,99
+app/lib/state/incoming_share.dart
+  s_431e77d183e6c0::t_6f7d7d4a82c355 6,8,10,14-17,21-23
+app/lib/state/schedules.dart
+  s_431e77d183e6c0::t_54f369d2db77ff 6-7,10,13,15,19,24,35-37,40,42
+app/lib/state/session.dart
+  s_431e77d183e6c0::t_d9ca16b9a825d7 10,171
+app/lib/ui/features/auth/setup_page.dart
+  s_431e77d183e6c0::t_3ba4861e726d56 6,61
+app/lib/ui/features/chat/composer/composer.dart
+  s_431e77d183e6c0::t_e85a6d26f6664c 6,8,56,94,96,98,108,112,159,162,164-167,171,177,179-183,185-186,204,275-279
+app/lib/ui/features/chat/messages/assistant_message.dart
+  s_431e77d183e6c0::t_22d90a494347cd 6,13-14,214
+app/lib/ui/features/chat/messages/message_images.dart
+  s_431e77d183e6c0::t_f5683440c5200c 9-10,15,248,257,260-262,267,269,274-285
+app/lib/ui/features/home/home_page.dart
+  s_431e77d183e6c0::t_a6b0a192613eb2 7,57-58,60
+app/lib/ui/features/schedules/schedules_page.dart
+  s_431e77d183e6c0::t_0ae3f7c16dbc7f 6-7,77-78,80,100-103,105-106,175-176,185-187,255-257
+app/lib/ui/features/settings/settings_page.dart
+  s_431e77d183e6c0::t_881c5dbd065381 7,210-211
+app/lib/ui/features/settings/update.dart
+  s_431e77d183e6c0::t_80a1115cdbc543 6,12-13,15
+app/lib/ui/features/share/share_poster_page.dart
+  s_431e77d183e6c0::t_7e77cfed9de35e 7,11-12,79,83-90,98,238-239
+app/test/platform_capabilities_test.dart
+  s_431e77d183e6c0::t_331be83b061840 1-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "cda0914bd3117fc4b0ae22302f768fd5ea0650df",
+  "prompts": {},
+  "sessions": {
+    "s_431e77d183e6c0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d95711ce-c7d9-422c-b8e4-23e6074f8c2a",
+        "model": "unknown"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
