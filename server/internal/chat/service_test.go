@@ -1,13 +1,18 @@
 package chat
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
+	"nuan/internal/llm"
 	"nuan/internal/memory"
 	"nuan/internal/store"
 	"nuan/internal/store/storetest"
@@ -135,5 +140,121 @@ func TestBuildRequestSkipsFailedAndEmptyAssistantMessages(t *testing.T) {
 		if !strings.HasSuffix(req.Messages[i+1].Content, want) {
 			t.Fatalf("message %d=%+v want %q", i+1, req.Messages[i+1], want)
 		}
+	}
+}
+
+func mockHTTPResponse(status int, contentType, body string) *http.Response {
+	h := make(http.Header)
+	h.Set("Content-Type", contentType)
+	return &http.Response{
+		StatusCode: status,
+		Header:     h,
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+}
+
+func TestEffortBadRequestDowngradesWithoutPoisoningTools(t *testing.T) {
+	s, u, c := contextFixture(t)
+	ctx := t.Context()
+
+	var mu sync.Mutex
+	var bodies []map[string]any
+	mockClient := llm.NewClient("openai", "https://mock.local/v1", "k")
+	mockClient.HTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		mu.Lock()
+		bodies = append(bodies, body)
+		mu.Unlock()
+		if body["reasoning_effort"] == "none" {
+			return mockHTTPResponse(http.StatusBadRequest, "application/json",
+				`{"error":{"message":"Unsupported value: 'none' is not supported with the 'gpt-6.2-astra' model. Supported values are: 'low', 'medium', 'high', 'xhigh', and 'max'.","type":"invalid_request_error"}}`), nil
+		}
+		return mockHTTPResponse(http.StatusOK, "text/event-stream",
+			"data: {\"choices\":[{\"delta\":{\"content\":\"珠海明天晴\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"), nil
+	})}
+
+	prov := &store.Provider{Name: "mock", Kind: "openai", BaseURL: "https://mock.local/v1", APIKey: "k", Enabled: true}
+	if err := s.Store.UpsertProvider(ctx, prov); err != nil {
+		t.Fatal(err)
+	}
+	s.clients[fmt.Sprintf("%s@%d", prov.ID, prov.UpdatedAt)] = mockClient
+	model := &store.Model{
+		ProviderID: prov.ID, DisplayName: "GPT-6.2 Astra", UpstreamModel: "gpt-6.2-astra",
+		Kind: store.KindChat, Enabled: true, Tools: true, DefaultEffort: "none", ThinkEffort: "high",
+		ContextWindow: 128000, MaxOutput: 2048,
+	}
+	if err := s.Store.UpsertModel(ctx, model); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Store.SetSetting(ctx, "default_model_id", model.ID)
+
+	res, err := s.Send(ctx, u, SendInput{ConversationID: c.ID, Content: "查珠海天气"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := s.Hub.Get(res.Assistant.ID); r != nil {
+		<-r.Done()
+	}
+
+	msg, err := s.Store.GetMessage(ctx, res.Assistant.ID)
+	if err != nil || msg.Status != store.StatusDone || msg.Content != "珠海明天晴" {
+		t.Fatalf("unexpected message: %+v err=%v", msg, err)
+	}
+	if s.toolsRejected(model) {
+		t.Fatal("effort 400 must not mark model tools as rejected")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(bodies) != 2 {
+		t.Fatalf("expected 2 requests (none -> low), got %d", len(bodies))
+	}
+	if bodies[0]["reasoning_effort"] != "none" || bodies[1]["reasoning_effort"] != "low" {
+		t.Fatalf("efforts: %v -> %v", bodies[0]["reasoning_effort"], bodies[1]["reasoning_effort"])
+	}
+	if bodies[1]["tools"] == nil {
+		t.Fatal("downgraded effort retry dropped tools")
+	}
+}
+
+func TestUnrelatedBadRequestDoesNotPoisonTools(t *testing.T) {
+	s, u, c := contextFixture(t)
+	ctx := t.Context()
+
+	mockClient := llm.NewClient("openai", "https://mock.local/v1", "k")
+	mockClient.HTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return mockHTTPResponse(http.StatusBadRequest, "application/json",
+			`{"error":{"message":"maximum context length exceeded","type":"invalid_request_error"}}`), nil
+	})}
+
+	prov := &store.Provider{Name: "mock", Kind: "openai", BaseURL: "https://mock.local/v1", APIKey: "k", Enabled: true}
+	if err := s.Store.UpsertProvider(ctx, prov); err != nil {
+		t.Fatal(err)
+	}
+	s.clients[fmt.Sprintf("%s@%d", prov.ID, prov.UpdatedAt)] = mockClient
+	model := &store.Model{
+		ProviderID: prov.ID, DisplayName: "MockModel", UpstreamModel: "mock-model",
+		Kind: store.KindChat, Enabled: true, Tools: true, DefaultEffort: "low", ThinkEffort: "high",
+		ContextWindow: 128000, MaxOutput: 2048,
+	}
+	if err := s.Store.UpsertModel(ctx, model); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Store.SetSetting(ctx, "default_model_id", model.ID)
+
+	res, err := s.Send(ctx, u, SendInput{ConversationID: c.ID, Content: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := s.Hub.Get(res.Assistant.ID); r != nil {
+		<-r.Done()
+	}
+
+	msg, err := s.Store.GetMessage(ctx, res.Assistant.ID)
+	if err != nil || msg.Status != store.StatusError {
+		t.Fatalf("expected error message, got %+v err=%v", msg, err)
+	}
+	if s.toolsRejected(model) {
+		t.Fatal("unrelated 400 (where retry without tools also fails) must not poison noTools cache")
 	}
 }

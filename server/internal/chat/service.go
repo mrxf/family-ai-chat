@@ -714,8 +714,14 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 		}
 		maxRounds := maxToolRounds
 		skillBonus := 0
+		effortOverride := ""
+		effortOverridden := false
 		for round := 0; err == nil && round < maxRounds; round++ {
-			req.ReasoningEffort = effortFor(model, think)
+			if effortOverridden {
+				req.ReasoningEffort = effortOverride
+			} else {
+				req.ReasoningEffort = effortFor(model, think)
+			}
 			req.Tools = tools
 			if round == maxRounds-1 {
 				req.Tools = nil // last round: answer in words
@@ -732,13 +738,33 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 			produced = false
 			var res *llm.Result
 			res, err = s.streamWithRetry(ctx, s.client(provider), req.Request, onEvent)
+			// Upstream rejects reasoning_effort (e.g. "none"/"minimal" on reasoning-only models):
+			// downgrade effort and retry with tools intact before blaming tools.
+			if err != nil && !produced && req.ReasoningEffort != "" && isEffortBadRequest(err, req.ReasoningEffort) && ctx.Err() == nil {
+				next := fallbackEffort(err, req.ReasoningEffort)
+				s.Log.Warn("upstream rejected reasoning_effort, retrying", "message_id", asst.ID, "model", model.UpstreamModel, "from", req.ReasoningEffort, "to", next, "err", err)
+				req.ReasoningEffort = next
+				effortOverride, effortOverridden = next, true
+				res, err = s.streamWithRetry(ctx, s.client(provider), req.Request, onEvent)
+			}
 			// Upstream rejects tools: answer without them rather than fail.
+			// Only cache the model as no-tools when retrying without tools actually succeeds,
+			// so unrelated 400s (bad effort, context limits, etc.) never poison tool support.
 			if err != nil && !produced && len(req.Tools) > 0 && isBadRequest(err) && ctx.Err() == nil {
 				s.Log.Warn("upstream rejected tools, retrying without", "message_id", asst.ID, "model", model.UpstreamModel, "err", err)
-				s.markToolsRejected(model)
-				tools, req.Tools = nil, nil
+				origTools := req.Tools
+				origSys := req.Messages[0].Content
+				req.Tools = nil
 				req.Messages[0].Content = s.systemPromptWithTools(ctx, user, conv, toolSet{}, req.core, formatSummarySection(req.summaryText, false, false))
-				res, err = s.streamWithRetry(ctx, s.client(provider), req.Request, onEvent)
+				retryRes, retryErr := s.streamWithRetry(ctx, s.client(provider), req.Request, onEvent)
+				if retryErr == nil {
+					s.markToolsRejected(model)
+					tools = nil
+					res, err = retryRes, nil
+				} else {
+					req.Tools = origTools
+					req.Messages[0].Content = origSys
+				}
 			}
 			// Nothing reached the user yet: let the fallback model answer instead of showing an error.
 			if err != nil && round == 0 && firstToken == 0 && ctx.Err() == nil {
@@ -887,6 +913,38 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 func isBadRequest(err error) bool {
 	var ae *llm.APIError
 	return errors.As(err, &ae) && (ae.Status == 400 || ae.Status == 422)
+}
+
+func isEffortBadRequest(err error, effort string) bool {
+	var ae *llm.APIError
+	if !errors.As(err, &ae) || (ae.Status != 400 && ae.Status != 422) {
+		return false
+	}
+	msg := strings.ToLower(ae.Message)
+	hasReject := strings.Contains(msg, "unsupported") || strings.Contains(msg, "not supported") ||
+		strings.Contains(msg, "invalid") || strings.Contains(msg, "unrecognized") || strings.Contains(msg, "unknown")
+	if !hasReject {
+		return false
+	}
+	if strings.Contains(msg, "reasoning_effort") || strings.Contains(msg, "reasoning.effort") || strings.Contains(msg, "reasoning") {
+		return true
+	}
+	if e := strings.ToLower(strings.TrimSpace(effort)); e != "" {
+		return strings.Contains(msg, "'"+e+"'") || strings.Contains(msg, `"`+e+`"`)
+	}
+	return false
+}
+
+func fallbackEffort(err error, effort string) string {
+	e := strings.ToLower(strings.TrimSpace(effort))
+	var ae *llm.APIError
+	if errors.As(err, &ae) && (e == "none" || e == "minimal") {
+		msg := strings.ToLower(ae.Message)
+		if strings.Contains(msg, "'low'") || strings.Contains(msg, `"low"`) {
+			return "low"
+		}
+	}
+	return ""
 }
 
 func effortFor(m *store.Model, think bool) string {
