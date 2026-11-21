@@ -1,0 +1,29 @@
+AGENTS.md
+  s_431e77d183e6c0::t_442a919eb74742 1-68
+CLAUDE.md
+  s_431e77d183e6c0::t_4405dbc48ae34a 1-7
+app/README.md
+  s_431e77d183e6c0::t_7a317113b96b66 3-6,14,17-26,57-61,63-66,69-70
+app/lib/platform/platform_capabilities.dart
+  s_431e77d183e6c0::t_aef876fe14e675 73-75
+app/lib/ui/desktop/desktop_home_layout.dart
+  s_431e77d183e6c0::t_874644c9162370 5,32-33
+app/test/adaptive_layout_test.dart
+  s_431e77d183e6c0::t_4384f820bd5ac1 10,161-169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "4cedf72046ad81c6536d0c5d957583a3b61f744c",
+  "prompts": {},
+  "sessions": {
+    "s_431e77d183e6c0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d95711ce-c7d9-422c-b8e4-23e6074f8c2a",
+        "model": "unknown"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
