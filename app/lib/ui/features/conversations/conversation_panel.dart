@@ -61,7 +61,9 @@ class ConversationPanel extends ConsumerWidget {
     final session = ref.watch(sessionProvider);
     final user = session.user;
     final items = list.items;
-    final todayPending = ref.watch(schedulesProvider).value?.todayPending ?? 0;
+    final schedules = ref.watch(schedulesProvider).value;
+    final pendingSchedules = schedules?.activeTotal ?? 0;
+    final todayPending = schedules?.todayPending ?? 0;
 
     final groups = groupByRecency(items, DateTime.now());
 
@@ -163,54 +165,89 @@ class ConversationPanel extends ConsumerWidget {
           ),
         ),
         Divider(color: p.line, height: 1),
-        if (user != null) ...[
-          InkWell(
-            onTap: () {
-              _dismiss(context);
-              Navigator.of(context).push(appRoute((_) => const SchedulesPage()));
-            },
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 11, 14, 11),
-              child: Row(children: [
-                AppIcon(AppIcons.calendar, color: p.accent, size: 21),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text('我的日程', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+        if (user != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+            child: Row(children: [
+              Expanded(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () {
+                    _dismiss(context);
+                    Navigator.of(context).push(appRoute((_) => const SettingsPage()));
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: Row(children: [
+                      Avatar(label: user.displayName, emoji: user.avatar, size: 38),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          user.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ]),
+                  ),
                 ),
-                if (todayPending > 0)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(10)),
-                    child: Text(
-                      '今天 $todayPending',
-                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: p.accent),
+              ),
+              if (pendingSchedules > 0) ...[
+                const SizedBox(width: 4),
+                Tooltip(
+                  message: todayPending > 0
+                      ? '我的日程 · 今天 $todayPending 项待办，共 $pendingSchedules 项未完成'
+                      : '我的日程 · $pendingSchedules 项未完成',
+                  child: Semantics(
+                    button: true,
+                    label: '我的日程，$pendingSchedules 项未完成',
+                    child: Pressable(
+                      scale: 0.94,
+                      onTap: () {
+                        _dismiss(context);
+                        Navigator.of(context).push(appRoute((_) => const SchedulesPage()));
+                      },
+                      child: Container(
+                        constraints: const BoxConstraints(minHeight: 34),
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: p.accentSoft,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AppIcon(AppIcons.calendar, color: p.accent, size: 15.5),
+                            const SizedBox(width: 4),
+                            Text(
+                              '$pendingSchedules',
+                              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: p.accent, height: 1),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                const SizedBox(width: 4),
-                AppIcon(AppIcons.chevronRight, color: p.faint, size: 17),
-              ]),
-            ),
-          ),
-          Divider(color: p.line, height: 1),
-          InkWell(
-            onTap: () {
-              _dismiss(context);
-              Navigator.of(context).push(appRoute((_) => const SettingsPage()));
-            },
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 12, 12, 12),
-              child: Row(children: [
-                Avatar(label: user.displayName, emoji: user.avatar, size: 42),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(user.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
                 ),
-                AppIcon(AppIcons.settings, color: p.muted, size: 22),
-                const SizedBox(width: 6),
-              ]),
-            ),
+              ],
+              const SizedBox(width: 2),
+              Tooltip(
+                message: '设置',
+                child: Pressable(
+                  scale: 0.92,
+                  onTap: () {
+                    _dismiss(context);
+                    Navigator.of(context).push(appRoute((_) => const SettingsPage()));
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: AppIcon(AppIcons.settings, color: p.muted, size: 21),
+                  ),
+                ),
+              ),
+            ]),
           ),
-        ],
       ],
     );
   }

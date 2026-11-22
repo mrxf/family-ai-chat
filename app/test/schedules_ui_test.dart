@@ -1,9 +1,12 @@
 import 'package:family_chat/core/models/models.dart';
 import 'package:family_chat/state/chat.dart';
+import 'package:family_chat/state/conversations.dart';
 import 'package:family_chat/state/schedules.dart';
-import 'package:family_chat/ui/theme/icons.dart';
+import 'package:family_chat/state/session.dart';
 import 'package:family_chat/ui/features/chat/messages/messages.dart';
+import 'package:family_chat/ui/features/conversations/conversation_panel.dart';
 import 'package:family_chat/ui/features/schedules/schedules_page.dart';
+import 'package:family_chat/ui/theme/icons.dart';
 import 'package:family_chat/ui/theme/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -151,4 +154,47 @@ void main() {
     expect(find.text('每个工作日'), findsOneWidget);
     expect(find.textContaining('尚未开启手机通知权限'), findsOneWidget);
   });
+
+  testWidgets('ConversationPanel hides schedule entry when empty and shows compact icon+count when active', (tester) async {
+    final user = User(id: 'u1', username: 'mom', displayName: '妈妈', avatar: '🌸', role: 'user');
+    final boot = Bootstrap(user: user, models: const [], assistants: const [], defaultModelId: '', voiceInput: false);
+
+    Widget buildPanel(SchedulesResult schedules) => ProviderScope(
+          key: ValueKey('panel-${schedules.activeTotal}'),
+          overrides: [
+            sessionProvider.overrideWith(() => _StubSession(Session(status: SessionStatus.loggedIn, boot: boot))),
+            conversationsProvider.overrideWith(_StubConversations.new),
+            schedulesProvider.overrideWith((_) async => schedules),
+          ],
+          child: MaterialApp(
+            theme: buildTheme(Brightness.light),
+            home: const Scaffold(body: SizedBox(width: 300, child: ConversationPanel())),
+          ),
+        );
+
+    // 1. No pending schedules: sidebar hides schedule badge completely.
+    await tester.pumpWidget(buildPanel(const SchedulesResult(activeTotal: 0, todayPending: 0)));
+    await tester.pumpAndSettle();
+    expect(find.text('我的日程'), findsNothing);
+    expect(find.byIcon(AppIcons.calendar), findsNothing);
+
+    // 2. Active pending schedules exist: shows compact calendar icon + count pill (no full-row text).
+    await tester.pumpWidget(buildPanel(const SchedulesResult(activeTotal: 3, todayPending: 1)));
+    await tester.pumpAndSettle();
+    expect(find.text('我的日程'), findsNothing);
+    expect(find.byIcon(AppIcons.calendar), findsOneWidget);
+    expect(find.text('3'), findsOneWidget);
+  });
+}
+
+class _StubSession extends SessionNotifier {
+  _StubSession(this._state);
+  final Session _state;
+  @override
+  Session build() => _state;
+}
+
+class _StubConversations extends ConversationsNotifier {
+  @override
+  ConvListState build() => const ConvListState(loaded: true);
 }
