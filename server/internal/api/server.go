@@ -117,6 +117,9 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/messages/{id}/stream", s.stream)
 			r.Post("/messages/{id}/cancel", s.cancel)
 			r.Patch("/messages/{id}/components/{compId}", s.updateMessageComponent)
+			r.Get("/pinned-components", s.listPinnedComponents)
+			r.Post("/pinned-components", s.pinComponent)
+			r.Delete("/pinned-components/{messageId}/{compId}", s.unpinComponent)
 
 			r.Post("/files", s.uploadFile)
 			r.Get("/files/{id}", s.getFile)

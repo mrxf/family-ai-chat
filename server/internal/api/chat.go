@@ -344,6 +344,9 @@ func (s *Server) createConversation(w http.ResponseWriter, r *http.Request) {
 }
 
 // getConversation returns the conversation plus its latest messages and any running generation.
+// When ?focus_message_id is supplied and lies outside the latest page, messages from slightly
+// before focus_message_id up to the latest message (capped at 200) are returned so the client
+// can scroll straight to the target message.
 func (s *Server) getConversation(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	c, err := s.Store.GetConversation(r.Context(), chi.URLParam(r, "id"), u.ID)
@@ -360,6 +363,24 @@ func (s *Server) getConversation(w http.ResponseWriter, r *http.Request) {
 	hasMore := len(msgs) > page
 	if hasMore {
 		msgs = msgs[1:]
+	}
+	if focusID := strings.TrimSpace(r.URL.Query().Get("focus_message_id")); focusID != "" && hasMore {
+		found := false
+		for _, m := range msgs {
+			if m.ID == focusID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			if around, aErr := s.Store.ListMessagesAround(r.Context(), c.ID, focusID, "", 10, 190); aErr == nil && len(around) > 0 {
+				msgs = around
+				// Check whether older messages exist before the first returned message.
+				if older, oErr := s.Store.ListMessages(r.Context(), c.ID, msgs[0].ID, 1); oErr == nil {
+					hasMore = len(older) > 0
+				}
+			}
+		}
 	}
 	active := ""
 	if run := s.Chat.Hub.ActiveInConversation(c.ID); run != nil {
@@ -452,14 +473,15 @@ func (s *Server) deleteConversation(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) send(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		ConversationID string             `json:"conversation_id"`
-		AssistantID    string             `json:"assistant_id"`
-		ModelID        string             `json:"model_id"`
-		Content        string             `json:"content"`
-		Attachments    []store.Attachment `json:"attachments"`
-		EditOf         string             `json:"edit_of"`
-		Think          bool               `json:"think"`
-		Private        bool               `json:"private"`
+		ConversationID  string                  `json:"conversation_id"`
+		AssistantID     string                  `json:"assistant_id"`
+		ModelID         string                  `json:"model_id"`
+		Content         string                  `json:"content"`
+		Attachments     []store.Attachment      `json:"attachments"`
+		QuotedComponent *chat.ComponentQuoteRef `json:"quoted_component"`
+		EditOf          string                  `json:"edit_of"`
+		Think           bool                    `json:"think"`
+		Private         bool                    `json:"private"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -474,7 +496,8 @@ func (s *Server) send(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.Chat.Send(r.Context(), currentUser(r), chat.SendInput{
 		ConversationID: in.ConversationID, AssistantID: in.AssistantID, ModelID: in.ModelID,
-		Content: in.Content, Attachments: in.Attachments, EditOf: in.EditOf, Think: in.Think, Private: in.Private,
+		Content: in.Content, Attachments: in.Attachments, QuotedComponent: in.QuotedComponent,
+		EditOf: in.EditOf, Think: in.Think, Private: in.Private,
 	})
 	if err != nil {
 		s.writeStoreErr(w, r, err)

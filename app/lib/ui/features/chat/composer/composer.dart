@@ -12,6 +12,7 @@ import '../../../theme/icons.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/base_widgets.dart';
 import '../../../widgets/sheets.dart';
+import 'quote_bar.dart';
 import 'voice_button.dart';
 
 /// The input area: text, photos, deep-thinking toggle and send / stop.
@@ -207,8 +208,17 @@ class ComposerState extends ConsumerState<Composer> {
         clearDraft();
       }
     });
+    // Focus the composer when a component quote is newly attached.
+    ref.listen(chatProvider.select((s) => s.pendingQuote), (prev, next) {
+      if (next != null && !identical(prev, next)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _focus.requestFocus();
+        });
+      }
+    });
     final p = context.pal;
     final chat = ref.watch(chatProvider);
+    final quote = chat.pendingQuote;
     final boot = ref.watch(sessionProvider).boot;
     final model = boot?.effectiveModel(chat.modelId, chat.assistantId);
     final canSend = (_ctrl.text.trim().isNotEmpty || _images.isNotEmpty) && !chat.busy;
@@ -228,6 +238,16 @@ class ComposerState extends ConsumerState<Composer> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            child: quote == null
+                ? const SizedBox(width: double.infinity)
+                : ComposerQuoteBar(
+                    quote: quote,
+                    onDismiss: () => ref.read(chatProvider.notifier).setPendingQuote(null),
+                  ),
+          ),
           AnimatedSize(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
@@ -278,7 +298,9 @@ class ComposerState extends ConsumerState<Composer> {
               decoration: InputDecoration(
                 hintText: chat.isPrivate
                     ? (_images.isEmpty ? '在隐私对话中提问…' : '想问这张图片什么？（离开后清除）')
-                    : (_images.isEmpty ? '有什么问题尽管问我…' : '想问这张图片什么？'),
+                    : quote != null
+                        ? '关于这张卡片，想问什么…'
+                        : (_images.isEmpty ? '有什么问题尽管问我…' : '想问这张图片什么？'),
                 filled: false,
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,

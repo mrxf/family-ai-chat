@@ -15,19 +15,21 @@ class ChatComponentCard extends StatelessWidget {
     required this.messageId,
     required this.component,
     required this.isLastMessage,
+    this.onStateChanged,
   });
 
   final String messageId;
   final MessageComponent component;
   final bool isLastMessage;
+  final ValueChanged<Map<String, dynamic>>? onStateChanged;
 
   @override
   Widget build(BuildContext context) {
     return switch (component.kind) {
       'weather' => WeatherCard(component: component),
-      'todo' => TodoCard(messageId: messageId, component: component),
+      'todo' => TodoCard(messageId: messageId, component: component, onStateChanged: onStateChanged),
       'chart' => ChartCard(component: component),
-      'quiz' => QuizCard(messageId: messageId, component: component),
+      'quiz' => QuizCard(messageId: messageId, component: component, onStateChanged: onStateChanged),
       'metrics' => MetricsCard(component: component),
       'ask_user' => AskUserCard(
           messageId: messageId,

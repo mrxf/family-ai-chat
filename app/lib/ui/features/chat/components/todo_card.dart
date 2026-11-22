@@ -9,9 +9,10 @@ import '../../../theme/theme.dart';
 import '../../../widgets/base_widgets.dart';
 
 class TodoCard extends ConsumerWidget {
-  const TodoCard({super.key, required this.messageId, required this.component});
+  const TodoCard({super.key, required this.messageId, required this.component, this.onStateChanged});
   final String messageId;
   final MessageComponent component;
+  final ValueChanged<Map<String, dynamic>>? onStateChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -54,11 +55,12 @@ class TodoCard extends ConsumerWidget {
       final next = {...doneSet};
       if (!next.remove(id)) next.add(id);
       final ordered = [for (final it in items) if (next.contains(it.id)) it.id];
-      ref.read(chatProvider.notifier).updateComponentState(
-        messageId,
-        component.id,
-        {'done_ids': ordered},
-      );
+      final nextState = {'done_ids': ordered};
+      if (onStateChanged != null) {
+        onStateChanged!(nextState);
+      } else {
+        ref.read(chatProvider.notifier).updateComponentState(messageId, component.id, nextState);
+      }
     }
 
     return Container(

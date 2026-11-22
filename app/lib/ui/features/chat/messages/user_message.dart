@@ -7,6 +7,7 @@ import '../../../theme/icons.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/base_widgets.dart';
 import '../../../widgets/sheets.dart';
+import '../composer/quote_bar.dart';
 import 'message_images.dart';
 
 // ======================= user =======================
@@ -28,6 +29,20 @@ class UserMessage extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
+            if (m.quotedComponent != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: QuotedComponentChip(
+                  quote: m.quotedComponent!,
+                  maxWidth: maxW,
+                  onTap: m.quotedComponent!.conversationId.isNotEmpty
+                      ? () => ref.read(chatProvider.notifier).open(
+                            m.quotedComponent!.conversationId,
+                            focusMessageId: m.quotedComponent!.messageId.isNotEmpty ? m.quotedComponent!.messageId : null,
+                          )
+                      : null,
+                ),
+              ),
             if (m.attachments.isNotEmpty)
               Padding(
                 padding: EdgeInsets.only(bottom: m.content.isEmpty ? 0 : 6),

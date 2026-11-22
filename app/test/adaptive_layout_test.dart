@@ -54,7 +54,10 @@ class _FakeApi extends Api {
       : [Conversation(id: 'c1', title: '周末去哪玩', pinned: false, isPrivate: false, createdAt: now, updatedAt: now)];
 
   @override
-  Future<ConversationDetail> conversation(String id) async => ConversationDetail(
+  Future<List<PinnedComponent>> pinnedComponents() async => const [];
+
+  @override
+  Future<ConversationDetail> conversation(String id, {String? focusMessageId}) async => ConversationDetail(
         conversation: Conversation(id: id, title: '周末去哪玩', pinned: false, isPrivate: false, createdAt: now, updatedAt: now),
         messages: [
           Message(id: 'u1', conversationId: id, role: 'user', content: '周末去哪', createdAt: now),
@@ -71,6 +74,7 @@ class _FakeApi extends Api {
     String? modelId,
     required String content,
     List<Attachment> attachments = const [],
+    QuotedComponent? quotedComponent,
     String? editOf,
     bool think = false,
     bool isPrivate = false,

@@ -33,10 +33,9 @@ class ChatPane extends ConsumerWidget {
               child: chat.loading
                   ? const Center(key: ValueKey('loading'), child: CircularProgressIndicator(strokeWidth: 2.4))
                   : chat.isEmpty
-                  ? ReadableWidth(
+                  ? Welcome(
                       key: ValueKey('welcome-${chat.epoch}'),
-                      maxWidth: ContentWidth.chat,
-                      child: Welcome(onSuggestion: (t) => composerKey.currentState?.sendText(t)),
+                      onSuggestion: (t) => composerKey.currentState?.sendText(t),
                     )
                   : const ChatView(key: ValueKey('chat')),
             ),

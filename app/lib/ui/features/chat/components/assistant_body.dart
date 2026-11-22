@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/models/models.dart';
 import '../../../widgets/markdown.dart';
 import 'component_card.dart';
+import 'component_card_shell.dart';
 
 // ======================= Inline Interleaving Host =======================
 
@@ -17,6 +18,7 @@ class InterleavedAssistantBody extends StatelessWidget {
     required this.streaming,
     required this.animate,
     required this.isLastMessage,
+    this.canPin = true,
   });
 
   final String messageId;
@@ -25,6 +27,7 @@ class InterleavedAssistantBody extends StatelessWidget {
   final bool streaming;
   final bool animate;
   final bool isLastMessage;
+  final bool canPin;
 
   @override
   Widget build(BuildContext context) {
@@ -57,10 +60,15 @@ class InterleavedAssistantBody extends StatelessWidget {
         _ComponentEntrance(
           key: ValueKey('comp-${comp.id}'),
           animate: animate,
-          child: ChatComponentCard(
+          child: ChatComponentActionShell(
             messageId: messageId,
             component: comp,
-            isLastMessage: isLastMessage,
+            enabled: canPin && !streaming && !messageId.startsWith('local-'),
+            child: ChatComponentCard(
+              messageId: messageId,
+              component: comp,
+              isLastMessage: isLastMessage,
+            ),
           ),
         ),
       );

@@ -1,4 +1,5 @@
 import 'json_read.dart';
+import 'pinned_component.dart';
 
 class Conversation {
   final String id, title, snippet;
@@ -145,6 +146,7 @@ class Message {
   final List<Attachment> attachments;
   final List<WebSource> sources;
   final List<MessageComponent> components;
+  final QuotedComponent? quotedComponent;
   final MsgStatus status;
   final String? modelId;
   final int durationMs, completionTokens, createdAt;
@@ -159,6 +161,7 @@ class Message {
     this.attachments = const [],
     this.sources = const [],
     this.components = const [],
+    this.quotedComponent,
     this.status = MsgStatus.done,
     this.modelId,
     this.durationMs = 0,
@@ -179,6 +182,7 @@ class Message {
         attachments: ((j['attachments'] as List?) ?? const []).map((e) => Attachment.fromJson((e as Map).cast())).toList(),
         sources: ((j['sources'] as List?) ?? const []).map((e) => WebSource.fromJson((e as Map).cast())).toList(),
         components: ((j['components'] as List?) ?? const []).map((e) => MessageComponent.fromJson((e as Map).cast())).toList(),
+        quotedComponent: j['quoted_component'] is Map ? QuotedComponent.fromJson((j['quoted_component'] as Map).cast()) : null,
         status: _status(asStr(j['status'])),
         modelId: asStrOrNull(j['model_id']),
         durationMs: asInt(j['duration_ms']),
@@ -196,6 +200,7 @@ class Message {
         'attachments': attachments.map((a) => a.toJson()).toList(),
         if (sources.isNotEmpty) 'sources': sources.map((s) => s.toJson()).toList(),
         if (components.isNotEmpty) 'components': components.map((c) => c.toJson()).toList(),
+        if (quotedComponent != null) 'quoted_component': quotedComponent!.toJson(),
         'status': status.name == 'sending' ? 'done' : status.name,
         'model_id': modelId,
         'duration_ms': durationMs,
@@ -212,6 +217,7 @@ class Message {
     List<Attachment>? attachments,
     List<WebSource>? sources,
     List<MessageComponent>? components,
+    QuotedComponent? quotedComponent,
     String? modelId,
   }) =>
       Message(
@@ -224,6 +230,7 @@ class Message {
         attachments: attachments ?? this.attachments,
         sources: sources ?? this.sources,
         components: components ?? this.components,
+        quotedComponent: quotedComponent ?? this.quotedComponent,
         status: status ?? this.status,
         modelId: modelId ?? this.modelId,
         durationMs: durationMs,

@@ -104,6 +104,7 @@ class _AssistantMessageState extends ConsumerState<AssistantMessage> {
                   streaming: isLive,
                   animate: _wasLive,
                   isLastMessage: widget.isLast,
+                  canPin: !isPrivate,
                 ),
               if (working && phase != LivePhase.waiting && !hasRunningStep)
                 Padding(

@@ -11,9 +11,10 @@ import '../../../theme/theme.dart';
 import '../../../widgets/base_widgets.dart';
 
 class QuizCard extends ConsumerWidget {
-  const QuizCard({super.key, required this.messageId, required this.component});
+  const QuizCard({super.key, required this.messageId, required this.component, this.onStateChanged});
   final String messageId;
   final MessageComponent component;
+  final ValueChanged<Map<String, dynamic>>? onStateChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -36,11 +37,12 @@ class QuizCard extends ConsumerWidget {
 
     void choose(int idx) {
       HapticFeedback.lightImpact();
-      ref.read(chatProvider.notifier).updateComponentState(
-        messageId,
-        component.id,
-        {'selected_index': idx},
-      );
+      final nextState = {'selected_index': idx};
+      if (onStateChanged != null) {
+        onStateChanged!(nextState);
+      } else {
+        ref.read(chatProvider.notifier).updateComponentState(messageId, component.id, nextState);
+      }
     }
 
     return Container(

@@ -115,14 +115,15 @@ func (s *Service) bgCtx() context.Context {
 
 // SendInput is a new user message.
 type SendInput struct {
-	ConversationID string // empty = create a new conversation
-	AssistantID    string // used when creating a conversation
-	ModelID        string // optional override; persisted on the conversation
-	Content        string
-	Attachments    []store.Attachment
-	EditOf         string // replace this user message and everything after it
-	Think          bool   // deep thinking mode
-	Private        bool   // ephemeral / private chat (no history, no memory, immediate file cleanup)
+	ConversationID  string // empty = create a new conversation
+	AssistantID     string // used when creating a conversation
+	ModelID         string // optional override; persisted on the conversation
+	Content         string
+	Attachments     []store.Attachment
+	QuotedComponent *ComponentQuoteRef // optional component reference attached to this user message
+	EditOf          string             // replace this user message and everything after it
+	Think           bool               // deep thinking mode
+	Private         bool               // ephemeral / private chat (no history, no memory, immediate file cleanup)
 }
 
 type SendResult struct {
@@ -231,7 +232,15 @@ func (s *Service) Send(ctx context.Context, user *store.User, in SendInput) (*Se
 		return nil, err
 	}
 
-	userMsg := &store.Message{Role: "user", Content: in.Content, Attachments: in.Attachments, Status: store.StatusDone}
+	var quoted *store.QuotedComponent
+	if in.QuotedComponent != nil {
+		quoted, err = s.resolveQuotedComponent(ctx, user.ID, conv, in.QuotedComponent)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	userMsg := &store.Message{Role: "user", Content: in.Content, Attachments: in.Attachments, QuotedComponent: quoted, Status: store.StatusDone}
 	var asstModelID *string
 	if model != nil {
 		id := model.ID
@@ -1317,6 +1326,9 @@ func (s *Service) buildRequestWithOpts(ctx context.Context, user *store.User, co
 			continue
 		}
 		lm := llm.Message{Role: m.Role, Content: m.Content}
+		if m.Role == "user" && m.QuotedComponent != nil {
+			lm.Content = quotedComponentPromptNote(m.QuotedComponent) + lm.Content
+		}
 		if hasComps {
 			lm.Content = componentNote(m.Components) + lm.Content
 		}
@@ -1336,7 +1348,7 @@ func (s *Service) buildRequestWithOpts(ctx context.Context, user *store.User, co
 					parts = append(parts, llm.Part{Type: "image_url", ImageURL: &llm.ImageURL{URL: url}})
 					cost += imageTokens
 				}
-				text := m.Content
+				text := lm.Content
 				if text == "" {
 					text = "（用户发送了图片）"
 				}
@@ -1349,7 +1361,7 @@ func (s *Service) buildRequestWithOpts(ctx context.Context, user *store.User, co
 				if refs := refList(m.Attachments, num); refs != "" {
 					n += "（" + refs + "）"
 				}
-				lm.Content = fmt.Sprintf("[用户发送了 %s，当前已不可见]\n%s", n, m.Content)
+				lm.Content = fmt.Sprintf("[用户发送了 %s，当前已不可见]\n%s", n, lm.Content)
 			}
 		}
 		if i == lastUser {

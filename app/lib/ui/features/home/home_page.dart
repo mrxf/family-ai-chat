@@ -8,6 +8,7 @@ import '../../../platform/reminders/reminder_service.dart';
 import '../../../platform/speech/speaker.dart';
 import '../../../state/chat.dart';
 import '../../../state/incoming_share.dart';
+import '../../../state/pinned_components.dart';
 import '../../../state/schedules.dart';
 import '../../../state/session.dart';
 import '../../adaptive/app_route.dart';
@@ -120,6 +121,7 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
       ref.read(chatProvider.notifier).onResume();
       ref.read(sessionProvider.notifier).refresh();
       ref.invalidate(schedulesProvider);
+      unawaited(ref.read(pinnedComponentsProvider.notifier).refresh());
     } else if (state == AppLifecycleState.paused) {
       Speaker.instance.stop();
     }

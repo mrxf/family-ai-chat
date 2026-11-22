@@ -209,8 +209,13 @@ class Api {
     return ((d['items'] as List?) ?? []).map((e) => Conversation.fromJson((e as Map).cast())).toList();
   }
 
-  Future<ConversationDetail> conversation(String id) async {
-    final d = (await _req('GET', '/api/conversations/$id') as Map).cast<String, dynamic>();
+  Future<ConversationDetail> conversation(String id, {String? focusMessageId}) async {
+    final d = (await _req(
+      'GET',
+      '/api/conversations/$id',
+      query: {if (focusMessageId != null && focusMessageId.isNotEmpty) 'focus_message_id': focusMessageId},
+    ) as Map)
+        .cast<String, dynamic>();
     return ConversationDetail(
       conversation: Conversation.fromJson((d['conversation'] as Map).cast()),
       messages: ((d['messages'] as List?) ?? []).map((e) => Message.fromJson((e as Map).cast())).toList(),
@@ -236,6 +241,7 @@ class Api {
     String? modelId,
     required String content,
     List<Attachment> attachments = const [],
+    QuotedComponent? quotedComponent,
     String? editOf,
     bool think = false,
     bool isPrivate = false,
@@ -246,6 +252,7 @@ class Api {
       'model_id': ?modelId,
       'content': content,
       'attachments': attachments.map((a) => {'file_id': a.fileId}).toList(),
+      if (quotedComponent != null) 'quoted_component': quotedComponent.toRequestRef(),
       'edit_of': ?editOf,
       'think': think,
       if (isPrivate) 'private': true,
@@ -271,6 +278,23 @@ class Api {
     final comp = (d as Map)['component'];
     return comp is Map ? MessageComponent.fromJson(comp.cast()) : MessageComponent(id: compId, kind: '', state: state);
   }
+
+  // ---- pinned components ----
+  Future<List<PinnedComponent>> pinnedComponents() async {
+    final d = await _req('GET', '/api/pinned-components');
+    return ((d['items'] as List?) ?? const []).map((e) => PinnedComponent.fromJson((e as Map).cast())).toList();
+  }
+
+  Future<PinnedComponent> pinComponent(String messageId, String compId) async {
+    final d = await _req('POST', '/api/pinned-components', body: {
+      'message_id': messageId,
+      'component_id': compId,
+    });
+    return PinnedComponent.fromJson((d as Map).cast());
+  }
+
+  Future<void> unpinComponent(String messageId, String compId) =>
+      _req('DELETE', '/api/pinned-components/${Uri.encodeComponent(messageId)}/${Uri.encodeComponent(compId)}');
 
   Future<void> cancel(String messageId) => _req('POST', '/api/messages/$messageId/cancel');
 

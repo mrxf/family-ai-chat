@@ -5,37 +5,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/models.dart';
 import '../../../state/chat.dart';
+import '../../../state/pinned_components.dart';
 import '../../../state/session.dart';
 import '../../adaptive/app_route.dart';
+import '../../adaptive/breakpoints.dart';
+import '../../adaptive/readable_width.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
 import '../../widgets/mascot/mascot_anim.dart';
 import '../admin/models_page.dart';
 import '../auth/self_host_info_sheet.dart';
-
-const _defaultSuggestions = [
-  ('🎂', '帮我写一段给家人的生日祝福'),
-  ('🥗', '高血压饮食上要注意什么？'),
-  ('🍳', '教我做一道简单的家常菜'),
-  ('🛡️', '怎么分辨诈骗电话和短信？'),
-  ('😴', '晚上睡不着有什么好办法？'),
-  ('📖', '给我讲个有意思的历史小故事'),
-  ('🧳', '帮我列一份出门旅行的行李清单'),
-  ('💡', '用大白话解释一下什么是通货膨胀'),
-  ('📱', '手机内存满了怎么清理？'),
-  ('🌱', '阳台适合种哪些好养的花？'),
-  ('🧮', '帮孩子出 10 道口算练习题'),
-  ('✈️', '周末带孩子去哪里玩比较好？'),
-];
-
-// Shown (one at a time) when the server can draw pictures.
-const _drawSuggestions = [
-  ('🎨', '帮我画一只可爱的小猫'),
-  ('🖼️', '画一张春天公园的水彩画'),
-  ('🧧', '帮我画一张新年贺卡，写上「阖家幸福」'),
-  ('🌄', '画一张适合做手机壁纸的风景画'),
-];
+import 'pinned_components_board.dart';
 
 String greeting() {
   final h = DateTime.now().hour;
@@ -46,47 +27,37 @@ String greeting() {
   return '晚上好';
 }
 
-/// Empty-chat screen: mascot, greeting, suggestions and assistants.
-class Welcome extends ConsumerStatefulWidget {
+/// Empty-chat screen: mascot, greeting, pinned components board and assistants.
+class Welcome extends ConsumerWidget {
   const Welcome({super.key, required this.onSuggestion});
   final void Function(String text) onSuggestion;
 
   @override
-  ConsumerState<Welcome> createState() => _WelcomeState();
-}
-
-class _WelcomeState extends ConsumerState<Welcome> {
-  late List<(String, String)> _picks = _shuffle();
-  late final _drawPick = _drawSuggestions[math.Random().nextInt(_drawSuggestions.length)];
-
-  List<(String, String)> _shuffle() => (List.of(_defaultSuggestions)..shuffle(math.Random())).take(4).toList();
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final p = context.pal;
     final session = ref.watch(sessionProvider);
     final boot = session.boot;
     if (boot == null) return const SizedBox();
     final assistantId = ref.watch(chatProvider.select((s) => s.assistantId));
     final isPrivate = ref.watch(chatProvider.select((s) => s.isPrivate));
+    final hasPinnedItems = ref.watch(pinnedComponentsProvider.select((s) => s.items.isNotEmpty));
     final assistant = boot.assistant(assistantId);
     final name = boot.user.displayName;
 
     if (isPrivate) {
-      return _PrivateWelcome(
-        assistant: assistant,
-        assistants: boot.assistants,
-        hasModels: boot.models.isNotEmpty,
-        isAdmin: boot.user.isAdmin,
-        onSuggestion: widget.onSuggestion,
+      return ReadableWidth(
+        maxWidth: ContentWidth.chat,
+        child: _PrivateWelcome(
+          assistant: assistant,
+          assistants: boot.assistants,
+          hasModels: boot.models.isNotEmpty,
+          isAdmin: boot.user.isAdmin,
+          onSuggestion: onSuggestion,
+        ),
       );
     }
 
-    final List<(String, String)> suggestions = assistant != null
-        ? [for (final s in assistant.suggestions) ('', s)]
-        : boot.imageGeneration && boot.imagesLeft != 0
-            ? [_drawPick, ..._picks.take(3)]
-            : _picks;
+    final compactHeader = assistant == null && hasPinnedItems;
 
     return LayoutBuilder(builder: (context, c) {
       return SingleChildScrollView(
@@ -95,66 +66,121 @@ class _WelcomeState extends ConsumerState<Welcome> {
         child: ConstrainedBox(
           constraints: BoxConstraints(minHeight: c.maxHeight - 32),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment: compactHeader ? MainAxisAlignment.start : MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 8),
-              Center(
-                child: assistant == null
-                    ? const Floating(child: AnimatedMascot(size: 132, greet: true))
-                    : Floating(child: Avatar(label: assistant.name, emoji: assistant.avatar, size: 96)),
+              ReadableWidth(
+                maxWidth: ContentWidth.chat,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (compactHeader) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const AnimatedMascot(size: 52, greet: true),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${greeting()}，$name',
+                                  style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700, letterSpacing: 0.2),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '这是你固定在首页的卡片',
+                                  style: TextStyle(fontSize: 13.5, color: p.muted),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (session.isSelfHosted) ...[
+                            const SizedBox(width: 8),
+                            _SelfHostHomePill(
+                              host: session.serverHost,
+                              onTap: () => showSelfHostInfoSheet(context, ref),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 8),
+                      Center(
+                        child: assistant == null
+                            ? const Floating(child: AnimatedMascot(size: 124, greet: true))
+                            : Floating(child: Avatar(label: assistant.name, emoji: assistant.avatar, size: 96)),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        assistant == null ? '${greeting()}，$name' : assistant.name,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: 0.3),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        assistant == null ? '我是小暖，有什么可以帮你的？' : (assistant.greeting.isNotEmpty ? assistant.greeting : assistant.description),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 16, color: p.muted, height: 1.5),
+                      ),
+                      if (assistant == null && session.isSelfHosted) ...[
+                        const SizedBox(height: 12),
+                        Center(
+                          child: _SelfHostHomePill(
+                            host: session.serverHost,
+                            onTap: () => showSelfHostInfoSheet(context, ref),
+                          ),
+                        ),
+                      ],
+                    ],
+                    if (boot.models.isEmpty) ...[
+                      const SizedBox(height: 20),
+                      _NoModels(isAdmin: boot.user.isAdmin),
+                    ],
+                  ],
+                ),
               ),
-              const SizedBox(height: 18),
-              Text(
-                assistant == null ? '${greeting()}，$name' : assistant.name,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: 0.3),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                assistant == null ? '我是小暖，有什么可以帮你的？' : (assistant.greeting.isNotEmpty ? assistant.greeting : assistant.description),
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16.5, color: p.muted, height: 1.5),
-              ),
-              if (assistant == null && session.isSelfHosted) ...[
-                const SizedBox(height: 12),
-                Center(
-                  child: _SelfHostHomePill(
-                    host: session.serverHost,
-                    onTap: () => showSelfHostInfoSheet(context, ref),
+              SizedBox(height: compactHeader ? 18 : 24),
+              if (assistant != null)
+                ReadableWidth(
+                  maxWidth: ContentWidth.chat,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final s in assistant.suggestions)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _SuggestionCard(emoji: '', text: s, onTap: () => onSuggestion(s)),
+                        ),
+                    ],
                   ),
+                )
+              else
+                PinnedComponentsBoard(
+                  onSuggestion: onSuggestion,
+                  includeDraw: boot.imageGeneration && boot.imagesLeft != 0,
                 ),
-              ],
-              if (boot.models.isEmpty) ...[
-                const SizedBox(height: 22),
-                _NoModels(isAdmin: boot.user.isAdmin),
-              ],
-              const SizedBox(height: 28),
-              for (final (emoji, text) in suggestions)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _SuggestionCard(emoji: emoji, text: text, onTap: () => widget.onSuggestion(text)),
+              ReadableWidth(
+                maxWidth: ContentWidth.chat,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (assistant == null && boot.assistants.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4, bottom: 10),
+                        child: Text('找专门的助手', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: p.muted)),
+                      ),
+                      _AssistantStrip(assistants: boot.assistants),
+                    ],
+                    const SizedBox(height: 18),
+                    _PrivateChatEntryCard(
+                      assistantName: assistant?.name,
+                      onTap: () => ref.read(chatProvider.notifier).newChat(isPrivate: true, assistantId: assistant?.id),
+                    ),
+                  ],
                 ),
-              if (assistant == null)
-                Center(
-                  child: TextButton.icon(
-                    onPressed: () => setState(() => _picks = _shuffle()),
-                    icon: AppIcon(AppIcons.refresh, size: 17, color: p.muted),
-                    label: Text('换一批', style: TextStyle(color: p.muted, fontSize: 15)),
-                  ),
-                ),
-              if (assistant == null && boot.assistants.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                Padding(
-                  padding: const EdgeInsets.only(left: 4, bottom: 10),
-                  child: Text('找专门的助手', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: p.muted)),
-                ),
-                _AssistantStrip(assistants: boot.assistants),
-              ],
-              const SizedBox(height: 18),
-              _PrivateChatEntryCard(
-                assistantName: assistant?.name,
-                onTap: () => ref.read(chatProvider.notifier).newChat(isPrivate: true, assistantId: assistant?.id),
               ),
             ],
           ),

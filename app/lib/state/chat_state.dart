@@ -131,6 +131,12 @@ class ChatState {
   /// Bumps whenever a different conversation is shown (resets scroll).
   final int epoch;
 
+  /// Optional component quote staged in the composer for the next message.
+  final QuotedComponent? pendingQuote;
+
+  /// Message ID to briefly highlight after jumping from a pinned component.
+  final String? highlightMessageId;
+
   const ChatState({
     this.conversationId,
     this.assistantId,
@@ -145,6 +151,8 @@ class ChatState {
     this.loadingOlder = false,
     this.activeId,
     this.epoch = 0,
+    this.pendingQuote,
+    this.highlightMessageId,
   });
 
   bool get isEmpty => messages.isEmpty && !loading;
@@ -164,6 +172,8 @@ class ChatState {
     bool? loadingOlder,
     Object? activeId = _keep,
     int? epoch,
+    Object? pendingQuote = _keep,
+    Object? highlightMessageId = _keep,
   }) =>
       ChatState(
         conversationId: conversationId ?? this.conversationId,
@@ -179,6 +189,8 @@ class ChatState {
         loadingOlder: loadingOlder ?? this.loadingOlder,
         activeId: activeId == _keep ? this.activeId : activeId as String?,
         epoch: epoch ?? this.epoch,
+        pendingQuote: pendingQuote == _keep ? this.pendingQuote : pendingQuote as QuotedComponent?,
+        highlightMessageId: highlightMessageId == _keep ? this.highlightMessageId : highlightMessageId as String?,
       );
 }
 

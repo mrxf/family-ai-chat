@@ -56,12 +56,16 @@ class _AutoFakeApi extends Api {
   Future<List<Conversation>> conversations({int? before, String? q, int limit = 50}) async => const [];
 
   @override
+  Future<List<PinnedComponent>> pinnedComponents() async => const [];
+
+  @override
   Future<SendResult> send({
     String? conversationId,
     String? assistantId,
     String? modelId,
     required String content,
     List<Attachment> attachments = const [],
+    QuotedComponent? quotedComponent,
     String? editOf,
     bool think = false,
     bool isPrivate = false,

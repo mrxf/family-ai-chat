@@ -116,12 +116,32 @@ class _ChatViewState extends ConsumerState<ChatView> {
     final centerKey = ValueKey('center-${centerAnchorId ?? 'end'}-${s.epoch}');
     final lastAssistant = msgs.isNotEmpty && !msgs.last.isUser ? msgs.last.id : null;
 
+    final p = context.pal;
+    final highlightId = s.highlightMessageId;
+    if (highlightId != null && msgs.any((m) => m.id == highlightId)) {
+      Future.delayed(const Duration(milliseconds: 1800), () {
+        if (mounted && ref.read(chatProvider).highlightMessageId == highlightId) {
+          ref.read(chatProvider.notifier).clearHighlight();
+        }
+      });
+    }
+
     // Full-width scroll area, messages centered at a readable width.
-    Widget item(Message m) => ReadableWidth(
-          key: ValueKey('${m.isUser ? 'u' : 'a'}-${m.id}'),
-          maxWidth: ContentWidth.chat,
+    Widget item(Message m) {
+      final highlighted = highlightId != null && m.id == highlightId;
+      return ReadableWidth(
+        key: ValueKey('${m.isUser ? 'u' : 'a'}-${m.id}'),
+        maxWidth: ContentWidth.chat,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 350),
+          decoration: BoxDecoration(
+            color: highlighted ? p.accentSoft.withValues(alpha: 0.45) : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+          ),
           child: m.isUser ? UserMessage(message: m) : AssistantMessage(message: m, isLast: m.id == lastAssistant),
-        );
+        ),
+      );
+    }
 
     final beforeExtra = topMode ? 0 : 1; // bottom padding lives in the "before" list when bottom-aligned
     final before = SliverList(

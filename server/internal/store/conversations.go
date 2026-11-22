@@ -378,6 +378,7 @@ type Message struct {
 	Attachments      []Attachment       `json:"attachments"`
 	Sources          []WebSource        `json:"sources,omitempty"`
 	Components       []MessageComponent `json:"components,omitempty"`
+	QuotedComponent  *QuotedComponent   `json:"quoted_component,omitempty"`
 	Status           string             `json:"status"`
 	Error            string             `json:"error"`
 	ModelID          *string            `json:"model_id"`
@@ -390,12 +391,12 @@ type Message struct {
 	UpdatedAt        int64              `json:"updated_at"`
 }
 
-const msgCols = `id, conversation_id, role, content, reasoning, attachments, sources, components, status, error, model_id, prompt_tokens, completion_tokens, first_token_ms, duration_ms, created_at, updated_at`
+const msgCols = `id, conversation_id, role, content, reasoning, attachments, sources, components, quoted_component, status, error, model_id, prompt_tokens, completion_tokens, first_token_ms, duration_ms, created_at, updated_at`
 
 func scanMsg(row interface{ Scan(...any) error }) (*Message, error) {
 	var m Message
-	var att, src, comps string
-	if err := row.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &m.Reasoning, &att, &src, &comps, &m.Status, &m.Error, &m.ModelID,
+	var att, src, comps, quoted string
+	if err := row.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &m.Reasoning, &att, &src, &comps, &quoted, &m.Status, &m.Error, &m.ModelID,
 		&m.PromptTokens, &m.CompletionTokens, &m.FirstTokenMs, &m.DurationMs, &m.CreatedAt, &m.UpdatedAt); err != nil {
 		return nil, notFound(err)
 	}
@@ -410,6 +411,12 @@ func scanMsg(row interface{ Scan(...any) error }) (*Message, error) {
 	_ = json.Unmarshal([]byte(comps), &m.Components)
 	if len(m.Components) == 0 {
 		m.Components = nil
+	}
+	if quoted != "" {
+		var q QuotedComponent
+		if json.Unmarshal([]byte(quoted), &q) == nil && q.Kind != "" {
+			m.QuotedComponent = &q
+		}
 	}
 	return &m, nil
 }
@@ -437,8 +444,14 @@ func insertMsg(ctx context.Context, tx *Tx, m *Message) error {
 		components = []MessageComponent{}
 	}
 	comps, _ := json.Marshal(components)
-	_, err := tx.exec(ctx, `INSERT INTO messages (`+msgCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		m.ID, m.ConversationID, m.Role, m.Content, m.Reasoning, string(att), string(src), string(comps), m.Status, m.Error, m.ModelID,
+	quoted := ""
+	if m.QuotedComponent != nil {
+		if b, err := json.Marshal(m.QuotedComponent); err == nil {
+			quoted = string(b)
+		}
+	}
+	_, err := tx.exec(ctx, `INSERT INTO messages (`+msgCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		m.ID, m.ConversationID, m.Role, m.Content, m.Reasoning, string(att), string(src), string(comps), quoted, m.Status, m.Error, m.ModelID,
 		m.PromptTokens, m.CompletionTokens, m.FirstTokenMs, m.DurationMs, m.CreatedAt, m.UpdatedAt)
 	if isUnique(err) {
 		return ErrConflict

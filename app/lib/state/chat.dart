@@ -11,6 +11,7 @@ import '../core/models/models.dart';
 import '../platform/reminders/reminder_service.dart';
 import 'chat_state.dart';
 import 'conversations.dart';
+import 'pinned_components.dart';
 import 'schedules.dart';
 import 'session.dart';
 
@@ -119,14 +120,36 @@ class ChatController extends Notifier<ChatState> {
 
   // ---------------- navigation ----------------
 
-  void newChat({String? assistantId, bool isPrivate = false}) {
+  void newChat({String? assistantId, bool isPrivate = false, QuotedComponent? quotedComponent}) {
     _reset(ChatState(
       assistantId: assistantId,
       modelId: _sessionModelId,
       isPrivate: isPrivate,
       think: state.think,
       epoch: state.epoch + 1,
+      pendingQuote: quotedComponent,
     ));
+  }
+
+  /// Stages or clears a component quote in the composer without leaving the current screen.
+  void setPendingQuote(QuotedComponent? quote) {
+    state = state.copyWith(pendingQuote: quote);
+  }
+
+  /// Starts a fresh non-private chat with [quote] attached in the composer.
+  /// If already on an empty home screen, stages the quote in place without resetting.
+  void quoteComponentToNewChat(QuotedComponent quote) {
+    if (state.conversationId == null && state.messages.isEmpty && !state.isPrivate && !state.loading) {
+      state = state.copyWith(pendingQuote: quote);
+      return;
+    }
+    newChat(quotedComponent: quote);
+  }
+
+  void clearHighlight() {
+    if (state.highlightMessageId != null) {
+      state = state.copyWith(highlightMessageId: null);
+    }
   }
 
   void exitPrivateChat() {
@@ -142,8 +165,18 @@ class ChatController extends Notifier<ChatState> {
     return c.modelId;
   }
 
-  Future<void> open(String id) async {
-    if (state.conversationId == id && state.messages.isNotEmpty) return;
+  Future<void> open(String id, {String? focusMessageId}) async {
+    if (state.conversationId == id && state.messages.isNotEmpty) {
+      if (focusMessageId != null) {
+        final idx = state.messages.indexWhere((m) => m.id == focusMessageId);
+        if (idx >= 0) {
+          state = state.copyWith(anchor: idx, highlightMessageId: focusMessageId, epoch: state.epoch + 1);
+          return;
+        }
+      } else {
+        return;
+      }
+    }
     final conv = ref.read(conversationsProvider).items.where((c) => c.id == id).firstOrNull;
     _reset(ChatState(
       conversationId: id,
@@ -153,35 +186,47 @@ class ChatController extends Notifier<ChatState> {
       think: state.think,
       loading: true,
       epoch: state.epoch + 1,
+      highlightMessageId: focusMessageId,
     ));
     final nav = _nav;
     final cached = await ref.read(storageProvider).readCache('conv_$id');
     if (nav != _nav) return;
     if (cached is List && cached.isNotEmpty) {
       final msgs = cached.map((e) => Message.fromJson((e as Map).cast())).toList();
-      state = state.copyWith(messages: msgs, anchor: msgs.length, loading: false);
+      final focusIdx = focusMessageId == null ? -1 : msgs.indexWhere((m) => m.id == focusMessageId);
+      if (focusMessageId == null || focusIdx >= 0) {
+        state = state.copyWith(
+          messages: msgs,
+          anchor: focusIdx >= 0 ? focusIdx : msgs.length,
+          loading: false,
+        );
+      }
     }
-    await _reload(id);
+    await _reload(id, focusMessageId: focusMessageId);
   }
 
-  Future<void> _reload(String id) async {
+  Future<void> _reload(String id, {String? focusMessageId}) async {
     final api = _apiOrNull;
     if (api == null) return;
     final nav = _nav, rev = _rev;
     try {
-      final d = await api.conversation(id);
+      final d = await api.conversation(id, focusMessageId: focusMessageId);
       if (nav != _nav || rev != _rev || state.conversationId != id) return;
       final active = d.activeMessageId.isEmpty ? null : d.activeMessageId;
-      final merged = _mergeTail(state.messages, d.messages);
+      final merged = focusMessageId != null ? d.messages : _mergeTail(state.messages, d.messages);
+      final focusIdx = focusMessageId == null ? -1 : merged.indexWhere((m) => m.id == focusMessageId);
       state = state.copyWith(
         messages: merged,
-        anchor: active != null ? _lastUserIndex(merged) : _keepAnchor(merged),
+        anchor: focusIdx >= 0
+            ? focusIdx
+            : (active != null ? _lastUserIndex(merged) : _keepAnchor(merged)),
         assistantId: d.conversation.assistantId,
         modelId: _sessionModelId ?? _convModeId(d.conversation),
         resolvedModelId: d.conversation.modelId,
         hasMore: merged.length > d.messages.length ? state.hasMore : d.hasMore,
         loading: false,
         activeId: active,
+        epoch: focusIdx >= 0 ? state.epoch + 1 : state.epoch,
       );
       _persist();
       if (active != null) {
@@ -259,6 +304,7 @@ class ChatController extends Notifier<ChatState> {
     final modelId = state.modelId;
     final think = state.think;
     final isPrivate = state.isPrivate;
+    final quoted = editOf == null ? state.pendingQuote : null;
     final original = (messages: state.messages, anchor: state.anchor);
     final op = _op = _Op();
     _rev++;
@@ -269,6 +315,7 @@ class ChatController extends Notifier<ChatState> {
       conversationId: convId ?? '',
       role: 'user',
       content: text,
+      quotedComponent: quoted,
       status: MsgStatus.sending,
       attachments: [
         ...keepAttachments,
@@ -283,7 +330,7 @@ class ChatController extends Notifier<ChatState> {
       if (i >= 0) base = base.sublist(0, i);
     }
     live.value = LiveText('', '', activity: images.isNotEmpty ? '正在上传图片…' : '正在发送…', activitySince: DateTime.now());
-    state = state.copyWith(messages: [...base, localUser, localAsst], anchor: base.length, activeId: localAsst.id);
+    state = state.copyWith(messages: [...base, localUser, localAsst], anchor: base.length, activeId: localAsst.id, pendingQuote: null);
     bool current() => nav == _nav && state.activeId == localAsst.id;
 
     try {
@@ -300,6 +347,7 @@ class ChatController extends Notifier<ChatState> {
         modelId: modelId,
         content: text,
         attachments: uploaded,
+        quotedComponent: quoted,
         editOf: editOf,
         think: think,
         isPrivate: isPrivate,
@@ -554,12 +602,36 @@ class ChatController extends Notifier<ChatState> {
       ],
     );
     _persist();
+    ref.read(pinnedComponentsProvider.notifier).syncComponentStateFromChat(messageId, compId, nextState);
     final api = _apiOrNull;
     if (api != null && !messageId.startsWith('local-')) {
       try {
         await api.updateMessageComponentState(messageId, compId, nextState);
       } catch (_) {}
     }
+  }
+
+  /// Reflects a component state edit performed on the home board inside the open conversation.
+  void syncComponentStateFromPin(
+    String messageId,
+    String compId,
+    Map<String, dynamic> nextState,
+  ) {
+    if (!state.messages.any((m) => m.id == messageId)) return;
+    state = state.copyWith(
+      messages: [
+        for (final m in state.messages)
+          if (m.id == messageId)
+            m.copyWith(
+              components: [
+                for (final c in m.components) c.id == compId ? c.copyWith(state: nextState) : c,
+              ],
+            )
+          else
+            m,
+      ],
+    );
+    _persist();
   }
 
   /// Persists an `ask_user` card selection and sends the formatted answer as the next user message.

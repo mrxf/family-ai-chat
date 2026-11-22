@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api.dart';
 import '../core/models/models.dart';
+import 'pinned_components.dart';
 import 'session.dart';
 
 class ConvListState {
@@ -113,10 +114,12 @@ class ConversationsNotifier extends Notifier<ConvListState> {
     state = state.copyWith(items: before.where((c) => c.id != id).toList());
     _persist();
     ref.read(storageProvider).deleteCache('conv_$id');
+    ref.read(pinnedComponentsProvider.notifier).removeByConversation(id);
     try {
       await _api?.deleteConversation(id);
     } catch (e) {
       state = state.copyWith(items: before);
+      unawaited(ref.read(pinnedComponentsProvider.notifier).refresh());
       rethrow;
     }
   }

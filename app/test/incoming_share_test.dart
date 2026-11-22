@@ -71,12 +71,16 @@ class _ShareTestApi extends Api {
   }
 
   @override
+  Future<List<PinnedComponent>> pinnedComponents() async => const [];
+
+  @override
   Future<SendResult> send({
     String? conversationId,
     String? assistantId,
     String? modelId,
     required String content,
     List<Attachment> attachments = const [],
+    QuotedComponent? quotedComponent,
     String? editOf,
     bool think = false,
     bool isPrivate = false,
