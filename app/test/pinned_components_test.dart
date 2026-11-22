@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:family_chat/core/models/models.dart';
 import 'package:family_chat/state/pinned_components.dart';
+import 'package:family_chat/state/suggestions.dart';
 import 'package:family_chat/ui/features/chat/components/suggestions_card.dart';
 import 'package:family_chat/ui/features/chat/components/todo_card.dart';
 import 'package:family_chat/ui/features/chat/composer/quote_bar.dart';
@@ -25,10 +26,27 @@ class _FakePinnedNotifier extends PinnedComponentsNotifier {
   }
 }
 
-Widget _wrap(Widget child, {PinnedComponentsState? pinned}) => ProviderScope(
+class _FakeSuggestionsNotifier extends HomeSuggestionsNotifier {
+  _FakeSuggestionsNotifier(this._initial);
+  final HomeSuggestionsState _initial;
+
+  @override
+  HomeSuggestionsState build() => _initial;
+
+  @override
+  Future<void> refresh() async {}
+}
+
+Widget _wrap(
+  Widget child, {
+  PinnedComponentsState? pinned,
+  HomeSuggestionsState suggestions = const HomeSuggestionsState(loaded: true),
+}) =>
+    ProviderScope(
       overrides: [
         if (pinned != null)
           pinnedComponentsProvider.overrideWith(() => _FakePinnedNotifier(pinned)),
+        homeSuggestionsProvider.overrideWith(() => _FakeSuggestionsNotifier(suggestions)),
       ],
       child: MaterialApp(
         theme: buildTheme(Brightness.light),
@@ -136,5 +154,36 @@ void main() {
     expect(find.text('晴 · 22°C'), findsOneWidget);
     await tester.tap(find.byTooltip('移除引用'));
     expect(dismissed, isTrue);
+  });
+
+  testWidgets('SuggestionsCard displays personalized pool and rotates locally', (tester) async {
+    final pool = [
+      for (var i = 1; i <= 8; i++) HomeSuggestion(emoji: '✨', text: '个性化问题第$i条'),
+    ];
+    String? picked;
+    await tester.pumpWidget(_wrap(
+      SuggestionsCard(onSuggestion: (t) => picked = t),
+      suggestions: HomeSuggestionsState(items: pool, loaded: true),
+    ));
+
+    expect(find.text('根据你的近期对话定制'), findsOneWidget);
+    final firstBatch = [
+      for (final item in pool)
+        if (find.text(item.text).evaluate().isNotEmpty) item.text,
+    ];
+    expect(firstBatch.length, 4);
+
+    // Clicking "换一批" rotates to the remaining 4 items in the 8-item pool without overlap.
+    await tester.tap(find.byTooltip('换一批'));
+    await tester.pump();
+    final secondBatch = [
+      for (final item in pool)
+        if (find.text(item.text).evaluate().isNotEmpty) item.text,
+    ];
+    expect(secondBatch.length, 4);
+    expect(firstBatch.toSet().intersection(secondBatch.toSet()), isEmpty);
+
+    await tester.tap(find.text(secondBatch.first));
+    expect(picked, secondBatch.first);
   });
 }

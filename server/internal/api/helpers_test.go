@@ -135,8 +135,9 @@ func withoutSystemNote(text string) string {
 }
 
 type fakeUpstream struct {
-	extraction string
-	routerFunc func(upstreamRequest) string
+	extraction      string
+	routerFunc      func(upstreamRequest) string
+	suggestionsFunc func(upstreamRequest) string
 
 	server    *httptest.Server
 	mu        sync.Mutex
@@ -178,9 +179,15 @@ func newFakeUpstream(t *testing.T) *fakeUpstream {
 			u.mu.Lock()
 			extraction := u.extraction
 			routerFn := u.routerFunc
+			suggestFn := u.suggestionsFunc
 			u.mu.Unlock()
 			if routerFn != nil && len(req.Messages) > 0 && strings.Contains(string(req.Messages[0].Content), "模型路由器") {
 				_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": routerFn(req)}}}, "usage": map[string]int{"prompt_tokens": 20, "completion_tokens": 8}})
+				return
+			}
+			if suggestFn != nil && len(req.Messages) > 0 && strings.Contains(string(req.Messages[0].Content), "首页推荐问题策划师") {
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": suggestFn(req)}}}})
 				return
 			}
 			if extraction != "" && len(req.Messages) > 0 && strings.Contains(string(req.Messages[0].Content), "记忆整理员") {

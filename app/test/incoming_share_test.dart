@@ -74,6 +74,9 @@ class _ShareTestApi extends Api {
   Future<List<PinnedComponent>> pinnedComponents() async => const [];
 
   @override
+  Future<List<HomeSuggestion>> homeSuggestions() async => const [];
+
+  @override
   Future<SendResult> send({
     String? conversationId,
     String? assistantId,

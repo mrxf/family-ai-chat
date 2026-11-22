@@ -120,6 +120,7 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/pinned-components", s.listPinnedComponents)
 			r.Post("/pinned-components", s.pinComponent)
 			r.Delete("/pinned-components/{messageId}/{compId}", s.unpinComponent)
+			r.Get("/suggestions", s.getHomeSuggestions)
 
 			r.Post("/files", s.uploadFile)
 			r.Get("/files/{id}", s.getFile)

@@ -63,6 +63,9 @@ class _FakeApi extends Api {
   Future<List<PinnedComponent>> pinnedComponents() async => const [];
 
   @override
+  Future<List<HomeSuggestion>> homeSuggestions() async => const [];
+
+  @override
   Future<ConversationDetail> conversation(String id, {String? focusMessageId, int limit = 30}) async {
     final c = convList.firstWhere((e) => e.id == id);
     return ConversationDetail(

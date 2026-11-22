@@ -57,6 +57,9 @@ class _FakeApi extends Api {
   Future<List<PinnedComponent>> pinnedComponents() async => const [];
 
   @override
+  Future<List<HomeSuggestion>> homeSuggestions() async => const [];
+
+  @override
   Future<ConversationDetail> conversation(String id, {String? focusMessageId}) async => ConversationDetail(
         conversation: Conversation(id: id, title: '周末去哪玩', pinned: false, isPrivate: false, createdAt: now, updatedAt: now),
         messages: [

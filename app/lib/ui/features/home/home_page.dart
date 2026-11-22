@@ -11,6 +11,7 @@ import '../../../state/incoming_share.dart';
 import '../../../state/pinned_components.dart';
 import '../../../state/schedules.dart';
 import '../../../state/session.dart';
+import '../../../state/suggestions.dart';
 import '../../adaptive/app_route.dart';
 import '../../adaptive/breakpoints.dart';
 import '../../desktop/desktop_home_layout.dart';
@@ -122,6 +123,7 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
       ref.read(sessionProvider.notifier).refresh();
       ref.invalidate(schedulesProvider);
       unawaited(ref.read(pinnedComponentsProvider.notifier).refresh());
+      unawaited(ref.read(homeSuggestionsProvider.notifier).refresh());
     } else if (state == AppLifecycleState.paused) {
       Speaker.instance.stop();
     }

@@ -296,6 +296,12 @@ class Api {
   Future<void> unpinComponent(String messageId, String compId) =>
       _req('DELETE', '/api/pinned-components/${Uri.encodeComponent(messageId)}/${Uri.encodeComponent(compId)}');
 
+  // ---- home suggestions ----
+  Future<List<HomeSuggestion>> homeSuggestions() async {
+    final d = await _req('GET', '/api/suggestions');
+    return ((d['items'] as List?) ?? const []).map((e) => HomeSuggestion.fromJson((e as Map).cast())).toList();
+  }
+
   Future<void> cancel(String messageId) => _req('POST', '/api/messages/$messageId/cancel');
 
   /// Opens the SSE stream for a generation. The stream ends after `done`

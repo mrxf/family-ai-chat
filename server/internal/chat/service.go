@@ -82,6 +82,9 @@ type Service struct {
 	compactCtx     context.Context
 	compactCancel  context.CancelFunc
 	compactClosed  bool
+
+	suggestMu      sync.Mutex
+	suggestRunning map[string]bool
 }
 
 func NewService(st *store.Store, dataDir string, log *slog.Logger) *Service {
@@ -96,6 +99,7 @@ func NewService(st *store.Store, dataDir string, log *slog.Logger) *Service {
 		compactSlots:   make(chan struct{}, 2),
 		compactCtx:     cctx,
 		compactCancel:  ccancel,
+		suggestRunning: map[string]bool{},
 	}
 	svc.RegisterRouter(&llmModelRouter{svc: svc})
 	svc.Skills = skills.NewRegistry(

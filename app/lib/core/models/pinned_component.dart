@@ -1,6 +1,21 @@
 import 'json_read.dart';
 import 'message.dart';
 
+/// A personalized prompt suggestion displayed in the home "猜你想问" card.
+class HomeSuggestion {
+  final String emoji;
+  final String text;
+
+  const HomeSuggestion({required this.emoji, required this.text});
+
+  factory HomeSuggestion.fromJson(Map<String, dynamic> j) => HomeSuggestion(
+        emoji: asStr(j['emoji']),
+        text: asStr(j['text']),
+      );
+
+  Map<String, dynamic> toJson() => {'emoji': emoji, 'text': text};
+}
+
 /// A message component pinned to the user's home board.
 class PinnedComponent {
   final String id;
