@@ -1,0 +1,58 @@
+app/lib/core/api.dart
+  h_8f297825d1fe21 299-304
+app/lib/core/models/pinned_component.dart
+  h_8f297825d1fe21 4-18
+app/lib/state/suggestions.dart
+  h_8f297825d1fe21 1-87
+app/lib/ui/features/chat/components/suggestions_card.dart
+  h_8f297825d1fe21 4,6-7,14-25,29-32,37-40,53,56-62,64-111,116,124-126,128,159,167,193,198-199,204
+app/lib/ui/features/home/home_page.dart
+  h_8f297825d1fe21 14,126
+app/test/adaptive_layout_test.dart
+  h_8f297825d1fe21 59-61
+app/test/auto_mode_test.dart
+  h_8f297825d1fe21 61-63
+app/test/chat_ux_fixes_test.dart
+  h_8f297825d1fe21 65-67
+app/test/incoming_share_test.dart
+  h_8f297825d1fe21 76-78
+app/test/pinned_components_test.dart
+  h_8f297825d1fe21 6,29-45,49,158-188
+app/test/private_chat_test.dart
+  h_8f297825d1fe21 67-69
+app/test/share_chat_test.dart
+  h_8f297825d1fe21 49-51
+server/internal/api/helpers_test.go
+  h_8f297825d1fe21 138-140,182,188-192
+server/internal/api/server.go
+  h_8f297825d1fe21 123
+server/internal/api/suggestions.go
+  h_8f297825d1fe21 1-12
+server/internal/api/suggestions_test.go
+  h_8f297825d1fe21 1-155
+server/internal/chat/service.go
+  h_8f297825d1fe21 85-87,102
+server/internal/chat/suggestions.go
+  h_8f297825d1fe21 1-322
+server/internal/store/copy.go
+  h_8f297825d1fe21 13
+server/internal/store/migrations/postgres/016_user_suggestions.sql
+  h_8f297825d1fe21 1-7
+server/internal/store/migrations/sqlite/016_user_suggestions.sql
+  h_8f297825d1fe21 1-7
+server/internal/store/store_test.go
+  h_8f297825d1fe21 83
+server/internal/store/suggestions.go
+  h_8f297825d1fe21 1-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "b0760b59ea712b175104995fd3a7ae6ad74bc5a5",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
