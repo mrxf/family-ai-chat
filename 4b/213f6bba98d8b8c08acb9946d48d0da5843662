@@ -1,0 +1,64 @@
+app/lib/core/models/schedule.dart
+  h_8f297825d1fe21 220-245
+app/lib/state/desktop_nav.dart
+  h_8f297825d1fe21 1-108
+app/lib/ui/adaptive/adaptive_modal.dart
+  h_8f297825d1fe21 1-50
+app/lib/ui/adaptive/app_route.dart
+  h_8f297825d1fe21 3,10-11,26
+app/lib/ui/desktop/desktop_home_layout.dart
+  h_8f297825d1fe21 7-10,12-16,22-23,25-27,29-31,33-38,43-51,53-85,89,92-107,112,115-117,130-150,155-177
+app/lib/ui/desktop/desktop_page_header.dart
+  h_8f297825d1fe21 1-103
+app/lib/ui/desktop/desktop_settings_panes.dart
+  h_8f297825d1fe21 1-503
+app/lib/ui/desktop/desktop_settings_sidebar.dart
+  h_8f297825d1fe21 1-272
+app/lib/ui/features/admin/admin_users_page.dart
+  h_8f297825d1fe21 9-10,21-23,32-109,119,134,136
+app/lib/ui/features/admin/asr_page.dart
+  h_8f297825d1fe21 8,18-20,265,267-282,284-291,305-324,345
+app/lib/ui/features/admin/models_page.dart
+  h_8f297825d1fe21 11,22-24,29-36,41-68
+app/lib/ui/features/admin/usage_page.dart
+  h_8f297825d1fe21 8,22-24,36-41,44-58,61-80
+app/lib/ui/features/admin/web_search_page.dart
+  h_8f297825d1fe21 8,17-19,222,224-239,241-248,263-282,303
+app/lib/ui/features/auth/invite_generator_sheet.dart
+  h_8f297825d1fe21 8,14,25,27
+app/lib/ui/features/auth/self_host_info_sheet.dart
+  h_8f297825d1fe21 4,6,8,15,17,19,94-98
+app/lib/ui/features/conversations/conversation_panel.dart
+  h_8f297825d1fe21 7,11,45-47,56-58,63-85,96,98-101,147-149,195,213,242-244,248,254,258-263,277
+app/lib/ui/features/home/home_page.dart
+  h_8f297825d1fe21 10,73-76,103
+app/lib/ui/features/memories/memories_page.dart
+  h_8f297825d1fe21 7,11,20-22,80-85,91,111,114-340,358
+app/lib/ui/features/memories/memory_editor.dart
+  h_8f297825d1fe21 6,16,18
+app/lib/ui/features/schedules/schedule_editor.dart
+  h_8f297825d1fe21 5,16,18
+app/lib/ui/features/schedules/schedules_page.dart
+  h_8f297825d1fe21 10,18-22,118-131,154,197-201,203-204,214-526,551,589-591,599-601,720-739
+app/lib/ui/features/settings/settings_dialogs.dart
+  h_8f297825d1fe21 1-111
+app/lib/ui/features/settings/settings_page.dart
+  h_8f297825d1fe21 24,27,63-64,254,256
+app/lib/ui/widgets/sheets.dart
+  h_8f297825d1fe21 8,24,26,28,82,85,87
+app/test/desktop_workspace_test.dart
+  h_8f297825d1fe21 1-208
+app/test/schedules_ui_test.dart
+  h_8f297825d1fe21 188-233
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "4b213f6bba98d8b8c08acb9946d48d0da5843662",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
