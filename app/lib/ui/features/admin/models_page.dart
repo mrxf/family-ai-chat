@@ -8,6 +8,7 @@ import '../../../core/models/models.dart';
 import '../../../state/catalog.dart';
 import '../../../state/session.dart';
 import '../../adaptive/app_route.dart';
+import '../../desktop/desktop_page_header.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
@@ -18,22 +19,52 @@ import 'provider_pages.dart';
 
 /// 设置 → 模型与供应商: who answers the family, which models they see, and where they come from.
 class ModelsPage extends ConsumerWidget {
-  const ModelsPage({super.key});
+  const ModelsPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final catalog = ref.watch(catalogProvider);
-    return Scaffold(
-      appBar: AppBar(title: const Text('模型与供应商')),
-      body: catalog.when(
-        skipLoadingOnReload: true,
-        loading: () => const LoadingView(),
-        error: (e, _) => ErrorView(message: ApiError.from(e).message, onRetry: () => ref.invalidate(catalogProvider)),
-        data: (c) => RefreshIndicator(
-          onRefresh: () => ref.read(catalogProvider.notifier).reload(),
+    final body = catalog.when(
+      skipLoadingOnReload: true,
+      loading: () => const LoadingView(),
+      error: (e, _) => ErrorView(message: ApiError.from(e).message, onRetry: () => ref.invalidate(catalogProvider)),
+      data: (c) => RefreshIndicator(
+        onRefresh: () => ref.read(catalogProvider.notifier).reload(),
+        child: DesktopPageBody(
+          maxWidth: embedded ? 860 : double.infinity,
           child: c.providers.isEmpty ? _Empty() : _Body(c),
         ),
       ),
+    );
+    if (embedded) {
+      return Scaffold(
+        body: Column(
+          children: [
+            DesktopPageHeader(
+              title: '模型与供应商',
+              subtitle: '配置默认模型、Auto 智能选模型、生图与上游供应商',
+              actions: [
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 40),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                  onPressed: () => openAddProvider(context),
+                  icon: const AppIcon(AppIcons.plus, size: 17),
+                  label: const Text('添加供应商', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
+            Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: body)),
+          ],
+        ),
+      );
+    }
+    return Scaffold(
+      appBar: AppBar(title: const Text('模型与供应商')),
+      body: body,
     );
   }
 }

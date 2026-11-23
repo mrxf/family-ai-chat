@@ -5,12 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api.dart';
 import '../../../core/invite_code.dart';
 import '../../../state/session.dart';
+import '../../adaptive/adaptive_modal.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
 import '../admin/admin_common.dart';
 
-/// Bottom sheet to generate and copy an encrypted `#xn...xn#` invite message for family members.
+/// Modal to generate and copy an encrypted `#xn...xn#` invite message for family members.
 Future<void> showInviteGeneratorSheet(
   BuildContext context,
   WidgetRef ref, {
@@ -21,9 +22,9 @@ Future<void> showInviteGeneratorSheet(
   bool lockAccount = false,
 }) {
   final server = effectiveServer(initialServer ?? ref.read(sessionProvider).server);
-  return showModalBottomSheet<void>(
+  return showAdaptiveModal<void>(
     context: context,
-    isScrollControlled: true,
+    maxWidth: 500,
     builder: (_) => _InviteGeneratorSheet(
       server: server,
       initialUsername: initialUsername,

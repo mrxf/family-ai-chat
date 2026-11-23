@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/models.dart';
 import '../../../state/chat.dart';
 import '../../../state/conversations.dart';
+import '../../../state/desktop_nav.dart';
 import '../../../state/schedules.dart';
 import '../../../state/session.dart';
 import '../../adaptive/app_route.dart';
+import '../../adaptive/breakpoints.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
@@ -40,6 +42,9 @@ class ConversationPanel extends ConsumerWidget {
   void _open(BuildContext context, WidgetRef ref, Conversation c) {
     FocusManager.instance.primaryFocus?.unfocus();
     _dismiss(context);
+    if (!inDrawer && context.windowSize.isExpanded) {
+      ref.read(desktopNavProvider.notifier).showChat();
+    }
     ref.read(chatProvider.notifier).open(c.id);
   }
 
@@ -48,8 +53,34 @@ class ConversationPanel extends ConsumerWidget {
     if (convId != null && context.mounted) {
       FocusManager.instance.primaryFocus?.unfocus();
       _dismiss(context);
+      if (!inDrawer && context.windowSize.isExpanded) {
+        ref.read(desktopNavProvider.notifier).showChat();
+      }
       ref.read(chatProvider.notifier).open(convId);
     }
+  }
+
+  void _openSchedules(BuildContext context, WidgetRef ref) {
+    _dismiss(context);
+    if (!inDrawer && context.windowSize.isExpanded) {
+      final nav = ref.read(desktopNavProvider);
+      if (nav.section == DesktopSection.schedules) {
+        ref.read(desktopNavProvider.notifier).showChat();
+      } else {
+        ref.read(desktopNavProvider.notifier).showSchedules();
+      }
+      return;
+    }
+    Navigator.of(context).push(appRoute((_) => const SchedulesPage()));
+  }
+
+  void _openSettings(BuildContext context, WidgetRef ref) {
+    _dismiss(context);
+    if (!inDrawer && context.windowSize.isExpanded) {
+      ref.read(desktopNavProvider.notifier).openSettings();
+      return;
+    }
+    Navigator.of(context).push(appRoute((_) => const SettingsPage()));
   }
 
   @override
@@ -62,8 +93,12 @@ class ConversationPanel extends ConsumerWidget {
     final user = session.user;
     final items = list.items;
     final schedules = ref.watch(schedulesProvider).value;
-    final pendingSchedules = schedules?.activeTotal ?? 0;
+    final pendingSchedules = schedules?.pendingTotal ?? 0;
     final todayPending = schedules?.todayPending ?? 0;
+    final desktopSection = !inDrawer && context.windowSize.isExpanded
+        ? ref.watch(desktopNavProvider.select((s) => s.section))
+        : DesktopSection.chat;
+    final schedulesSelected = desktopSection == DesktopSection.schedules;
 
     final groups = groupByRecency(items, DateTime.now());
 
@@ -109,6 +144,9 @@ class ConversationPanel extends ConsumerWidget {
             scale: 0.98,
             onTap: () {
               _dismiss(context);
+              if (!inDrawer && context.windowSize.isExpanded) {
+                ref.read(desktopNavProvider.notifier).showChat();
+              }
               ref.read(chatProvider.notifier).newChat();
             },
             child: Container(
@@ -154,7 +192,7 @@ class ConversationPanel extends ConsumerWidget {
                             for (final c in g.items)
                               _ConvTile(
                                 conv: c,
-                                selected: !isPrivate && c.id == currentId,
+                                selected: desktopSection == DesktopSection.chat && !isPrivate && c.id == currentId,
                                 onTap: () => _open(context, ref, c),
                                 onLongPress: () => showConversationMenu(context, ref, c),
                               ),
@@ -172,10 +210,7 @@ class ConversationPanel extends ConsumerWidget {
               Expanded(
                 child: InkWell(
                   borderRadius: BorderRadius.circular(14),
-                  onTap: () {
-                    _dismiss(context);
-                    Navigator.of(context).push(appRoute((_) => const SettingsPage()));
-                  },
+                  onTap: () => _openSettings(context, ref),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                     child: Row(children: [
@@ -204,25 +239,28 @@ class ConversationPanel extends ConsumerWidget {
                     label: '我的日程，$pendingSchedules 项未完成',
                     child: Pressable(
                       scale: 0.94,
-                      onTap: () {
-                        _dismiss(context);
-                        Navigator.of(context).push(appRoute((_) => const SchedulesPage()));
-                      },
-                      child: Container(
+                      onTap: () => _openSchedules(context, ref),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
                         constraints: const BoxConstraints(minHeight: 34),
                         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
                         decoration: BoxDecoration(
-                          color: p.accentSoft,
+                          color: schedulesSelected ? p.accent : p.accentSoft,
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            AppIcon(AppIcons.calendar, color: p.accent, size: 15.5),
+                            AppIcon(AppIcons.calendar, color: schedulesSelected ? Colors.white : p.accent, size: 15.5),
                             const SizedBox(width: 4),
                             Text(
                               '$pendingSchedules',
-                              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: p.accent, height: 1),
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: schedulesSelected ? Colors.white : p.accent,
+                                height: 1,
+                              ),
                             ),
                           ],
                         ),
@@ -236,10 +274,7 @@ class ConversationPanel extends ConsumerWidget {
                 message: '设置',
                 child: Pressable(
                   scale: 0.92,
-                  onTap: () {
-                    _dismiss(context);
-                    Navigator.of(context).push(appRoute((_) => const SettingsPage()));
-                  },
+                  onTap: () => _openSettings(context, ref),
                   child: Padding(
                     padding: const EdgeInsets.all(8),
                     child: AppIcon(AppIcons.settings, color: p.muted, size: 21),

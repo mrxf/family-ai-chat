@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/admin_models.dart';
 import '../../../core/api.dart';
 import '../../../state/session.dart';
+import '../../desktop/desktop_page_header.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
@@ -13,7 +14,9 @@ import 'admin_common.dart';
 final _searchStateProvider = FutureProvider.autoDispose<AdminSearchState>((ref) => ref.watch(apiProvider).adminSearch());
 
 class WebSearchAdminPage extends ConsumerStatefulWidget {
-  const WebSearchAdminPage({super.key});
+  const WebSearchAdminPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   ConsumerState<WebSearchAdminPage> createState() => _WebSearchAdminPageState();
@@ -216,11 +219,33 @@ class _WebSearchAdminPageState extends ConsumerState<WebSearchAdminPage> {
   Widget build(BuildContext context) {
     final asyncState = ref.watch(_searchStateProvider);
     final p = context.pal;
+    final embedded = widget.embedded;
+
+    Widget wrapShell({required Widget body, List<Widget> desktopActions = const [], Widget? mobileBottomBar}) {
+      if (embedded) {
+        return Scaffold(
+          body: Column(
+            children: [
+              DesktopPageHeader(
+                title: '联网搜索',
+                subtitle: '开启后，小暖在回答实时新闻、天气或政策问题时会自动联网查证',
+                actions: desktopActions,
+              ),
+              Expanded(child: DesktopPageBody(child: body)),
+            ],
+          ),
+        );
+      }
+      return Scaffold(
+        appBar: AppBar(title: const Text('联网搜索')),
+        bottomNavigationBar: mobileBottomBar,
+        body: body,
+      );
+    }
 
     return asyncState.when(
-      loading: () => Scaffold(appBar: AppBar(title: const Text('联网搜索')), body: const LoadingView()),
-      error: (e, _) => Scaffold(
-        appBar: AppBar(title: const Text('联网搜索')),
+      loading: () => wrapShell(body: const LoadingView()),
+      error: (e, _) => wrapShell(
         body: ErrorView(message: ApiError.from(e).message, onRetry: () => ref.invalidate(_searchStateProvider)),
       ),
       data: (state) {
@@ -235,9 +260,26 @@ class _WebSearchAdminPageState extends ConsumerState<WebSearchAdminPage> {
         final isActiveThis = state.enabled && state.active == current.kind;
         final canReuse = !current.hasKey && current.reusableProviderKeyHint.isNotEmpty && _apiKey.text.trim().isEmpty;
 
-        return Scaffold(
-          appBar: AppBar(title: const Text('联网搜索')),
-          bottomNavigationBar: BottomBar(
+        return wrapShell(
+          desktopActions: [
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 14)),
+              onPressed: _saving || _testing ? null : () => _runTest(current),
+              icon: _testing
+                  ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const AppIcon(AppIcons.connectionTest, size: 17),
+              label: const Text('测试连接', style: TextStyle(fontSize: 14)),
+            ),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 16)),
+              onPressed: _testing || _saving ? null : () => _saveAndEnable(current),
+              icon: _saving
+                  ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const AppIcon(AppIcons.globe, size: 17),
+              label: Text(isActiveThis ? '保存并更新' : '测试并启用', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            ),
+          ],
+          mobileBottomBar: BottomBar(
             child: Row(children: [
               SecondaryButton(
                 label: '测试连接',
@@ -258,7 +300,7 @@ class _WebSearchAdminPageState extends ConsumerState<WebSearchAdminPage> {
           ),
           body: ListView(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 44),
+            padding: embedded ? const EdgeInsets.fromLTRB(32, 20, 32, 44) : const EdgeInsets.fromLTRB(16, 8, 16, 44),
             children: [
               // ---- Master toggle hero card ----
               Pressable(

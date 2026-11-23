@@ -5,6 +5,7 @@ import '../../../core/models/admin_models.dart';
 import '../../../core/api.dart';
 import '../../../core/models/models.dart';
 import '../../../state/session.dart';
+import '../../desktop/desktop_page_header.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
@@ -18,7 +19,9 @@ final _usageProvider = FutureProvider.autoDispose.family<(UsageReport, List<User
 
 /// 设置 → 用量与花费.
 class UsagePage extends ConsumerStatefulWidget {
-  const UsagePage({super.key});
+  const UsagePage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   ConsumerState<UsagePage> createState() => _UsagePageState();
@@ -30,22 +33,51 @@ class _UsagePageState extends ConsumerState<UsagePage> {
   @override
   Widget build(BuildContext context) {
     final data = ref.watch(_usageProvider(_days));
-    return Scaffold(
-      appBar: AppBar(title: const Text('用量与花费')),
-      body: Column(children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+    final embedded = widget.embedded;
+    final content = Column(children: [
+      Padding(
+        padding: embedded ? const EdgeInsets.fromLTRB(32, 16, 32, 4) : const EdgeInsets.fromLTRB(16, 4, 16, 4),
+        child: DesktopPageBody(
+          maxWidth: embedded ? 860 : double.infinity,
           child: Choice<int>(value: _days, options: const [(7, '最近 7 天'), (30, '最近 30 天'), (90, '最近 90 天')], onChanged: (v) => setState(() => _days = v)),
         ),
-        Expanded(
-          child: data.when(
-            skipLoadingOnReload: true,
-            loading: () => const LoadingView(),
-            error: (e, _) => ErrorView(message: ApiError.from(e).message, onRetry: () => ref.invalidate(_usageProvider(_days))),
-            data: (d) => RefreshIndicator(onRefresh: () => ref.refresh(_usageProvider(_days).future), child: _body(context, d.$1, d.$2)),
+      ),
+      Expanded(
+        child: data.when(
+          skipLoadingOnReload: true,
+          loading: () => const LoadingView(),
+          error: (e, _) => ErrorView(message: ApiError.from(e).message, onRetry: () => ref.invalidate(_usageProvider(_days))),
+          data: (d) => RefreshIndicator(
+            onRefresh: () => ref.refresh(_usageProvider(_days).future),
+            child: DesktopPageBody(
+              maxWidth: embedded ? 860 : double.infinity,
+              child: Padding(
+                padding: embedded ? const EdgeInsets.symmetric(horizontal: 16) : EdgeInsets.zero,
+                child: _body(context, d.$1, d.$2),
+              ),
+            ),
           ),
         ),
-      ]),
+      ),
+    ]);
+
+    if (embedded) {
+      return Scaffold(
+        body: Column(
+          children: [
+            const DesktopPageHeader(
+              title: '用量与花费',
+              subtitle: '查看家庭成员与各模型的用量和费用明细',
+            ),
+            Expanded(child: content),
+          ],
+        ),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('用量与花费')),
+      body: content,
     );
   }
 

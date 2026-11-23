@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
-import '../../../core/api.dart';
 import '../../../platform/platform_capabilities.dart';
 import '../../../state/memories.dart';
 import '../../../state/schedules.dart';
@@ -22,9 +21,10 @@ import '../auth/invite_generator_sheet.dart';
 import '../auth/self_host_info_sheet.dart';
 import '../memories/memories_page.dart';
 import '../schedules/schedules_page.dart';
+import 'settings_dialogs.dart';
 import 'update.dart';
 
-const avatarChoices = ['', '👵', '👴', '👩', '👨', '👧', '👦', '🧑', '🐱', '🐶', '🐼', '🐰', '🦊', '🐻', '🌻', '🌈', '⭐', '🍀'];
+export 'settings_dialogs.dart' show avatarChoices;
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -60,8 +60,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final scheduleSubtitle = schedules.when(
       skipLoadingOnRefresh: false,
       data: (sc) => sc.todayPending > 0
-          ? '今天有 ${sc.todayPending} 项待办 · 共 ${sc.activeTotal} 项日程'
-          : (sc.activeTotal > 0 ? '共 ${sc.activeTotal} 项日程提醒' : '跟小暖说句话就能在手机上定准点提醒'),
+          ? '今天有 ${sc.todayPending} 项待办 · 共 ${sc.pendingTotal} 项日程'
+          : (sc.pendingTotal > 0 ? '共 ${sc.pendingTotal} 项日程提醒' : '跟小暖说句话就能在手机上定准点提醒'),
       loading: () => '跟小暖说句话就能在手机上定准点提醒',
       error: (_, _) => '跟小暖说句话就能在手机上定准点提醒',
     );
@@ -251,83 +251,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         _ => '很快',
       };
 
-  Future<void> _editProfile(BuildContext context, WidgetRef ref) async {
-    final user = ref.read(sessionProvider).user!;
-    final name = TextEditingController(text: user.displayName);
-    var avatar = user.avatar;
-    final ok = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
-        final p = ctx.pal;
-        return Padding(
-          padding: EdgeInsets.fromLTRB(20, 0, 20, MediaQuery.viewInsetsOf(ctx).bottom + 20),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text('个人资料', style: Theme.of(ctx).textTheme.titleMedium),
-            const SizedBox(height: 16),
-            Center(child: Avatar(label: name.text, emoji: avatar, size: 72)),
-            const SizedBox(height: 14),
-            Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
-              for (final e in avatarChoices)
-                Pressable(
-                  onTap: () => setS(() => avatar = e),
-                  child: Container(
-                    decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: avatar == e ? p.accent : Colors.transparent, width: 2)),
-                    padding: const EdgeInsets.all(2),
-                    child: Avatar(label: name.text, emoji: e, size: 40),
-                  ),
-                ),
-            ]),
-            const SizedBox(height: 16),
-            TextField(
-              controller: name,
-              maxLength: 20,
-              onChanged: (_) => setS(() {}),
-              style: const TextStyle(fontSize: 17),
-              decoration: const InputDecoration(labelText: '称呼（小暖会这样叫你）'),
-            ),
-            const SizedBox(height: 8),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存')),
-          ]),
-        );
-      }),
-    );
-    if (ok != true) return;
-    try {
-      final u = await ref.read(apiProvider).updateMe({'display_name': name.text.trim(), 'avatar': avatar});
-      ref.read(sessionProvider.notifier).setUser(u);
-      if (context.mounted) showToast(context, '已保存');
-    } on ApiError catch (e) {
-      if (context.mounted) showToast(context, e.message);
-    }
-  }
+  Future<void> _editProfile(BuildContext context, WidgetRef ref) => showEditProfileDialog(context, ref);
 
-  Future<void> _changePassword(BuildContext context, WidgetRef ref) async {
-    final old = TextEditingController(), nw = TextEditingController();
-    final ok = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(20, 0, 20, MediaQuery.viewInsetsOf(ctx).bottom + 20),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('修改密码', style: Theme.of(ctx).textTheme.titleMedium),
-          const SizedBox(height: 16),
-          TextField(controller: old, obscureText: true, decoration: const InputDecoration(labelText: '原密码')),
-          const SizedBox(height: 12),
-          TextField(controller: nw, obscureText: true, decoration: const InputDecoration(labelText: '新密码（至少 6 位）')),
-          const SizedBox(height: 16),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确认修改')),
-        ]),
-      ),
-    );
-    if (ok != true) return;
-    try {
-      await ref.read(apiProvider).updateMe({'old_password': old.text, 'new_password': nw.text});
-      if (context.mounted) showToast(context, '密码已修改');
-    } on ApiError catch (e) {
-      if (context.mounted) showToast(context, e.message);
-    }
-  }
+  Future<void> _changePassword(BuildContext context, WidgetRef ref) => showChangePasswordDialog(context, ref);
 }
 
 /// Five font sizes on a stepped slider, with a live preview.

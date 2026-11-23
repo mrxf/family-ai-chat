@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/admin_models.dart';
 import '../../../core/api.dart';
 import '../../../state/session.dart';
+import '../../desktop/desktop_page_header.dart';
 import '../../theme/icons.dart';
 import '../../widgets/sheets.dart';
 import '../../theme/theme.dart';
@@ -14,7 +15,9 @@ import 'admin_common.dart';
 final _asrStateProvider = FutureProvider.autoDispose<AdminAsrState>((ref) => ref.watch(apiProvider).adminAsr());
 
 class AsrAdminPage extends ConsumerStatefulWidget {
-  const AsrAdminPage({super.key});
+  const AsrAdminPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   ConsumerState<AsrAdminPage> createState() => _AsrAdminPageState();
@@ -259,11 +262,33 @@ class _AsrAdminPageState extends ConsumerState<AsrAdminPage> {
   Widget build(BuildContext context) {
     final asyncState = ref.watch(_asrStateProvider);
     final p = context.pal;
+    final embedded = widget.embedded;
+
+    Widget wrapShell({required Widget body, List<Widget> desktopActions = const [], Widget? mobileBottomBar}) {
+      if (embedded) {
+        return Scaffold(
+          body: Column(
+            children: [
+              DesktopPageHeader(
+                title: '语音输入',
+                subtitle: '配置语音转文字服务后，聊天框将显示麦克风入口',
+                actions: desktopActions,
+              ),
+              Expanded(child: DesktopPageBody(child: body)),
+            ],
+          ),
+        );
+      }
+      return Scaffold(
+        appBar: AppBar(title: const Text('语音输入')),
+        bottomNavigationBar: mobileBottomBar,
+        body: body,
+      );
+    }
 
     return asyncState.when(
-      loading: () => Scaffold(appBar: AppBar(title: const Text('语音输入')), body: const LoadingView()),
-      error: (e, _) => Scaffold(
-        appBar: AppBar(title: const Text('语音输入')),
+      loading: () => wrapShell(body: const LoadingView()),
+      error: (e, _) => wrapShell(
         body: ErrorView(message: ApiError.from(e).message, onRetry: () => ref.invalidate(_asrStateProvider)),
       ),
       data: (state) {
@@ -277,9 +302,26 @@ class _AsrAdminPageState extends ConsumerState<AsrAdminPage> {
         final current = state.byKind(_selectedKind) ?? state.providers.first;
         final isActiveThis = state.enabled && state.active == current.kind;
 
-        return Scaffold(
-          appBar: AppBar(title: const Text('语音输入')),
-          bottomNavigationBar: BottomBar(
+        return wrapShell(
+          desktopActions: [
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 14)),
+              onPressed: _saving || _testing ? null : () => _runTest(current),
+              icon: _testing
+                  ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const AppIcon(AppIcons.connectionTest, size: 17),
+              label: const Text('测试连接', style: TextStyle(fontSize: 14)),
+            ),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 16)),
+              onPressed: _testing || _saving ? null : () => _saveAndEnable(current),
+              icon: _saving
+                  ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const AppIcon(AppIcons.mic, size: 17),
+              label: Text(isActiveThis ? '保存并更新' : '测试并启用', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            ),
+          ],
+          mobileBottomBar: BottomBar(
             child: Row(children: [
               SecondaryButton(
                 label: '测试连接',
@@ -300,7 +342,7 @@ class _AsrAdminPageState extends ConsumerState<AsrAdminPage> {
           ),
           body: ListView(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 44),
+            padding: embedded ? const EdgeInsets.fromLTRB(32, 20, 32, 44) : const EdgeInsets.fromLTRB(16, 8, 16, 44),
             children: [
               // ---- Master toggle hero card ----
               Pressable(

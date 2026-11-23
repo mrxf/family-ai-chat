@@ -185,6 +185,52 @@ void main() {
     expect(find.byIcon(AppIcons.calendar), findsOneWidget);
     expect(find.text('3'), findsOneWidget);
   });
+
+  testWidgets('Completed schedules are hidden by default and excluded from pendingTotal', (tester) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final pending = Schedule(id: 's1', title: '未完成任务', startAt: now, allDay: true);
+    final doneOneOff = Schedule(id: 's2', title: '已完成的单次任务', startAt: now, allDay: true, status: 'completed');
+    final doneRecurring = Schedule(id: 's3', title: '今日已打卡的周期任务', startAt: now, allDay: true, recurrence: ScheduleRecurrence.daily);
+
+    final sample = SchedulesResult(
+      schedules: [pending, doneOneOff, doneRecurring],
+      todayOccurrences: [
+        ScheduleOccurrence(schedule: pending, occurrenceDate: '2026-11-21', startAt: now, completed: false),
+        ScheduleOccurrence(schedule: doneOneOff, occurrenceDate: '2026-11-21', startAt: now, completed: true),
+        ScheduleOccurrence(schedule: doneRecurring, occurrenceDate: '2026-11-21', startAt: now, completed: true),
+      ],
+      todayPending: 1,
+      activeTotal: 2,
+    );
+
+    // Only the 1 truly unfinished schedule counts in pendingTotal.
+    expect(sample.pendingTotal, 1);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          schedulesProvider.overrideWith((_) async => sample),
+          notificationPermissionProvider.overrideWith((_) async => true),
+        ],
+        child: MaterialApp(
+          theme: buildTheme(Brightness.light),
+          home: const SchedulesPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('未完成任务'), findsOneWidget);
+    expect(find.text('已完成的单次任务'), findsNothing);
+    expect(find.text('今日已打卡的周期任务'), findsNothing);
+    expect(find.text('已完成（2）'), findsOneWidget);
+
+    // Expanding "已完成（2）" reveals both completed items.
+    await tester.tap(find.text('已完成（2）'));
+    await tester.pumpAndSettle();
+    expect(find.text('已完成的单次任务'), findsOneWidget);
+    expect(find.text('今日已打卡的周期任务'), findsOneWidget);
+  });
 }
 
 class _StubSession extends SessionNotifier {

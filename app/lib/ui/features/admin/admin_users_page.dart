@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api.dart';
 import '../../../core/models/models.dart';
 import '../../../state/session.dart';
+import '../../adaptive/adaptive_modal.dart';
+import '../../desktop/desktop_page_header.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
@@ -16,7 +18,9 @@ import '../settings/settings_page.dart' show avatarChoices;
 final _usersProvider = FutureProvider.autoDispose<List<User>>((ref) => ref.watch(apiProvider).adminUsers());
 
 class AdminUsersPage extends ConsumerWidget {
-  const AdminUsersPage({super.key});
+  const AdminUsersPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -24,6 +28,84 @@ class AdminUsersPage extends ConsumerWidget {
     final users = ref.watch(_usersProvider);
     final me = ref.watch(sessionProvider).user;
     if (me == null) return const Scaffold();
+
+    final body = users.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text(ApiError.from(e).message)),
+      data: (list) => RefreshIndicator(
+        onRefresh: () => ref.refresh(_usersProvider.future),
+        child: ListView(
+          padding: embedded ? const EdgeInsets.fromLTRB(32, 20, 32, 40) : const EdgeInsets.fromLTRB(16, 8, 16, 100),
+          children: [
+            DesktopPageBody(
+              maxWidth: embedded ? 860 : double.infinity,
+              child: Column(
+                children: [
+                  for (var i = 0; i < list.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 10),
+                    Builder(
+                      builder: (_) {
+                        final u = list[i];
+                        final disabled = u.disabled;
+                        return Pressable(
+                          scale: 0.98,
+                          onTap: () => _actions(context, ref, u, isMe: u.id == me.id),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(color: p.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: p.line)),
+                            child: Row(children: [
+                              Opacity(opacity: disabled ? 0.4 : 1, child: Avatar(label: u.displayName, emoji: u.avatar, size: 48)),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  Row(children: [
+                                    Flexible(child: Text(u.displayName, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600))),
+                                    if (u.isAdmin) _badge(p, '管理员', p.accent),
+                                    if (u.id == me.id) _badge(p, '我', p.muted),
+                                  ]),
+                                  const SizedBox(height: 3),
+                                  Text(disabled ? '已停用 · 不能登录' : '用户名：${u.username}', style: TextStyle(fontSize: 14, color: disabled ? p.bad : p.muted)),
+                                ]),
+                              ),
+                              AppIcon(AppIcons.more, color: p.faint),
+                            ]),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (embedded) {
+      return Scaffold(
+        body: Column(
+          children: [
+            DesktopPageHeader(
+              title: '家庭成员',
+              subtitle: '给家人创建账号、重置密码或管理停用状态',
+              actions: [
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 40),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                  onPressed: () => _create(context, ref),
+                  icon: const AppIcon(AppIcons.userPlus, size: 17),
+                  label: const Text('添加家人', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
+            Expanded(child: body),
+          ],
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('家庭成员')),
@@ -34,46 +116,7 @@ class AdminUsersPage extends ConsumerWidget {
         icon: const AppIcon(AppIcons.userPlus, size: 21),
         label: const Text('添加家人', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
       ),
-      body: users.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(ApiError.from(e).message)),
-        data: (list) => RefreshIndicator(
-          onRefresh: () => ref.refresh(_usersProvider.future),
-          child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-            itemCount: list.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 10),
-            itemBuilder: (_, i) {
-              final u = list[i];
-              final disabled = u.disabled;
-              return Pressable(
-                scale: 0.98,
-                onTap: () => _actions(context, ref, u, isMe: u.id == me.id),
-                child: Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(color: p.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: p.line)),
-                  child: Row(children: [
-                    Opacity(opacity: disabled ? 0.4 : 1, child: Avatar(label: u.displayName, emoji: u.avatar, size: 48)),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Row(children: [
-                          Flexible(child: Text(u.displayName, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600))),
-                          if (u.isAdmin) _badge(p, '管理员', p.accent),
-                          if (u.id == me.id) _badge(p, '我', p.muted),
-                        ]),
-                        const SizedBox(height: 3),
-                        Text(disabled ? '已停用 · 不能登录' : '用户名：${u.username}', style: TextStyle(fontSize: 14, color: disabled ? p.bad : p.muted)),
-                      ]),
-                    ),
-                    AppIcon(AppIcons.more, color: p.faint),
-                  ]),
-                ),
-              );
-            },
-          ),
-        ),
-      ),
+      body: body,
     );
   }
 
@@ -88,9 +131,9 @@ class AdminUsersPage extends ConsumerWidget {
     final name = TextEditingController(), username = TextEditingController(), pass = TextEditingController(text: _randomPassword());
     var avatar = '';
     var admin = false;
-    final ok = await showModalBottomSheet<bool>(
+    final ok = await showAdaptiveModal<bool>(
       context: context,
-      isScrollControlled: true,
+      maxWidth: 480,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
         final p = ctx.pal;
         return Padding(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/api.dart';
 import '../../../core/models/models.dart';
+import '../../adaptive/adaptive_modal.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
@@ -12,10 +13,9 @@ Future<ScheduleDraft?> showScheduleEditor(
   Schedule? existing,
   Future<void> Function(ScheduleDraft)? onSave,
 }) =>
-    showModalBottomSheet<ScheduleDraft>(
+    showAdaptiveModal<ScheduleDraft>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
+      maxWidth: 520,
       isDismissible: false,
       enableDrag: false,
       builder: (_) => _ScheduleEditorSheet(title: title, existing: existing, onSave: onSave),

@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../state/desktop_nav.dart';
 import '../../../state/session.dart';
+import '../../adaptive/adaptive_modal.dart';
 import '../../adaptive/app_route.dart';
+import '../../adaptive/breakpoints.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../admin/admin_common.dart';
 import '../admin/admin_users_page.dart';
 import 'invite_generator_sheet.dart';
 
-/// Sheet presented from Home (`Welcome`) or `SettingsPage` showcasing self-hosted status & family invite tools.
+/// Modal presented from Home (`Welcome`) or `SettingsPage` showcasing self-hosted status & family invite tools.
 Future<void> showSelfHostInfoSheet(BuildContext context, WidgetRef ref) {
-  return showModalBottomSheet<void>(
+  return showAdaptiveModal<void>(
     context: context,
-    isScrollControlled: true,
+    maxWidth: 480,
     builder: (ctx) {
       final p = ctx.pal;
       final session = ref.watch(sessionProvider);
@@ -88,7 +91,11 @@ Future<void> showSelfHostInfoSheet(BuildContext context, WidgetRef ref) {
                   icon: AppIcons.family,
                   onTap: () {
                     Navigator.pop(ctx);
-                    Navigator.of(context).push(appRoute((_) => const AdminUsersPage()));
+                    if (context.windowSize.isExpanded) {
+                      ref.read(desktopNavProvider.notifier).openSettings(SettingsTab.adminUsers);
+                    } else {
+                      Navigator.of(context).push(appRoute((_) => const AdminUsersPage()));
+                    }
                   },
                 ),
               ],

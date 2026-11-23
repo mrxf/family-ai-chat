@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/models.dart';
 import '../../state/chat.dart';
 import '../../state/session.dart';
+import '../adaptive/adaptive_modal.dart';
 import '../adaptive/app_route.dart';
 import '../features/share/share_page.dart';
 import '../theme/icons.dart';
@@ -20,10 +21,11 @@ class SheetAction {
   const SheetAction(this.icon, this.label, this.onTap, {this.subtitle, this.danger = false});
 }
 
-/// A simple bottom sheet of large, easy-to-hit actions.
+/// A simple action sheet (bottom sheet on mobile, centered dialog on desktop).
 Future<void> showActionSheet(BuildContext context, {String? title, required List<SheetAction> actions}) {
-  return showModalBottomSheet(
+  return showAdaptiveModal<void>(
     context: context,
+    maxWidth: 420,
     builder: (ctx) {
       final p = ctx.pal;
       return SafeArea(
@@ -77,12 +79,12 @@ Future<bool> confirm(BuildContext context, {required String title, String? body,
   return r == true;
 }
 
-/// Multi-line text editor in a bottom sheet (edit message / rename).
+/// Multi-line text editor (bottom sheet on mobile, dialog on desktop).
 Future<String?> showTextEditor(BuildContext context, {required String title, required String initial, String ok = '完成', int maxLines = 8, String? hint}) {
   final ctrl = TextEditingController(text: initial);
-  return showModalBottomSheet<String>(
+  return showAdaptiveModal<String>(
     context: context,
-    isScrollControlled: true,
+    maxWidth: 480,
     builder: (ctx) {
       final p = ctx.pal;
       return Padding(

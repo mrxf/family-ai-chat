@@ -7,6 +7,7 @@ import '../../../platform/platform_capabilities.dart';
 import '../../../platform/reminders/reminder_service.dart';
 import '../../../state/schedules.dart';
 import '../../../state/session.dart';
+import '../../desktop/desktop_page_header.dart';
 import '../../theme/icons.dart';
 import 'schedule_editor.dart';
 import '../../widgets/sheets.dart';
@@ -14,7 +15,11 @@ import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
 
 class SchedulesPage extends ConsumerStatefulWidget {
-  const SchedulesPage({super.key});
+  const SchedulesPage({super.key, this.embedded = false});
+
+  /// True when hosted inside the desktop workspace pane (uses desktop header
+  /// and top-right primary action instead of mobile AppBar + bottom bar).
+  final bool embedded;
 
   @override
   ConsumerState<SchedulesPage> createState() => _SchedulesPageState();
@@ -110,6 +115,20 @@ class _SchedulesPageState extends ConsumerState<SchedulesPage> with WidgetsBindi
     );
   }
 
+  Future<void> _deleteItem(Schedule item) async {
+    final ok = await confirm(
+      context,
+      title: item.isRecurring ? '删除周期提醒？' : '删除这条日程？',
+      body: item.isRecurring
+          ? '删除后，「${item.title}」以后的周期提醒也会全部停止。'
+          : '删除后无法恢复，手机上的对应提醒也会取消。',
+      ok: '删除',
+      danger: true,
+    );
+    if (!ok || !mounted) return;
+    await _mutate(() => ref.read(apiProvider).deleteSchedule(item.id), toast: '已删除日程');
+  }
+
   void _showItemMenu(Schedule item, {String? occurrenceDate, bool? occurrenceCompleted}) {
     final isDone = occurrenceCompleted ?? item.isCompleted;
     showActionSheet(
@@ -132,19 +151,7 @@ class _SchedulesPageState extends ConsumerState<SchedulesPage> with WidgetsBindi
         SheetAction(
           AppIcons.delete,
           item.isRecurring ? '删除整个周期提醒' : '删除这条日程',
-          () async {
-            final ok = await confirm(
-              context,
-              title: item.isRecurring ? '删除周期提醒？' : '删除这条日程？',
-              body: item.isRecurring
-                  ? '删除后，「${item.title}」以后的周期提醒也会全部停止。'
-                  : '删除后无法恢复，手机上的对应提醒也会取消。',
-              ok: '删除',
-              danger: true,
-            );
-            if (!ok || !mounted) return;
-            await _mutate(() => ref.read(apiProvider).deleteSchedule(item.id), toast: '已删除日程');
-          },
+          () => _deleteItem(item),
           danger: true,
         ),
       ],
@@ -187,8 +194,14 @@ class _SchedulesPageState extends ConsumerState<SchedulesPage> with WidgetsBindi
     final hasPerm = !caps.localReminders || (ref.watch(notificationPermissionProvider).value ?? true);
     final data = asyncData.value ?? const SchedulesResult();
 
+    final todayPendingOccs = data.todayOccurrences.where((o) => !o.completed).toList();
+    final tomorrowPendingOccs = data.tomorrowOccurrences.where((o) => !o.completed).toList();
+    final upcomingPendingOccs = data.upcomingOccurrences.where((o) => !o.completed).toList();
+    final todayCompletedRecurring = data.todayOccurrences.where((o) => o.completed && !o.schedule.isCompleted).toList();
+
     final completedItems = data.schedules.where((s) => s.isCompleted).toList();
-    // Far-future or recurring schedules that don't appear in today/tomorrow/upcoming windows
+    final completedTotal = todayCompletedRecurring.length + completedItems.length;
+    // Far-future schedules that don't appear in today/tomorrow/upcoming windows.
     final shownIds = <String>{
       for (final o in data.todayOccurrences) o.schedule.id,
       for (final o in data.tomorrowOccurrences) o.schedule.id,
@@ -198,11 +211,319 @@ class _SchedulesPageState extends ConsumerState<SchedulesPage> with WidgetsBindi
         .where((s) => !s.isCompleted && !shownIds.contains(s.id))
         .toList();
 
-    final isEmpty = data.todayOccurrences.isEmpty &&
-        data.tomorrowOccurrences.isEmpty &&
-        data.upcomingOccurrences.isEmpty &&
-        laterSchedules.isEmpty &&
-        completedItems.isEmpty;
+    final hasPending = todayPendingOccs.isNotEmpty ||
+        tomorrowPendingOccs.isNotEmpty ||
+        upcomingPendingOccs.isNotEmpty ||
+        laterSchedules.isNotEmpty;
+    final isEmpty = !hasPending && completedTotal == 0;
+    final pendingTotal = data.pendingTotal;
+
+    final embedded = widget.embedded;
+    final subtitle = todayPendingOccs.isNotEmpty
+        ? '今天有 ${todayPendingOccs.length} 项待办 · 共 $pendingTotal 项未完成日程'
+        : (pendingTotal > 0 ? '共 $pendingTotal 项未完成日程' : '在聊天里直接说出安排，或点击右上角手动添加');
+
+    final listContent = RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: embedded ? const EdgeInsets.fromLTRB(32, 20, 32, 36) : const EdgeInsets.fromLTRB(16, 8, 16, 28),
+        children: [
+          DesktopPageBody(
+            maxWidth: embedded ? 860 : double.infinity,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: p.surface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: p.line),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(12)),
+                        child: Center(child: AppIcon(AppIcons.calendar, color: p.accent, size: 22)),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          caps.localReminders
+                              ? '聊天时直接跟小暖说「明天早上八点提醒我吃药」或说出你的安排，小暖就会自动记在这里并在手机上准点提醒你。'
+                              : '聊天时直接跟小暖说「明天早上八点提醒我吃药」或说出你的安排，小暖就会自动记在这里，到点由手机上的小暖响铃提醒（电脑端暂不响铃）。',
+                          style: TextStyle(fontSize: 15, height: 1.45, color: p.muted),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!hasPerm) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                    decoration: BoxDecoration(
+                      color: p.accentSoft.withValues(alpha: 0.65),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: p.accent.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        AppIcon(AppIcons.bellOff, color: p.accent, size: 22),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            '尚未开启手机通知权限，开启后到点才能响铃提醒',
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: p.text),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _enableNotifications,
+                          child: const Text('去开启', style: TextStyle(fontWeight: FontWeight.w700)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                if (asyncData.isLoading && data.schedules.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 60),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 56, horizontal: 20),
+                    child: Column(
+                      children: [
+                        AppIcon(AppIcons.calendar, size: 46, color: p.faint),
+                        const SizedBox(height: 14),
+                        Text(
+                          '目前还没有待办日程',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: p.text),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          embedded ? '可以点右上角按钮手动添加，或者回聊天里直接告诉小暖你的安排' : '可以点下方按钮手动添加，或者回聊天里直接告诉小暖你的安排',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 15, color: p.muted, height: 1.5),
+                        ),
+                      ],
+                    ),
+                  )
+                else ...[
+                  if (!hasPending)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+                      child: Column(
+                        children: [
+                          AppIcon(AppIcons.checkCircle, size: 42, color: p.accent),
+                          const SizedBox(height: 12),
+                          Text(
+                            '当前没有未完成的日程',
+                            style: TextStyle(fontSize: 17.5, fontWeight: FontWeight.w600, color: p.text),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '已完成的日程已自动收起在下方',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 14.5, color: p.muted),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (todayPendingOccs.isNotEmpty) ...[
+                    _SectionHeader('今天', count: '待办 ${todayPendingOccs.length}'),
+                    for (final occ in todayPendingOccs)
+                      _OccurrenceCard(
+                        occ: occ,
+                        showDate: false,
+                        showQuickActions: embedded,
+                        onEdit: () => _openEditor(occ.schedule),
+                        onDelete: () => _deleteItem(occ.schedule),
+                        onToggle: () => _mutate(
+                          () => ref.read(apiProvider).toggleScheduleComplete(
+                                occ.schedule.id,
+                                completed: !occ.completed,
+                                occurrenceDate: occ.occurrenceDate,
+                              ),
+                        ),
+                        onTap: () => _showItemMenu(
+                          occ.schedule,
+                          occurrenceDate: occ.occurrenceDate,
+                          occurrenceCompleted: occ.completed,
+                        ),
+                      ),
+                  ],
+                  if (tomorrowPendingOccs.isNotEmpty) ...[
+                    _SectionHeader('明天', count: '${tomorrowPendingOccs.length} 项'),
+                    for (final occ in tomorrowPendingOccs)
+                      _OccurrenceCard(
+                        occ: occ,
+                        showDate: false,
+                        showQuickActions: embedded,
+                        onEdit: () => _openEditor(occ.schedule),
+                        onDelete: () => _deleteItem(occ.schedule),
+                        onToggle: () => _mutate(
+                          () => ref.read(apiProvider).toggleScheduleComplete(
+                                occ.schedule.id,
+                                completed: !occ.completed,
+                                occurrenceDate: occ.occurrenceDate,
+                              ),
+                        ),
+                        onTap: () => _showItemMenu(
+                          occ.schedule,
+                          occurrenceDate: occ.occurrenceDate,
+                          occurrenceCompleted: occ.completed,
+                        ),
+                      ),
+                  ],
+                  if (upcomingPendingOccs.isNotEmpty) ...[
+                    _SectionHeader('未来两周', count: '${upcomingPendingOccs.length} 项'),
+                    for (final occ in upcomingPendingOccs)
+                      _OccurrenceCard(
+                        occ: occ,
+                        showDate: true,
+                        showQuickActions: embedded,
+                        onEdit: () => _openEditor(occ.schedule),
+                        onDelete: () => _deleteItem(occ.schedule),
+                        onToggle: () => _mutate(
+                          () => ref.read(apiProvider).toggleScheduleComplete(
+                                occ.schedule.id,
+                                completed: !occ.completed,
+                                occurrenceDate: occ.occurrenceDate,
+                              ),
+                        ),
+                        onTap: () => _showItemMenu(
+                          occ.schedule,
+                          occurrenceDate: occ.occurrenceDate,
+                          occurrenceCompleted: occ.completed,
+                        ),
+                      ),
+                  ],
+                  if (laterSchedules.isNotEmpty) ...[
+                    _SectionHeader('更远日期的安排', count: '${laterSchedules.length} 项'),
+                    for (final sc in laterSchedules)
+                      _OccurrenceCard(
+                        occ: ScheduleOccurrence(
+                          schedule: sc,
+                          occurrenceDate: _isoDate(sc.startAt),
+                          startAt: sc.startAt,
+                          endAt: sc.endAt,
+                          completed: sc.isCompleted,
+                        ),
+                        showDate: true,
+                        showYear: true,
+                        showQuickActions: embedded,
+                        onEdit: () => _openEditor(sc),
+                        onDelete: () => _deleteItem(sc),
+                        onToggle: () => _mutate(
+                          () => ref.read(apiProvider).toggleScheduleComplete(sc.id, completed: !sc.isCompleted),
+                        ),
+                        onTap: () => _showItemMenu(sc),
+                      ),
+                  ],
+                  if (completedTotal > 0) ...[
+                    const SizedBox(height: 14),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => setState(() => _showCompleted = !_showCompleted),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                        child: Row(
+                          children: [
+                            Text(
+                              '已完成（$completedTotal）',
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: p.muted),
+                            ),
+                            const SizedBox(width: 4),
+                            AppIcon(_showCompleted ? AppIcons.chevronUp : AppIcons.chevronDown, size: 16, color: p.muted),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_showCompleted) ...[
+                      for (final occ in todayCompletedRecurring)
+                        _OccurrenceCard(
+                          occ: occ,
+                          showDate: false,
+                          showQuickActions: embedded,
+                          onEdit: () => _openEditor(occ.schedule),
+                          onDelete: () => _deleteItem(occ.schedule),
+                          onToggle: () => _mutate(
+                            () => ref.read(apiProvider).toggleScheduleComplete(
+                                  occ.schedule.id,
+                                  completed: false,
+                                  occurrenceDate: occ.occurrenceDate,
+                                ),
+                          ),
+                          onTap: () => _showItemMenu(
+                            occ.schedule,
+                            occurrenceDate: occ.occurrenceDate,
+                            occurrenceCompleted: true,
+                          ),
+                        ),
+                      for (final sc in completedItems)
+                        _OccurrenceCard(
+                          occ: ScheduleOccurrence(
+                            schedule: sc,
+                            occurrenceDate: _isoDate(sc.startAt),
+                            startAt: sc.startAt,
+                            endAt: sc.endAt,
+                            completed: true,
+                          ),
+                          showDate: true,
+                          showQuickActions: embedded,
+                          onEdit: () => _openEditor(sc),
+                          onDelete: () => _deleteItem(sc),
+                          onToggle: () => _mutate(
+                            () => ref.read(apiProvider).toggleScheduleComplete(sc.id, completed: false),
+                          ),
+                          onTap: () => _showItemMenu(sc),
+                        ),
+                    ],
+                  ],
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (embedded) {
+      return Scaffold(
+        body: Column(
+          children: [
+            DesktopPageHeader(
+              title: '我的日程',
+              subtitle: subtitle,
+              actions: [
+                if (completedItems.isNotEmpty || caps.localReminders)
+                  IconButton(
+                    tooltip: '更多',
+                    onPressed: _busy ? null : () => _showPageMenu(completedItems.length),
+                    icon: const AppIcon(AppIcons.more),
+                  ),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 40),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                  onPressed: _busy ? null : () => _openEditor(),
+                  icon: const AppIcon(AppIcons.plus, size: 17),
+                  label: const Text('添加日程', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
+            Expanded(child: listContent),
+          ],
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -227,212 +548,7 @@ class _SchedulesPageState extends ConsumerState<SchedulesPage> with WidgetsBindi
           ),
         ),
       ),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: p.surface,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: p.line),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(12)),
-                    child: Center(child: AppIcon(AppIcons.calendar, color: p.accent, size: 22)),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      caps.localReminders
-                          ? '聊天时直接跟小暖说「明天早上八点提醒我吃药」或说出你的安排，小暖就会自动记在这里并在手机上准点提醒你。'
-                          : '聊天时直接跟小暖说「明天早上八点提醒我吃药」或说出你的安排，小暖就会自动记在这里，到点由手机上的小暖响铃提醒（电脑端暂不响铃）。',
-                      style: TextStyle(fontSize: 15, height: 1.45, color: p.muted),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (!hasPerm) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-                decoration: BoxDecoration(
-                  color: p.accentSoft.withValues(alpha: 0.65),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: p.accent.withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  children: [
-                    AppIcon(AppIcons.bellOff, color: p.accent, size: 22),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        '尚未开启手机通知权限，开启后到点才能响铃提醒',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: p.text),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: _enableNotifications,
-                      child: const Text('去开启', style: TextStyle(fontWeight: FontWeight.w700)),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            if (asyncData.isLoading && data.schedules.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 60),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 56, horizontal: 20),
-                child: Column(
-                  children: [
-                    AppIcon(AppIcons.calendar, size: 46, color: p.faint),
-                    const SizedBox(height: 14),
-                    Text(
-                      '目前还没有待办日程',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: p.text),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '可以点下方按钮手动添加，或者回聊天里直接告诉小暖你的安排',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 15, color: p.muted, height: 1.5),
-                    ),
-                  ],
-                ),
-              )
-            else ...[
-              if (data.todayOccurrences.isNotEmpty) ...[
-                _SectionHeader('今天', count: data.todayPending > 0 ? '待办 ${data.todayPending}' : '全部完成'),
-                for (final occ in data.todayOccurrences)
-                  _OccurrenceCard(
-                    occ: occ,
-                    showDate: false,
-                    onToggle: () => _mutate(
-                      () => ref.read(apiProvider).toggleScheduleComplete(
-                            occ.schedule.id,
-                            completed: !occ.completed,
-                            occurrenceDate: occ.occurrenceDate,
-                          ),
-                    ),
-                    onTap: () => _showItemMenu(
-                      occ.schedule,
-                      occurrenceDate: occ.occurrenceDate,
-                      occurrenceCompleted: occ.completed,
-                    ),
-                  ),
-              ],
-              if (data.tomorrowOccurrences.isNotEmpty) ...[
-                _SectionHeader('明天', count: '${data.tomorrowOccurrences.length} 项'),
-                for (final occ in data.tomorrowOccurrences)
-                  _OccurrenceCard(
-                    occ: occ,
-                    showDate: false,
-                    onToggle: () => _mutate(
-                      () => ref.read(apiProvider).toggleScheduleComplete(
-                            occ.schedule.id,
-                            completed: !occ.completed,
-                            occurrenceDate: occ.occurrenceDate,
-                          ),
-                    ),
-                    onTap: () => _showItemMenu(
-                      occ.schedule,
-                      occurrenceDate: occ.occurrenceDate,
-                      occurrenceCompleted: occ.completed,
-                    ),
-                  ),
-              ],
-              if (data.upcomingOccurrences.isNotEmpty) ...[
-                _SectionHeader('未来两周', count: '${data.upcomingOccurrences.length} 项'),
-                for (final occ in data.upcomingOccurrences)
-                  _OccurrenceCard(
-                    occ: occ,
-                    showDate: true,
-                    onToggle: () => _mutate(
-                      () => ref.read(apiProvider).toggleScheduleComplete(
-                            occ.schedule.id,
-                            completed: !occ.completed,
-                            occurrenceDate: occ.occurrenceDate,
-                          ),
-                    ),
-                    onTap: () => _showItemMenu(
-                      occ.schedule,
-                      occurrenceDate: occ.occurrenceDate,
-                      occurrenceCompleted: occ.completed,
-                    ),
-                  ),
-              ],
-              if (laterSchedules.isNotEmpty) ...[
-                _SectionHeader('更远日期的安排', count: '${laterSchedules.length} 项'),
-                for (final sc in laterSchedules)
-                  _OccurrenceCard(
-                    occ: ScheduleOccurrence(
-                      schedule: sc,
-                      occurrenceDate: _isoDate(sc.startAt),
-                      startAt: sc.startAt,
-                      endAt: sc.endAt,
-                      completed: sc.isCompleted,
-                    ),
-                    showDate: true,
-                    showYear: true,
-                    onToggle: () => _mutate(
-                      () => ref.read(apiProvider).toggleScheduleComplete(sc.id, completed: !sc.isCompleted),
-                    ),
-                    onTap: () => _showItemMenu(sc),
-                  ),
-              ],
-              if (completedItems.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () => setState(() => _showCompleted = !_showCompleted),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                    child: Row(
-                      children: [
-                        Text(
-                          '已完成（${completedItems.length}）',
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: p.muted),
-                        ),
-                        const SizedBox(width: 4),
-                        AppIcon(_showCompleted ? AppIcons.chevronUp : AppIcons.chevronDown, size: 16, color: p.muted),
-                      ],
-                    ),
-                  ),
-                ),
-                if (_showCompleted)
-                  for (final sc in completedItems)
-                    _OccurrenceCard(
-                      occ: ScheduleOccurrence(
-                        schedule: sc,
-                        occurrenceDate: _isoDate(sc.startAt),
-                        startAt: sc.startAt,
-                        endAt: sc.endAt,
-                        completed: true,
-                      ),
-                      showDate: true,
-                      onToggle: () => _mutate(
-                        () => ref.read(apiProvider).toggleScheduleComplete(sc.id, completed: false),
-                      ),
-                      onTap: () => _showItemMenu(sc),
-                    ),
-              ],
-            ],
-          ],
-        ),
-      ),
+      body: listContent,
     );
   }
 
@@ -470,6 +586,9 @@ class _OccurrenceCard extends StatelessWidget {
     required this.occ,
     required this.showDate,
     this.showYear = false,
+    this.showQuickActions = false,
+    this.onEdit,
+    this.onDelete,
     required this.onToggle,
     required this.onTap,
   });
@@ -477,6 +596,9 @@ class _OccurrenceCard extends StatelessWidget {
   final ScheduleOccurrence occ;
   final bool showDate;
   final bool showYear;
+  final bool showQuickActions;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
   final VoidCallback onToggle;
   final VoidCallback onTap;
 
@@ -595,6 +717,26 @@ class _OccurrenceCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (showQuickActions) ...[
+                  const SizedBox(width: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: '修改日程',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: onEdit,
+                        icon: AppIcon(AppIcons.edit, size: 18, color: p.muted),
+                      ),
+                      IconButton(
+                        tooltip: '删除日程',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: onDelete,
+                        icon: AppIcon(AppIcons.delete, size: 18, color: p.muted),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

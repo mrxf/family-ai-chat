@@ -217,6 +217,32 @@ class SchedulesResult {
     this.activeTotal = 0,
   });
 
+  /// Number of currently unfinished schedules (excludes completed one-off
+  /// schedules and recurring schedules already checked off for today).
+  int get pendingTotal {
+    if (schedules.isEmpty &&
+        todayOccurrences.isEmpty &&
+        tomorrowOccurrences.isEmpty &&
+        upcomingOccurrences.isEmpty) {
+      return activeTotal;
+    }
+    final doneTodayIds = <String>{
+      for (final o in todayOccurrences)
+        if (o.completed) o.schedule.id,
+    };
+    final pendingTodayIds = <String>{
+      for (final o in todayOccurrences)
+        if (!o.completed) o.schedule.id,
+    };
+    var count = 0;
+    for (final s in schedules) {
+      if (s.isCompleted) continue;
+      if (doneTodayIds.contains(s.id) && !pendingTodayIds.contains(s.id)) continue;
+      count++;
+    }
+    return count;
+  }
+
   factory SchedulesResult.fromJson(Map<String, dynamic> j) => SchedulesResult(
         schedules: ((j['schedules'] as List?) ?? const []).map((e) => Schedule.fromJson((e as Map).cast())).toList(),
         todayOccurrences: ((j['today_occurrences'] as List?) ?? const [])

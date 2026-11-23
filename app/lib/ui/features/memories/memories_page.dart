@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api.dart';
 import '../../../core/models/models.dart';
 import '../../../state/chat.dart';
+import '../../../state/desktop_nav.dart';
 import '../../../state/memories.dart';
 import '../../../state/session.dart';
 import '../../adaptive/app_route.dart';
+import '../../desktop/desktop_page_header.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
@@ -15,7 +17,9 @@ import 'memory_editor.dart';
 import 'memory_import_page.dart';
 
 class MemoriesPage extends ConsumerStatefulWidget {
-  const MemoriesPage({super.key});
+  const MemoriesPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   ConsumerState<MemoriesPage> createState() => _MemoriesPageState();
@@ -73,16 +77,18 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
     if (imported == true && mounted) await _refresh();
   }
 
+  Future<void> _deleteMemory(Memory memory) async {
+    final ok = await confirm(context, title: '忘掉这条？', body: '这条记忆会被删除，无法恢复。', ok: '忘掉', danger: true);
+    if (!ok || !mounted) return;
+    await _change(() => ref.read(apiProvider).deleteMemory(memory.id), '已忘掉这条');
+  }
+
   void _actions(Memory memory) => showActionSheet(
     context,
     title: memory.content,
     actions: [
       SheetAction(AppIcons.edit, '修改', () => _edit(memory)),
-      SheetAction(AppIcons.delete, '忘掉这条', () async {
-        final ok = await confirm(context, title: '忘掉这条？', body: '这条记忆会被删除，无法恢复。', ok: '忘掉', danger: true);
-        if (!ok || !mounted) return;
-        await _change(() => ref.read(apiProvider).deleteMemory(memory.id), '已忘掉这条');
-      }, danger: true),
+      SheetAction(AppIcons.delete, '忘掉这条', () => _deleteMemory(memory), danger: true),
     ],
   );
 
@@ -102,8 +108,236 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
   Widget build(BuildContext context) {
     final data = ref.watch(memoriesProvider);
     final p = context.pal;
+    final embedded = widget.embedded;
     final enabled = data.value?.enabled ?? (ref.watch(sessionProvider).user?.settings['memory_enabled'] != false);
     final groups = groupMemories(data.value?.memories ?? const []);
+    final total = data.value?.total ?? 0;
+
+    final listContent = RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: embedded ? const EdgeInsets.fromLTRB(32, 20, 32, 36) : const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          DesktopPageBody(
+            maxWidth: embedded ? 860 : double.infinity,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                MemoryPanel(
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text('小暖会从聊天里记下关于你和家人的事，换哪个模型都记得。只有你自己能看到。', style: Theme.of(context).textTheme.bodyLarge),
+                        const SizedBox(height: 12),
+                        SwitchListTile.adaptive(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('让小暖记住我', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                          value: enabled,
+                          onChanged: _busy || !data.hasValue
+                              ? null
+                              : (v) => _change(() async {
+                                  final session = ref.read(sessionProvider.notifier);
+                                  final user = await ref.read(apiProvider).updateMe({
+                                    'settings': {'memory_enabled': v},
+                                  });
+                                  session.setUser(user);
+                                }, v ? '小暖会继续记住你' : '已关闭，已有的记忆仍可查看和管理'),
+                        ),
+                        if (!enabled) Text('已暂停记下和使用记忆，已有的内容会保留。', style: TextStyle(color: p.muted, fontSize: 15, height: 1.5)),
+                        if (data.value?.memories.isNotEmpty ?? false)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton.icon(
+                              style: TextButton.styleFrom(minimumSize: const Size(44, 48), padding: const EdgeInsets.symmetric(horizontal: 4)),
+                              onPressed: _busy ? null : _import,
+                              icon: const AppIcon(AppIcons.inbox, size: 19),
+                              label: const Text('从 ChatGPT、Gemini 等导入'),
+                            ),
+                          ),
+                        if (_busy) const LinearProgressIndicator(),
+                      ],
+                    ),
+                  ),
+                ),
+                ...data.when(
+                  skipLoadingOnRefresh: false,
+                  loading: () => [
+                    const Padding(
+                      padding: EdgeInsets.all(40),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  ],
+                  error: (e, _) => [
+                    Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        children: [
+                          Text(ApiError.from(e).message, style: Theme.of(context).textTheme.bodyLarge, textAlign: TextAlign.center),
+                          const SizedBox(height: 12),
+                          OutlinedButton(onPressed: _refresh, child: const Text('再试一次')),
+                        ],
+                      ),
+                    ),
+                  ],
+                  data: (result) => result.memories.isEmpty
+                      ? [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 32, 16, 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const Center(child: Mascot(size: 100)),
+                                const SizedBox(height: 20),
+                                Text('还没有记住什么。多和小暖聊聊，或者从其他 AI 导入。', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyLarge),
+                                const SizedBox(height: 20),
+                                OutlinedButton.icon(
+                                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+                                  onPressed: _busy ? null : _import,
+                                  icon: const AppIcon(AppIcons.inbox, size: 19),
+                                  label: const Text('从其他 AI 导入'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ]
+                      : [
+                          for (final group in groups.entries) ...[
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(8, 24, 8, 10),
+                              child: Text(
+                                '${group.key.label} · ${group.value.length}',
+                                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: p.muted),
+                              ),
+                            ),
+                            MemoryPanel(
+                              child: Builder(
+                                builder: (context) {
+                                  final foldable = group.key == MemoryCategory.episode && group.value.length > _episodeFoldLimit;
+                                  final shown = foldable && !_expandEpisodes ? group.value.take(_episodeFoldLimit).toList() : group.value;
+                                  return Column(
+                                    children: [
+                                      for (final (i, memory) in shown.indexed) ...[
+                                        if (i > 0) Divider(height: 1, indent: 18, endIndent: 18, color: p.line),
+                                        Pressable(
+                                          scale: 0.99,
+                                          onTap: _busy ? null : () => _actions(memory),
+                                          child: Padding(
+                                            padding: const EdgeInsets.fromLTRB(18, 16, 14, 12),
+                                            child: Row(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                                    children: [
+                                                      if (memory.isNew)
+                                                        Align(
+                                                          alignment: Alignment.centerLeft,
+                                                          child: Container(
+                                                            margin: const EdgeInsets.only(bottom: 8),
+                                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                            decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(8)),
+                                                            child: Text(
+                                                              '新',
+                                                              style: TextStyle(color: p.accent, fontSize: 13, fontWeight: FontWeight.w700),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      Text(memory.content, style: Theme.of(context).textTheme.bodyLarge),
+                                                      if (memory.sourceConvId != null)
+                                                        Align(
+                                                          alignment: Alignment.centerLeft,
+                                                          child: TextButton.icon(
+                                                            style: TextButton.styleFrom(minimumSize: const Size(44, 40), foregroundColor: p.muted, padding: EdgeInsets.zero),
+                                                            onPressed: _busy
+                                                                ? null
+                                                                : () {
+                                                                    ref.read(chatProvider.notifier).open(memory.sourceConvId!);
+                                                                    if (embedded) {
+                                                                      ref.read(desktopNavProvider.notifier).showChat();
+                                                                    } else {
+                                                                      Navigator.of(context).popUntil((r) => r.isFirst);
+                                                                    }
+                                                                  },
+                                                            icon: const AppIcon(AppIcons.chatBubble, size: 15),
+                                                            label: const Text('来自对话'),
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                if (embedded) ...[
+                                                  const SizedBox(width: 8),
+                                                  IconButton(
+                                                    tooltip: '修改',
+                                                    visualDensity: VisualDensity.compact,
+                                                    onPressed: _busy ? null : () => _edit(memory),
+                                                    icon: AppIcon(AppIcons.edit, size: 17, color: p.muted),
+                                                  ),
+                                                  IconButton(
+                                                    tooltip: '忘掉这条',
+                                                    visualDensity: VisualDensity.compact,
+                                                    onPressed: _busy ? null : () => _deleteMemory(memory),
+                                                    icon: AppIcon(AppIcons.delete, size: 17, color: p.muted),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                      if (foldable) ...[
+                                        Divider(height: 1, indent: 18, endIndent: 18, color: p.line),
+                                        TextButton(
+                                          style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                                          onPressed: () => setState(() => _expandEpisodes = !_expandEpisodes),
+                                          child: Text(_expandEpisodes ? '收起较早的记录' : '展开全部 ${group.value.length} 条'),
+                                        ),
+                                      ],
+                                    ],
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (embedded) {
+      return Scaffold(
+        body: Column(
+          children: [
+            DesktopPageHeader(
+              title: '小暖记住的事',
+              subtitle: enabled ? '已记住 $total 件事 · 只有你自己能看到' : '记忆功能已暂停，已有的内容仍保留',
+              actions: [
+                IconButton(tooltip: '更多', onPressed: _busy ? null : _menu, icon: const AppIcon(AppIcons.more)),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 40),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                  onPressed: _busy ? null : () => _edit(),
+                  icon: const AppIcon(AppIcons.plus, size: 17),
+                  label: const Text('手动添加', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
+            Expanded(child: listContent),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('小暖记住的事'),
@@ -121,170 +355,7 @@ class _MemoriesPageState extends ConsumerState<MemoriesPage> {
           ),
         ),
       ),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          children: [
-            MemoryPanel(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text('小暖会从聊天里记下关于你和家人的事，换哪个模型都记得。只有你自己能看到。', style: Theme.of(context).textTheme.bodyLarge),
-                    const SizedBox(height: 12),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('让小暖记住我', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-                      value: enabled,
-                      onChanged: _busy || !data.hasValue
-                          ? null
-                          : (v) => _change(() async {
-                              final session = ref.read(sessionProvider.notifier);
-                              final user = await ref.read(apiProvider).updateMe({
-                                'settings': {'memory_enabled': v},
-                              });
-                              session.setUser(user);
-                            }, v ? '小暖会继续记住你' : '已关闭，已有的记忆仍可查看和管理'),
-                    ),
-                    if (!enabled) Text('已暂停记下和使用记忆，已有的内容会保留。', style: TextStyle(color: p.muted, fontSize: 15, height: 1.5)),
-                    if (data.value?.memories.isNotEmpty ?? false)
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          style: TextButton.styleFrom(minimumSize: const Size(44, 48), padding: const EdgeInsets.symmetric(horizontal: 4)),
-                          onPressed: _busy ? null : _import,
-                          icon: const AppIcon(AppIcons.inbox, size: 19),
-                          label: const Text('从 ChatGPT、Gemini 等导入'),
-                        ),
-                      ),
-                    if (_busy) const LinearProgressIndicator(),
-                  ],
-                ),
-              ),
-            ),
-            ...data.when(
-              skipLoadingOnRefresh: false,
-              loading: () => [
-                const Padding(
-                  padding: EdgeInsets.all(40),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              ],
-              error: (e, _) => [
-                Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    children: [
-                      Text(ApiError.from(e).message, style: Theme.of(context).textTheme.bodyLarge, textAlign: TextAlign.center),
-                      const SizedBox(height: 12),
-                      OutlinedButton(onPressed: _refresh, child: const Text('再试一次')),
-                    ],
-                  ),
-                ),
-              ],
-              data: (result) => result.memories.isEmpty
-                  ? [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 32, 16, 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            const Center(child: Mascot(size: 100)),
-                            const SizedBox(height: 20),
-                            Text('还没有记住什么。多和小暖聊聊，或者从其他 AI 导入。', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyLarge),
-                            const SizedBox(height: 20),
-                            OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
-                              onPressed: _busy ? null : _import,
-                              icon: const AppIcon(AppIcons.inbox, size: 19),
-                              label: const Text('从其他 AI 导入'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ]
-                  : [
-                      for (final group in groups.entries) ...[
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(8, 24, 8, 10),
-                          child: Text(
-                            '${group.key.label} · ${group.value.length}',
-                            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: p.muted),
-                          ),
-                        ),
-                        MemoryPanel(
-                          child: Builder(
-                            builder: (context) {
-                              final foldable = group.key == MemoryCategory.episode && group.value.length > _episodeFoldLimit;
-                              final shown = foldable && !_expandEpisodes ? group.value.take(_episodeFoldLimit).toList() : group.value;
-                              return Column(
-                                children: [
-                                  for (final (i, memory) in shown.indexed) ...[
-                                    if (i > 0) Divider(height: 1, indent: 18, endIndent: 18, color: p.line),
-                                    Pressable(
-                                      scale: 0.99,
-                                      onTap: _busy ? null : () => _actions(memory),
-                                      child: Padding(
-                                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                                          children: [
-                                            if (memory.isNew)
-                                              Align(
-                                                alignment: Alignment.centerLeft,
-                                                child: Container(
-                                                  margin: const EdgeInsets.only(bottom: 8),
-                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                                  decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(8)),
-                                                  child: Text(
-                                                    '新',
-                                                    style: TextStyle(color: p.accent, fontSize: 13, fontWeight: FontWeight.w700),
-                                                  ),
-                                                ),
-                                              ),
-                                            Text(memory.content, style: Theme.of(context).textTheme.bodyLarge),
-                                            if (memory.sourceConvId != null)
-                                              Align(
-                                                alignment: Alignment.centerLeft,
-                                                child: TextButton.icon(
-                                                  style: TextButton.styleFrom(minimumSize: const Size(44, 44), foregroundColor: p.muted, padding: EdgeInsets.zero),
-                                                  onPressed: _busy
-                                                      ? null
-                                                      : () {
-                                                          ref.read(chatProvider.notifier).open(memory.sourceConvId!);
-                                                          Navigator.of(context).popUntil((r) => r.isFirst);
-                                                        },
-                                                  icon: const AppIcon(AppIcons.chatBubble, size: 15),
-                                                  label: const Text('来自对话'),
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                  if (foldable) ...[
-                                    Divider(height: 1, indent: 18, endIndent: 18, color: p.line),
-                                    TextButton(
-                                      style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-                                      onPressed: () => setState(() => _expandEpisodes = !_expandEpisodes),
-                                      child: Text(_expandEpisodes ? '收起较早的记录' : '展开全部 ${group.value.length} 条'),
-                                    ),
-                                  ],
-                                ],
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    ],
-            ),
-          ],
-        ),
-      ),
+      body: listContent,
     );
   }
 }

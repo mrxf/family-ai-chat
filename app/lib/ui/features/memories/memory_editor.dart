@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../core/api.dart';
 import '../../../core/models/models.dart';
+import '../../adaptive/adaptive_modal.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
 
@@ -12,10 +13,9 @@ Future<MemoryDraft?> showMemoryEditor(
   MemoryDraft initial = const MemoryDraft(category: MemoryCategory.profile, content: ''),
   bool allowEpisode = false,
   Future<void> Function(MemoryDraft)? onSave,
-}) => showModalBottomSheet<MemoryDraft>(
+}) => showAdaptiveModal<MemoryDraft>(
   context: context,
-  isScrollControlled: true,
-  useSafeArea: true,
+  maxWidth: 500,
   isDismissible: false,
   enableDrag: false,
   builder: (_) => _MemoryEditor(title: title, initial: initial, allowEpisode: allowEpisode, onSave: onSave),

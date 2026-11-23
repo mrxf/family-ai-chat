@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../desktop/desktop_page_header.dart';
 import '../theme/theme.dart';
 import 'breakpoints.dart';
 
 /// The route for full-screen pages (settings, admin, memories...).
 ///
 /// Use this instead of `MaterialPageRoute` so every page adapts the same way:
-/// on wide windows the page is shown as a centered column of readable width
-/// rather than stretched edge to edge.
+/// on wide windows outside a desktop workspace pane, the page is shown as a
+/// centered column of readable width rather than stretched edge to edge.
 MaterialPageRoute<T> appRoute<T>(WidgetBuilder builder, {RouteSettings? settings, bool fullscreenDialog = false}) => MaterialPageRoute<T>(
   settings: settings,
   fullscreenDialog: fullscreenDialog,
@@ -22,6 +23,7 @@ class AdaptivePageFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (DesktopPaneScope.of(context)) return child;
     final width = MediaQuery.sizeOf(context).width;
     if (!WindowSize.of(width).isExpanded) return child;
     final p = context.pal;

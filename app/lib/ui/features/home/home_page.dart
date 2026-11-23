@@ -7,6 +7,7 @@ import '../../../app/navigation.dart';
 import '../../../platform/reminders/reminder_service.dart';
 import '../../../platform/speech/speaker.dart';
 import '../../../state/chat.dart';
+import '../../../state/desktop_nav.dart';
 import '../../../state/incoming_share.dart';
 import '../../../state/pinned_components.dart';
 import '../../../state/schedules.dart';
@@ -69,6 +70,10 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
   void _openSchedulesFromNotification() {
     if (!mounted || ref.read(sessionProvider).boot == null) return;
     navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    if (context.windowSize.isExpanded) {
+      ref.read(desktopNavProvider.notifier).showSchedules();
+      return;
+    }
     navigatorKey.currentState?.push(appRoute((_) => const SchedulesPage()));
   }
 
@@ -95,6 +100,7 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
     final payload = ref.read(incomingShareProvider.notifier).take();
     if (payload == null || payload.isEmpty) return;
     navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    ref.read(desktopNavProvider.notifier).showChat();
     final chat = ref.read(chatProvider);
     final hasActivity = chat.conversationId != null || chat.messages.isNotEmpty || chat.loading || chat.busy;
     if (hasActivity) {
