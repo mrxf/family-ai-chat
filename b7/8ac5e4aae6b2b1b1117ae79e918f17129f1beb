@@ -1,0 +1,14 @@
+docs/proposal-v9-spaces-and-notebook.md
+  h_8f297825d1fe21 1-279
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "b78ac5e4aae6b2b1b1117ae79e918f17129f1beb",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
