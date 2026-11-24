@@ -203,7 +203,7 @@ class _ScheduledTasksPageState extends ConsumerState<ScheduledTasksPage> {
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(12)),
-                        child: Center(child: AppIcon(AppIcons.repeat, color: p.accent, size: 22)),
+                        child: Center(child: AppIcon(AppIcons.timer, color: p.accent, size: 22)),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -226,7 +226,7 @@ class _ScheduledTasksPageState extends ConsumerState<ScheduledTasksPage> {
                     padding: const EdgeInsets.symmetric(vertical: 56, horizontal: 20),
                     child: Column(
                       children: [
-                        AppIcon(AppIcons.repeat, size: 46, color: p.faint),
+                        AppIcon(AppIcons.timer, size: 46, color: p.faint),
                         const SizedBox(height: 14),
                         Text('还没有配置 AI 定时任务', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: p.text)),
                         const SizedBox(height: 6),

@@ -131,7 +131,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ),
                   Divider(height: 1, indent: 56, color: p.line),
                   _Tile(
-                    icon: AppIcons.repeat,
+                    icon: AppIcons.timer,
                     title: 'AI 定时任务',
                     subtitle: automationSubtitle,
                     onTap: () => Navigator.of(context).push(appRoute((_) => const ScheduledTasksPage())),

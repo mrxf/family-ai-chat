@@ -96,7 +96,7 @@ class DesktopSettingsSidebar extends ConsumerWidget {
                 onTap: () => navCtrl.selectSettingsTab(SettingsTab.schedules),
               ),
               _NavItem(
-                icon: AppIcons.repeat,
+                icon: AppIcons.timer,
                 label: 'AI 定时任务',
                 badge: activeAutomations > 0 ? '$activeAutomations' : null,
                 accentBadge: activeAutomations > 0,

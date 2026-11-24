@@ -198,7 +198,7 @@ class _ChatComponentActionShellState extends ConsumerState<ChatComponentActionSh
       ),
       if (isComponentDirectlyEditable(comp))
         SheetAction(AppIcons.edit, '编辑卡片内容', () => _editComponent(comp)),
-      SheetAction(AppIcons.repeat, '设为定时更新', () => _scheduleUpdate(comp)),
+      SheetAction(AppIcons.timer, '设为定时更新', () => _scheduleUpdate(comp)),
       SheetAction(AppIcons.chatBubble, '基于此卡片开新对话', () => _quoteInNewChat(comp)),
       SheetAction(AppIcons.delete, '删除卡片', _deleteComponent, danger: true),
     ]);
@@ -306,7 +306,7 @@ class _ChatComponentActionShellState extends ConsumerState<ChatComponentActionSh
                           onTap: () => _editComponent(activeComp),
                         ),
                       _InlineActionPill(
-                        icon: AppIcons.repeat,
+                        icon: AppIcons.timer,
                         label: '定时更新',
                         tooltip: '为此卡片设置 AI 定时自动更新',
                         onTap: () => _scheduleUpdate(activeComp),
@@ -470,7 +470,7 @@ class HomePinnedComponentShell extends ConsumerWidget {
       if (isComponentDirectlyEditable(pin.component))
         SheetAction(AppIcons.edit, '编辑卡片内容', () => _editComponent(context, ref)),
       SheetAction(
-        AppIcons.repeat,
+        AppIcons.timer,
         bound != null ? '编辑定时更新（${bound.scheduleLabel}）' : '设为定时更新',
         () => _openOrCreateSchedule(context, ref, bound),
       ),
@@ -591,7 +591,7 @@ class HomePinnedComponentShell extends ConsumerWidget {
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  AppIcon(AppIcons.repeat, size: 11.5, color: boundTask.enabled ? p.accent : p.muted),
+                                  AppIcon(AppIcons.timer, size: 11.5, color: boundTask.enabled ? p.accent : p.muted),
                                   const SizedBox(width: 3),
                                   Text(
                                     boundTask.isRunning ? '更新中…' : boundTask.scheduleLabel,

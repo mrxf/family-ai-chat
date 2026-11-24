@@ -100,7 +100,7 @@ class Welcome extends ConsumerWidget {
                           ),
                           const SizedBox(width: 4),
                           SoftIconButton(
-                            icon: AppIcons.repeat,
+                            icon: AppIcons.timer,
                             tooltip: 'AI 定时任务',
                             size: 36,
                             onTap: () {

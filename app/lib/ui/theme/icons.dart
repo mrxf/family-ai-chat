@@ -115,6 +115,7 @@ abstract final class AppIcons {
   static const IconData bell = PhosphorIconsLight.bell;
   static const IconData bellOff = PhosphorIconsLight.bellSlash;
   static const IconData clock = PhosphorIconsLight.clock;
+  static const IconData timer = PhosphorIconsLight.timer;
   static const IconData mapPin = PhosphorIconsLight.mapPin;
   static const IconData sun = PhosphorIconsLight.sun;
   static const IconData cloudSun = PhosphorIconsLight.cloudSun;
@@ -263,6 +264,7 @@ abstract final class AppIcons {
         bell => (_set(PhosphorIconsThin.bell, PhosphorIconsLight.bell, PhosphorIconsRegular.bell, PhosphorIconsBold.bell), 1),
         bellOff => (_set(PhosphorIconsThin.bellSlash, PhosphorIconsLight.bellSlash, PhosphorIconsRegular.bellSlash, PhosphorIconsBold.bellSlash), 1),
         clock => (_set(PhosphorIconsThin.clock, PhosphorIconsLight.clock, PhosphorIconsRegular.clock, PhosphorIconsBold.clock), 1),
+        timer => (_set(PhosphorIconsThin.timer, PhosphorIconsLight.timer, PhosphorIconsRegular.timer, PhosphorIconsBold.timer), 1),
         mapPin => (_set(PhosphorIconsThin.mapPin, PhosphorIconsLight.mapPin, PhosphorIconsRegular.mapPin, PhosphorIconsBold.mapPin), 1),
         sun => (_set(PhosphorIconsThin.sun, PhosphorIconsLight.sun, PhosphorIconsRegular.sun, PhosphorIconsBold.sun), 1),
         cloudSun => (_set(PhosphorIconsThin.cloudSun, PhosphorIconsLight.cloudSun, PhosphorIconsRegular.cloudSun, PhosphorIconsBold.cloudSun), 1),
