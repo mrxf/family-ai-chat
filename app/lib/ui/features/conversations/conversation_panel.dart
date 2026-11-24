@@ -12,8 +12,6 @@ import '../../adaptive/breakpoints.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
-import '../admin/admin_common.dart' show Tag;
-import '../auth/self_host_info_sheet.dart';
 import '../schedules/schedules_page.dart';
 import '../settings/settings_page.dart';
 import '../share/share_page.dart';
@@ -112,17 +110,6 @@ class ConversationPanel extends ConsumerWidget {
             const Mascot(size: 36),
             const SizedBox(width: 10),
             const Text('小暖', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
-            if (session.isSelfHosted) ...[
-              const SizedBox(width: 8),
-              Pressable(
-                scale: 0.95,
-                onTap: () {
-                  _dismiss(context);
-                  showSelfHostInfoSheet(context, ref);
-                },
-                child: Tag('自托管', color: p.accent, icon: AppIcons.server),
-              ),
-            ],
             const Spacer(),
             SoftIconButton(
               icon: AppIcons.search,

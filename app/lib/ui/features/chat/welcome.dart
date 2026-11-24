@@ -17,7 +17,6 @@ import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
 import '../../widgets/mascot/mascot_anim.dart';
 import '../admin/models_page.dart';
-import '../auth/self_host_info_sheet.dart';
 import '../automations/scheduled_tasks_page.dart';
 import 'pinned_components_board.dart';
 
@@ -99,13 +98,6 @@ class Welcome extends ConsumerWidget {
                               ],
                             ),
                           ),
-                          if (session.isSelfHosted) ...[
-                            const SizedBox(width: 8),
-                            _SelfHostHomePill(
-                              host: session.serverHost,
-                              onTap: () => showSelfHostInfoSheet(context, ref),
-                            ),
-                          ],
                           const SizedBox(width: 4),
                           SoftIconButton(
                             icon: AppIcons.repeat,
@@ -150,15 +142,6 @@ class Welcome extends ConsumerWidget {
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 16, color: p.muted, height: 1.5),
                       ),
-                      if (assistant == null && session.isSelfHosted) ...[
-                        const SizedBox(height: 12),
-                        Center(
-                          child: _SelfHostHomePill(
-                            host: session.serverHost,
-                            onTap: () => showSelfHostInfoSheet(context, ref),
-                          ),
-                        ),
-                      ],
                     ],
                     if (boot.models.isEmpty) ...[
                       const SizedBox(height: 20),
@@ -213,54 +196,6 @@ class Welcome extends ConsumerWidget {
         ),
       );
     });
-  }
-}
-
-/// Compact badge on the empty-chat home screen indicating active self-hosted mode & family invite tools.
-class _SelfHostHomePill extends StatelessWidget {
-  const _SelfHostHomePill({required this.host, required this.onTap});
-  final String host;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    return Semantics(
-      button: true,
-      label: '自托管服务 $host',
-      child: Pressable(
-        scale: 0.96,
-        onTap: onTap,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 320, minHeight: 36),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
-            decoration: BoxDecoration(
-              color: p.surfaceAlt,
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: p.accent.withValues(alpha: 0.25)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AppIcon(AppIcons.server, size: 15, color: p.accent),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    '自托管 · $host',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: p.accent),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                AppIcon(AppIcons.chevronRight, size: 13, color: p.accent.withValues(alpha: 0.8)),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 

@@ -241,7 +241,7 @@ void main() {
       }
     }
 
-    testWidgets('defaults to https://xiaonuan.miaojiai.com with zero server input field', (tester) async {
+    testWidgets('defaults to https://api.xiaonuan.thisjs.com with zero server input field', (tester) async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       final storage = _MemStorage(prefs);
@@ -272,13 +272,13 @@ void main() {
       await tester.pump(const Duration(seconds: 3));
 
       expect(cluster.logins.length, 1);
-      expect(cluster.logins.single.baseUrl, 'https://xiaonuan.miaojiai.com');
+      expect(cluster.logins.single.baseUrl, 'https://api.xiaonuan.thisjs.com');
       expect(cluster.logins.single.username, 'mama');
       // On official default server, Welcome does NOT show the self-hosted pill.
       expect(find.textContaining('自托管 ·'), findsNothing);
     });
 
-    testWidgets('configuring self-hosted server shows capability on LoginPage and on Home Welcome', (tester) async {
+    testWidgets('configuring self-hosted server shows capability on LoginPage and stays unobtrusive on Home Welcome', (tester) async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       final storage = _MemStorage(prefs);
@@ -319,7 +319,7 @@ void main() {
       expect(find.text('已连通'), findsOneWidget);
       expect(find.text('生成家人口令'), findsOneWidget);
 
-      // Log in to the self-hosted server and verify Home Welcome displays the self-hosted capability pill.
+      // Log in to the self-hosted server and verify Home Welcome does not clutter the screen with a self-hosted badge.
       await tester.enterText(find.byType(TextField).at(0), 'admin');
       await tester.enterText(find.byType(TextField).at(1), 'admin1234');
       await tester.ensureVisible(find.text('登 录'));
@@ -329,13 +329,8 @@ void main() {
       await tester.pump(const Duration(seconds: 3));
 
       expect(cluster.logins.single.baseUrl, 'https://chat.family-nas.com');
-      expect(find.text('自托管 · chat.family-nas.com'), findsOneWidget);
-
-      // Tapping the self-hosted pill on Home opens the self-hosted info & invite sheet.
-      await tester.tap(find.text('自托管 · chat.family-nas.com'));
-      await pumpFrames(tester);
-      expect(find.text('自托管服务器已连接'), findsOneWidget);
-      expect(find.text('生成家人免输登录口令'), findsOneWidget);
+      expect(find.textContaining('自托管 ·'), findsNothing);
+      expect(find.text('自托管'), findsNothing);
     });
 
     testWidgets('auto-detects #xn...xn# in clipboard on LoginPage, pops auto-login dialog, logs in & wipes clipboard', (tester) async {
@@ -383,7 +378,7 @@ void main() {
       expect(cluster.logins.single.username, 'mama');
       expect(cluster.logins.single.password, 'MomAutoLogin99');
       expect(clipboardText, isEmpty);
-      expect(find.text('自托管 · nas.home.example.com'), findsOneWidget);
+      expect(find.textContaining('自托管'), findsNothing);
     });
   });
 }

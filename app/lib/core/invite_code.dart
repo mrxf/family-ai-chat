@@ -9,7 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart' show normalizeServer;
 
 /// Official default server so ordinary family users never need to type a URL.
-const kDefaultServer = 'https://xiaonuan.miaojiai.com';
+const kDefaultServer = 'https://api.xiaonuan.thisjs.com';
 
 /// Resolves an optional/saved server string, falling back to [kDefaultServer].
 String effectiveServer(String? raw) {

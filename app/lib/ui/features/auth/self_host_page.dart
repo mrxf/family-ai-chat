@@ -14,7 +14,7 @@ import 'invite_generator_sheet.dart';
 import 'setup_page.dart';
 
 /// Dedicated configuration screen for switching between the official default server
-/// (`https://xiaonuan.miaojiai.com`) and a private self-hosted `nuan-server`.
+/// (`https://api.xiaonuan.thisjs.com`) and a private self-hosted `nuan-server`.
 class SelfHostConfigPage extends ConsumerStatefulWidget {
   const SelfHostConfigPage({super.key, required this.initialServer});
   final String initialServer;
