@@ -1,0 +1,39 @@
+app/lib/core/api.dart
+  s_f930648e329b90::t_e789d5abe92aef 202-222,293-301,305-308,311-313,316-318,336-340
+app/lib/state/chat.dart
+  s_f930648e329b90::t_0ed4395866b1e6 15,615-670,741-751
+app/lib/ui/features/chat/components/component_card.dart
+  s_f930648e329b90::t_11ba8150b53ed2 6,32
+app/lib/ui/features/settings/settings_page.dart
+  s_f930648e329b90::t_a22f6e71223e39 8,23,44,72-81,130-136
+server/internal/chat/automation_worker.go
+  s_f930648e329b90::t_7c57351c3d3c62 1-502
+server/internal/chat/service.go
+  s_f930648e329b90::t_fd4b1ade13ce28 60,105,109,345-347,518,594
+server/internal/chat/tools.go
+  s_f930648e329b90::t_6dd9a17784f819 263-295,470-474
+server/internal/chat/tools_components.go
+  s_f930648e329b90::t_8cbd53f7b763a2 15-18,30-41,68-69,89-92,96-98,100-112,114-129,131,135,153-157,164,169-170,172,176-180,185-203,205,208-292,299,314-315,317,321-323,339,341,343-349,351-360,387-389,393,397-401,406,410-414,462,474-477,484-500,513,522,538-542,574,576,578,584-585,592-601,620,623,630,632,644-646,648
+server/internal/chat/tools_components_manage.go
+  s_f930648e329b90::t_0ef941447156f1 1-449
+server/internal/chat/tools_components_note.go
+  s_f930648e329b90::t_d1c8440a728b67 1-229
+server/internal/store/pinned_components.go
+  s_f930648e329b90::t_3f3f7a5cd167e8 177-189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "8a828460bd74108a51c7ca6ba62c8172706e0d88",
+  "prompts": {},
+  "sessions": {
+    "s_f930648e329b90": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a20d16-d67b-7f03-8912-92cd5b3484f5",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
