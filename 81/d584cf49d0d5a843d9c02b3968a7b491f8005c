@@ -1,0 +1,18 @@
+app/lib/ui/features/chat/composer/voice_button.dart
+  h_8f297825d1fe21 7,19,21-23,34,38,54-55,60-62,74,94,141,182-200,202,204,209,212-216,222,233-237,240,257-261,264,278,284-299,301-304,306-310,318-320,324-325,329-330,333,354,368,372,380,391,393,398,400,409,411-427,429-437,439-445,447-527,530-531
+app/lib/ui/features/chat/composer/voice_overlay.dart
+  h_8f297825d1fe21 1-553
+app/test/voice_overlay_test.dart
+  h_8f297825d1fe21 1-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "81d584cf49d0d5a843d9c02b3968a7b491f8005c",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
