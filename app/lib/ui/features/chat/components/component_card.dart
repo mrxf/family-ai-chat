@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/models/models.dart';
+import '../app_action_card.dart';
 import 'ask_user_card.dart';
 import 'chart_card.dart';
 import 'feed_card.dart';
@@ -27,6 +28,7 @@ class ChatComponentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return switch (component.kind) {
+      'app_action' => AppActionCard(messageId: messageId, component: component),
       'weather' => WeatherCard(component: component),
       'todo' => TodoCard(messageId: messageId, component: component, onStateChanged: onStateChanged),
       'feed' => FeedCard(component: component),

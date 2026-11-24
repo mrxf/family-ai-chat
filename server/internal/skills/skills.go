@@ -40,6 +40,7 @@ type Context struct {
 	UserID         string
 	ConversationID string
 	AssistantID    *string
+	ClientContext  any // transient device snapshot, rendered only by the skill Dynamic callback
 	Private        bool
 	Now            time.Time
 }
@@ -84,7 +85,7 @@ func (d *Definition) RenderContent(ctx Context) string {
 type Provider interface {
 	List(ctx Context) []Definition
 	Get(key string, ctx Context) (*Definition, bool)
-	OwnerSkill(toolName string) (*Definition, bool)
+	OwnerSkill(toolName string, contexts ...Context) (*Definition, bool)
 }
 
 // Registry is a concurrency-safe in-memory SkillProvider.
@@ -92,13 +93,13 @@ type Registry struct {
 	mu     sync.RWMutex
 	order  []string
 	byKey  map[string]Definition
-	byTool map[string]string // tool name -> skill key
+	byTool map[string][]string // tool name -> ordered owning skill keys
 }
 
 func NewRegistry(defs ...Definition) *Registry {
 	r := &Registry{
 		byKey:  map[string]Definition{},
-		byTool: map[string]string{},
+		byTool: map[string][]string{},
 	}
 	for _, d := range defs {
 		r.Register(d)
@@ -117,15 +118,19 @@ func (r *Registry) Register(d Definition) {
 	if _, exists := r.byKey[key]; !exists {
 		r.order = append(r.order, key)
 	} else {
-		for tName, owner := range r.byTool {
-			if owner == key {
-				delete(r.byTool, tName)
+		for name, owners := range r.byTool {
+			kept := []string{}
+			for _, owner := range owners {
+				if owner != key {
+					kept = append(kept, owner)
+				}
 			}
+			r.byTool[name] = kept
 		}
 	}
 	r.byKey[key] = d
 	for _, t := range d.Tools {
-		r.byTool[t.Name] = key
+		r.byTool[t.Name] = append(r.byTool[t.Name], key)
 	}
 }
 
@@ -161,17 +166,18 @@ func (r *Registry) Get(key string, ctx Context) (*Definition, bool) {
 	return &cp, true
 }
 
-func (r *Registry) OwnerSkill(toolName string) (*Definition, bool) {
+func (r *Registry) OwnerSkill(toolName string, contexts ...Context) (*Definition, bool) {
 	r.mu.RLock()
-	key, ok := r.byTool[strings.TrimSpace(toolName)]
-	if !ok {
-		r.mu.RUnlock()
-		return nil, false
+	defer r.mu.RUnlock()
+	for _, key := range r.byTool[strings.TrimSpace(toolName)] {
+		d := r.byKey[key]
+		if len(contexts) > 0 && d.Available != nil && !d.Available(contexts[0]) {
+			continue
+		}
+		cp := d
+		return &cp, true
 	}
-	d := r.byKey[key]
-	r.mu.RUnlock()
-	cp := d
-	return &cp, true
+	return nil, false
 }
 
 func normalizeKey(k string) string {

@@ -479,6 +479,7 @@ func (s *Server) send(w http.ResponseWriter, r *http.Request) {
 		Content         string                  `json:"content"`
 		Attachments     []store.Attachment      `json:"attachments"`
 		QuotedComponent *chat.ComponentQuoteRef `json:"quoted_component"`
+		ClientContext   *chat.ClientContext     `json:"client_context"`
 		EditOf          string                  `json:"edit_of"`
 		Think           bool                    `json:"think"`
 		Private         bool                    `json:"private"`
@@ -496,7 +497,7 @@ func (s *Server) send(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.Chat.Send(r.Context(), currentUser(r), chat.SendInput{
 		ConversationID: in.ConversationID, AssistantID: in.AssistantID, ModelID: in.ModelID,
-		Content: in.Content, Attachments: in.Attachments, QuotedComponent: in.QuotedComponent,
+		ClientContext: in.ClientContext, Content: in.Content, Attachments: in.Attachments, QuotedComponent: in.QuotedComponent,
 		EditOf: in.EditOf, Think: in.Think, Private: in.Private,
 	})
 	if err != nil {

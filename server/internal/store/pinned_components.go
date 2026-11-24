@@ -114,7 +114,7 @@ func (s *Store) PinComponent(ctx context.Context, userID, messageID, componentID
 		if target == nil {
 			return ErrNotFound
 		}
-		if target.Kind == "ask_user" {
+		if target.Kind == "ask_user" || target.Kind == "app_action" {
 			return ErrComponentNotPinnable
 		}
 

@@ -10,6 +10,7 @@ import '../core/api.dart';
 import '../core/models/models.dart';
 import '../platform/reminders/reminder_service.dart';
 import 'chat_state.dart';
+import 'app_actions.dart';
 import 'conversations.dart';
 import 'pinned_components.dart';
 import 'scheduled_tasks.dart';
@@ -51,6 +52,7 @@ class ChatController extends Notifier<ChatState> {
 
   @override
   ChatState build() {
+    bindAppActions(ref, live, () => state, (listener) => listenSelf(listener));
     final sessionNotifier = ref.read(sessionProvider.notifier);
     sessionNotifier.registerBeforeLogout(_onBeforeLogout);
     ref.onDispose(() {
@@ -741,7 +743,7 @@ class ChatController extends Notifier<ChatState> {
     if (!state.isPrivate && v.steps.any((s) => s.kind == 'automation')) {
       unawaited(syncScheduledTasksAfterChat(ref));
     }
-    if (!state.isPrivate && v.steps.any((s) => s.kind == 'component')) {
+    if (!state.isPrivate && v.steps.any((s) => s.kind == 'component' || s.kind == 'app')) {
       unawaited(ref.read(pinnedComponentsProvider.notifier).refresh());
       // Refresh the open conversation if an earlier message's component was updated/deleted in place.
       final updatedInPlace = v.steps.any((s) => s.kind == 'component' && (s.title.contains('更新') || s.title.contains('删除')));

@@ -257,7 +257,7 @@ var updateComponentTool = llm.Tool{
 var pinComponentTool = llm.Tool{
 	Name: "pin_component",
 	Description: "Pin an existing component card to the user's Home board. " +
-		"Omit message_id and component_id to pin the most recently created component in the current reply.",
+		"Omit both IDs to use this turn's new card, the user's quoted card, or the last pinnable card in the latest assistant message.",
 	Parameters: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -269,14 +269,14 @@ var pinComponentTool = llm.Tool{
 
 var unpinComponentTool = llm.Tool{
 	Name:        "unpin_component",
-	Description: "Unpin a component card from the user's Home board by its message_id and component_id.",
+	Description: "Unpin a Home card by message_id and component_id, or by a title/summary keyword. Multiple matches require asking the user.",
 	Parameters: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
+			"keyword":      map[string]any{"type": "string", "description": "标题或摘要关键字；多匹配时先询问用户"},
 			"message_id":   map[string]any{"type": "string"},
 			"component_id": map[string]any{"type": "string"},
 		},
-		"required": []string{"message_id", "component_id"},
 	},
 }
 
@@ -641,7 +641,7 @@ func (s *Service) appendAndPersistComponent(t *toolTurn, kind string, data any, 
 	if err := s.Store.SetComponents(pctx, t.asstID, all); err != nil {
 		s.Log.Error("save message components", "message_id", t.asstID, "err", err)
 	}
-	if kind != "ask_user" {
+	if kind != "ask_user" && kind != "app_action" {
 		t.lastCreatedMsgID = t.asstID
 		t.lastCreatedCompID = compID
 	}

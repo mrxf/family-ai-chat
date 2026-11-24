@@ -273,10 +273,16 @@ func (s *Service) ExecuteScheduledTask(ctx context.Context, task *store.Schedule
 		run:          run,
 		private:      false,
 		activeSkills: map[string]bool{},
+		automation:   true,
 	}
 
 	ts := s.toolsFor(ctx, user, conv, model)
-	tools := append([]llm.Tool(nil), ts.tools...)
+	tools := []llm.Tool{}
+	for _, tool := range ts.tools {
+		if !isSettingsTool(tool.Name) {
+			tools = append(tools, tool)
+		}
+	}
 	if s.Skills != nil {
 		sctx := s.skillContext(user, conv)
 		for _, key := range []string{skillKeyComponents, "schedule", skillKeyAutomation} {

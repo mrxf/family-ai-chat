@@ -1301,3 +1301,27 @@ data: {"message":{"id":"01933c90-1210-7000-8000-000000000012","conversation_id":
   - 生成过程中每当新组件渲染或状态变更时，实时推送 `event: components`（`{"components": [...]}`）；
   - `RunStep.kind` 新增 `"component"` 与 `"ask_user"`。
 - **`PATCH /api/messages/{id}/components/{compId}`**：需登录（仅限会话所属用户），请求体 `{"state": {...}}`（上限 16KB JSON 对象），原子更新指定消息内对应组件的交互状态（如 Todo 打勾、Quiz 作答、AskUser 提交），若该消息仍在流式生成中同步更新内存 `Run` 快照，返回 `{"component": {...}, "message": {...}}`。
+
+### Device-local application actions (Phase 1)
+
+`POST /api/chat` accepts an optional `client_context` snapshot. It is transient input for tools and skill dynamic content; it is never added to `Messages[0]` or synchronized as account preferences:
+
+```json
+{"client_context":{"device_id":"dev_abc","device_kind":"desktop","settings":{"font_scale":1.0,"theme":"system"},"capabilities":{"font_scale":true,"theme":true,"suggestions":true},"suggestions_pinned":true}}
+```
+
+`device_id` is a persistent installation ID; `device_kind` is `mobile` or `desktop`. Font steps are 小=0.85, 较小=0.92, 标准=1.0, 大=1.15, 特大=1.3; theme is `system`, `light`, or `dark`. Without context, setting and suggestions tools return an upgrade/manual-settings explanation; PIN management remains available. Settings tools are not mounted for automation runs. The entire `app_control` skill is unavailable in private conversations.
+
+The existing message `components` array and SSE `components` event can contain a non-pinnable `app_action`:
+
+```json
+{"id":"comp_x","kind":"app_action","pos":0,"data":{"action":"set_settings","target_device_id":"dev_abc","patch":{"font_scale":1.15,"theme":"dark"},"summary":"字体调到「大」；主题改为深色"},"state":{"status":"pending"}}
+```
+
+Phase 1 actions are `set_settings` (only `font_scale` and `theme`) and `toggle_suggestions` (`patch: {"visible":false}`). Only the target device automatically executes a `pending` action; other devices display its summary. The target persists the most recent 200 action receipts and uses `PATCH /api/messages/{id}/components/{compId}` with `{"state":...}` to acknowledge execution:
+
+```json
+{"state":{"status":"applied","applied_device_id":"dev_abc","previous":{"font_scale":1.0,"theme":"system"},"applied_at":1795500000000}}
+```
+
+Status is `pending`, `applied`, `undone`, or `unsupported`. Undo restores `previous` on the originating device and writes `undone`; unknown actions/patch keys cannot invoke arbitrary client functions. Page navigation, speech rate, haptics, and applying on another device are reserved for Phase 2.

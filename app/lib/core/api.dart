@@ -76,6 +76,9 @@ class Api {
     }));
   }
 
+  /// Supplies the current sending device snapshot without coupling API to state.
+  Map<String, dynamic> Function()? clientContext;
+
   final String baseUrl;
   final String? token;
   final void Function()? onUnauthorized;
@@ -272,6 +275,7 @@ class Api {
       'assistant_id': ?assistantId,
       'model_id': ?modelId,
       'content': content,
+      if (clientContext != null) 'client_context': clientContext!(),
       'attachments': attachments.map((a) => {'file_id': a.fileId}).toList(),
       if (quotedComponent != null) 'quoted_component': quotedComponent.toRequestRef(),
       'edit_of': ?editOf,

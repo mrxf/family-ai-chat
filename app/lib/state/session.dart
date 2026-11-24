@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,7 @@ import '../core/invite_code.dart';
 import '../core/models/models.dart';
 import '../core/storage.dart';
 import '../platform/platform_capabilities.dart';
+import 'client_context.dart';
 
 /// Overridden in main() once storage is opened.
 final storageProvider = Provider<Storage>((ref) => throw UnimplementedError());
@@ -16,6 +18,17 @@ typedef ApiFactory = Api Function(String baseUrl, {String? token, void Function(
 
 /// Allows widget tests to inject a deterministic [Api] for unauthenticated checks & login.
 final apiFactoryProvider = Provider<ApiFactory>((_) => Api.new);
+
+/// Stable installation identity, preserved across logouts and server changes.
+final deviceIdProvider = Provider<String>((ref) {
+  final prefs = ref.read(storageProvider).prefs;
+  final saved = prefs.getString('device_id');
+  if (saved != null && saved.isNotEmpty) return saved;
+  final random = Random.secure();
+  final id = 'dev_${List.generate(24, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join()}';
+  prefs.setString('device_id', id);
+  return id;
+});
 
 // ---------------- settings ----------------
 
@@ -84,6 +97,7 @@ class SessionNotifier extends Notifier<Session> {
 
   @override
   Session build() {
+    ref.read(deviceIdProvider);
     Future.microtask(_restore);
     // Phones keep the app alive for days: refresh models & assistants when it comes back
     // to the foreground, so admin changes reach the family without a restart.
@@ -142,6 +156,7 @@ class SessionNotifier extends Notifier<Session> {
     api = _apiFactory(server, token: token, onUnauthorized: () {
       if (identical(state.api, api)) unawaited(logout(remote: false));
     });
+    api.clientContext = () => buildClientContext(ref);
     return api;
   }
 

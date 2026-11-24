@@ -175,6 +175,7 @@ func (s *Service) execReadSkillCall(t *toolTurn, rawArgs string) (string, []llm.
 	}
 	key := parseReadSkillKey(rawArgs)
 	sctx := skills.Context{
+		ClientContext:  t.clientCtx,
 		UserID:         t.user.ID,
 		ConversationID: t.convID,
 		AssistantID:    t.assistantID,
@@ -209,6 +210,13 @@ func (s *Service) execReadSkillCall(t *toolTurn, rawArgs string) (string, []llm.
 	t.run.setActivity("正在读取「" + def.Title + "」指南…")
 	t.postActivity = "正在按「" + def.Title + "」处理…"
 
+	if def.Key == "app_control" {
+		cp := *def
+		if t.automation {
+			cp.Tools = homeControlTools()
+		}
+		def = &cp
+	}
 	toolNames := def.AllowedToolNames()
 	var b strings.Builder
 	fmt.Fprintf(&b, "技能已激活：%s（%s）\n", def.Title, def.Key)

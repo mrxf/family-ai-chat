@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../../core/models/app_settings_steps.dart';
 import '../../../platform/platform_capabilities.dart';
 import '../../../state/memories.dart';
 import '../../../state/scheduled_tasks.dart';
@@ -282,15 +283,9 @@ class _FontScaleSlider extends StatelessWidget {
   final double value;
   final ValueChanged<double> onChanged;
 
-  static const _steps = [(0.85, '小'), (0.92, '较小'), (1.0, '标准'), (1.15, '大'), (1.3, '特大')];
+  static const _steps = fontSteps;
 
-  int get _index {
-    var best = 0;
-    for (var i = 1; i < _steps.length; i++) {
-      if ((_steps[i].$1 - value).abs() < (_steps[best].$1 - value).abs()) best = i;
-    }
-    return best;
-  }
+  int get _index => nearestFontStep(value);
 
   @override
   Widget build(BuildContext context) {

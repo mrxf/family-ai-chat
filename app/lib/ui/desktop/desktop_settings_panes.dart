@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../core/models/app_settings_steps.dart';
 import '../../platform/platform_capabilities.dart';
 import '../../state/desktop_nav.dart';
 import '../../state/session.dart';
@@ -20,15 +21,9 @@ import 'desktop_page_header.dart';
 class DesktopGeneralSettingsPane extends ConsumerWidget {
   const DesktopGeneralSettingsPane({super.key});
 
-  static const _fontSteps = [(0.85, '小'), (0.92, '较小'), (1.0, '标准'), (1.15, '大'), (1.3, '特大')];
+  static const _fontSteps = fontSteps;
 
-  static int _fontIndex(double value) {
-    var best = 0;
-    for (var i = 1; i < _fontSteps.length; i++) {
-      if ((_fontSteps[i].$1 - value).abs() < (_fontSteps[best].$1 - value).abs()) best = i;
-    }
-    return best;
-  }
+  static int _fontIndex(double value) => nearestFontStep(value);
 
   static String _rateLabel(double r) => switch (r) {
         <= 0.35 => '很慢',

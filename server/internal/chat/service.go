@@ -105,6 +105,7 @@ func NewService(st *store.Store, dataDir string, log *slog.Logger) *Service {
 		svc.buildAutomationSkill(),
 		svc.buildComponentsSkill(),
 		svc.buildAskUserSkill(),
+		svc.buildAppControlSkill(),
 	)
 	svc.Automation = NewAutomationWorker(svc)
 	return svc
@@ -119,6 +120,7 @@ func (s *Service) bgCtx() context.Context {
 
 // SendInput is a new user message.
 type SendInput struct {
+	ClientContext   *ClientContext
 	ConversationID  string // empty = create a new conversation
 	AssistantID     string // used when creating a conversation
 	ModelID         string // optional override; persisted on the conversation
@@ -254,7 +256,7 @@ func (s *Service) Send(ctx context.Context, user *store.User, in SendInput) (*Se
 	if err := s.Store.ApplyTurn(ctx, store.Turn{ConversationID: conv.ID, TruncateFrom: in.EditOf, Append: []*store.Message{userMsg, asst}}); err != nil {
 		return nil, err
 	}
-	s.startRun(user, conv, asst, model, provider, in.Think, autoPlan, in.Content)
+	s.startRun(user, conv, asst, model, provider, in.Think, autoPlan, in.Content, in)
 	return &SendResult{Conversation: conv, UserMessage: userMsg, Assistant: asst}, nil
 }
 
@@ -369,7 +371,7 @@ type FinalEvent struct {
 	Message *store.Message `json:"message"`
 }
 
-func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst *store.Message, model *store.Model, provider *store.Provider, think bool, autoPlan *autoRunPlan, userText string) {
+func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst *store.Message, model *store.Model, provider *store.Provider, think bool, autoPlan *autoRunPlan, userText string, inputs ...SendInput) {
 	convCopy := *convOrig
 	conv := &convCopy
 	run := &Run{MessageID: asst.ID, ConversationID: conv.ID, UserID: user.ID}
@@ -385,6 +387,11 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 		turn := &toolTurn{
 			user: user, convID: conv.ID, assistantID: conv.AssistantID,
 			asstID: asst.ID, userQuestion: userText, run: run, private: conv.Private,
+		}
+
+		if len(inputs) > 0 {
+			turn.clientCtx = inputs[0].ClientContext
+			turn.quotedComponent = inputs[0].QuotedComponent
 		}
 
 		autoEscalated := false

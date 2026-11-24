@@ -365,65 +365,6 @@ func applyTodoUpdate(curRaw, curStateRaw json.RawMessage, patch map[string]any, 
 	return rawData, &stateMsg, nil
 }
 
-func (s *Service) execPinComponent(ctx context.Context, t *toolTurn, rawArgs string) string {
-	if msg := s.checkComponentManageGuard(t); msg != "" {
-		return msg
-	}
-	var args struct {
-		MessageID   string `json:"message_id"`
-		ComponentID string `json:"component_id"`
-	}
-	_ = json.Unmarshal([]byte(rawArgs), &args)
-	msgID := strings.TrimSpace(args.MessageID)
-	compID := strings.TrimSpace(args.ComponentID)
-	if msgID == "" && compID == "" {
-		msgID = t.lastCreatedMsgID
-		compID = t.lastCreatedCompID
-	}
-	if msgID == "" || compID == "" {
-		return "请提供要固定的 message_id 和 component_id，或先生成一张卡片。"
-	}
-	pin, err := s.Store.PinComponent(ctx, t.user.ID, msgID, compID)
-	if err != nil {
-		switch {
-		case errors.Is(err, store.ErrPinLimit):
-			return "首页最多固定 20 张卡片，请先取消固定一些不常用的卡片。"
-		case errors.Is(err, store.ErrComponentNotPinnable):
-			return "这张卡片不支持固定到首页。"
-		case errors.Is(err, store.ErrNotFound):
-			return "未找到指定卡片，请先调用 list_components 确认 ID。"
-		default:
-			return "固定卡片失败：" + err.Error()
-		}
-	}
-	t.lastPinnedMsgID = msgID
-	t.lastPinnedCompID = compID
-	title, _ := summarizeComponentForQuote(pin.Component)
-	t.run.addDoneStep("component", "已固定到首页："+clipRunes(title, 20), "")
-	return fmt.Sprintf("已将卡片「%s」固定到首页看板（内部标识 message_id=%s component_id=%s，勿向用户输出）。", title, msgID, compID)
-}
-
-func (s *Service) execUnpinComponent(ctx context.Context, t *toolTurn, rawArgs string) string {
-	if msg := s.checkComponentManageGuard(t); msg != "" {
-		return msg
-	}
-	var args struct {
-		MessageID   string `json:"message_id"`
-		ComponentID string `json:"component_id"`
-	}
-	_ = json.Unmarshal([]byte(rawArgs), &args)
-	msgID := strings.TrimSpace(args.MessageID)
-	compID := strings.TrimSpace(args.ComponentID)
-	if msgID == "" || compID == "" {
-		return "参数错误：需要提供 message_id 和 component_id。"
-	}
-	if err := s.Store.UnpinComponent(ctx, t.user.ID, msgID, compID); err != nil {
-		return "取消固定失败：" + err.Error()
-	}
-	t.run.addDoneStep("component", "已从首页取消固定卡片", "")
-	return "已将该卡片从首页看板取消固定。"
-}
-
 func (s *Service) execDeleteComponent(ctx context.Context, t *toolTurn, rawArgs string) string {
 	if msg := s.checkComponentManageGuard(t); msg != "" {
 		return msg

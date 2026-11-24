@@ -66,3 +66,23 @@ func TestRegistryCatalogAndVisibility(t *testing.T) {
 		t.Fatalf("expected OwnerSkill(create_schedule)=schedule, got %+v (%v)", owner, ok)
 	}
 }
+
+func TestSharedToolOwnershipAndReregistration(t *testing.T) {
+	shared := llm.Tool{Name: "shared"}
+	first := skills.Definition{Key: "first", Tools: []llm.Tool{shared}, Available: func(c skills.Context) bool { return !c.Private }}
+	second := skills.Definition{Key: "second", Tools: []llm.Tool{shared}}
+	reg := skills.NewRegistry(first, second)
+	owner, ok := reg.OwnerSkill("shared", skills.Context{})
+	if !ok || owner.Key != "first" {
+		t.Fatal(owner)
+	}
+	owner, ok = reg.OwnerSkill("shared", skills.Context{Private: true})
+	if !ok || owner.Key != "second" {
+		t.Fatal(owner)
+	}
+	reg.Register(skills.Definition{Key: "first", Tools: []llm.Tool{{Name: "other"}}})
+	owner, ok = reg.OwnerSkill("shared", skills.Context{})
+	if !ok || owner.Key != "second" {
+		t.Fatal(owner)
+	}
+}

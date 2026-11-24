@@ -30,6 +30,17 @@ func componentNoteWithMessageID(messageID string, comps []store.MessageComponent
 			ref = fmt.Sprintf(" [内部ID: message_id=%s, component_id=%s]", messageID, c.ID)
 		}
 		switch c.Kind {
+		case "app_action":
+			var d struct {
+				Summary string `json:"summary"`
+			}
+			var st struct {
+				Status string `json:"status"`
+			}
+			_ = json.Unmarshal(c.Data, &d)
+			_ = json.Unmarshal(c.State, &st)
+			status := map[string]string{"pending": "等待本机应用", "applied": "已应用", "undone": "已撤销", "unsupported": "不支持"}[st.Status]
+			parts = append(parts, fmt.Sprintf("应用操作「%s」（%s）", d.Summary, status))
 		case "weather":
 			var d weatherCardData
 			if json.Unmarshal(c.Data, &d) == nil && d.Location != "" {
