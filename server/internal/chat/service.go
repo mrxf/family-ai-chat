@@ -246,7 +246,16 @@ func (s *Service) Send(ctx context.Context, user *store.User, in SendInput) (*Se
 		}
 	}
 
-	userMsg := &store.Message{Role: "user", Content: in.Content, Attachments: in.Attachments, QuotedComponent: quoted, Status: store.StatusDone}
+	userMsg := &store.Message{
+		Role:            "user",
+		SenderUserID:    user.ID,
+		SenderName:      user.DisplayName,
+		SenderAvatar:    user.Avatar,
+		Content:         in.Content,
+		Attachments:     in.Attachments,
+		QuotedComponent: quoted,
+		Status:          store.StatusDone,
+	}
 	var asstModelID *string
 	if model != nil {
 		id := model.ID
@@ -255,6 +264,13 @@ func (s *Service) Send(ctx context.Context, user *store.User, in SendInput) (*Se
 	asst := &store.Message{Role: "assistant", Status: store.StatusStreaming, ModelID: asstModelID}
 	if err := s.Store.ApplyTurn(ctx, store.Turn{ConversationID: conv.ID, TruncateFrom: in.EditOf, Append: []*store.Message{userMsg, asst}}); err != nil {
 		return nil, err
+	}
+	if conv.IsShared && len(in.Attachments) > 0 {
+		fids := make([]string, 0, len(in.Attachments))
+		for _, a := range in.Attachments {
+			fids = append(fids, a.FileID)
+		}
+		_ = s.Store.GrantFilesToConversationMembers(ctx, conv.ID, fids)
 	}
 	s.startRun(user, conv, asst, model, provider, in.Think, autoPlan, in.Content, in)
 	return &SendResult{Conversation: conv, UserMessage: userMsg, Assistant: asst}, nil
@@ -374,7 +390,7 @@ type FinalEvent struct {
 func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst *store.Message, model *store.Model, provider *store.Provider, think bool, autoPlan *autoRunPlan, userText string, inputs ...SendInput) {
 	convCopy := *convOrig
 	conv := &convCopy
-	run := &Run{MessageID: asst.ID, ConversationID: conv.ID, UserID: user.ID}
+	run := &Run{MessageID: asst.ID, ConversationID: conv.ID, UserID: user.ID, UserName: user.DisplayName}
 	if asst.ModelID != nil {
 		run.modelID = *asst.ModelID
 	}
@@ -386,7 +402,7 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 		var usage llm.Usage
 		turn := &toolTurn{
 			user: user, convID: conv.ID, assistantID: conv.AssistantID,
-			asstID: asst.ID, userQuestion: userText, run: run, private: conv.Private,
+			asstID: asst.ID, userQuestion: userText, run: run, private: conv.Private, shared: conv.IsShared,
 		}
 
 		if len(inputs) > 0 {
@@ -500,14 +516,14 @@ func (s *Service) startRun(user *store.User, convOrig *store.Conversation, asst 
 				turn.activeSkills[k] = v
 			}
 		}
-		if !conv.Private && s.Memory != nil && s.Memory.Allowed(ctx, user, conv.AssistantID) {
+		if !conv.Private && !conv.IsShared && s.Memory != nil && s.Memory.Allowed(ctx, user, conv.AssistantID) {
 			run.setActivity("正在翻看相关记忆…")
 		}
 		req, err := s.buildRequestWithOpts(ctx, user, conv, asst.ID, model, ts, buildOpts{autoEscalated: autoEscalated})
 		tools := req.tools
 		turn.foldedBeforeID = req.foldedBeforeID
 		run.setActivity("")
-		if err == nil && req.recalled {
+		if err == nil && req.recalled && !conv.IsShared {
 			run.addDoneStep("memory", "已关联相关记忆背景", "")
 		}
 		maxRounds := maxToolRounds

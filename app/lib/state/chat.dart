@@ -186,6 +186,7 @@ class ChatController extends Notifier<ChatState> {
       assistantId: conv?.assistantId,
       modelId: _sessionModelId ?? _convModeId(conv),
       resolvedModelId: conv?.modelId,
+      isShared: conv?.isShared == true,
       think: state.think,
       loading: true,
       epoch: state.epoch + 1,
@@ -226,11 +227,16 @@ class ChatController extends Notifier<ChatState> {
         assistantId: d.conversation.assistantId,
         modelId: _sessionModelId ?? _convModeId(d.conversation),
         resolvedModelId: d.conversation.modelId,
+        isShared: d.conversation.isShared,
         hasMore: merged.length > d.messages.length ? state.hasMore : d.hasMore,
         loading: false,
         activeId: active,
+        activeUserId: d.activeUserId,
+        activeUserName: d.activeUserName,
+        lastSyncUpdatedAt: d.conversation.updatedAt,
         epoch: focusIdx >= 0 ? state.epoch + 1 : state.epoch,
       );
+      _convs.replaceConversation(d.conversation);
       _persist();
       if (active != null) {
         unawaited(_attach(active));
@@ -270,6 +276,39 @@ class ChatController extends Notifier<ChatState> {
     } catch (_) {
       if (nav == _nav) state = state.copyWith(loadingOlder: false);
     }
+  }
+
+  /// Applies an incremental sync snapshot for an active shared conversation.
+  void applySharedSync(ConversationSyncResult sync) {
+    final cid = state.conversationId;
+    if (cid == null || sync.conversation?.id != cid) return;
+    if (state.activeId?.startsWith('local-') == true) return;
+    final active = sync.activeMessageId.isEmpty ? null : sync.activeMessageId;
+    if (sync.changed) {
+      final merged = _mergeTail(state.messages, sync.messages);
+      state = state.copyWith(
+        messages: merged,
+        anchor: _keepAnchor(merged),
+        hasMore: merged.length > sync.messages.length ? state.hasMore : sync.hasMore,
+        isShared: sync.conversation?.isShared ?? state.isShared,
+        activeId: active,
+        activeUserId: sync.activeUserId,
+        activeUserName: sync.activeUserName,
+        lastSyncUpdatedAt: sync.updatedAt,
+      );
+      if (sync.conversation != null) _convs.replaceConversation(sync.conversation!);
+      _persist();
+    } else if (state.activeId != active || state.activeUserId != sync.activeUserId) {
+      state = state.copyWith(activeId: active, activeUserId: sync.activeUserId, activeUserName: sync.activeUserName);
+    }
+    if (active != null && active != state.activeId) unawaited(_attach(active));
+  }
+
+  /// Removes a deleted message from local state immediately after server deletion.
+  void removeMessageLocally(String msgId) {
+    final next = state.messages.where((m) => m.id != msgId).toList();
+    state = state.copyWith(messages: next, anchor: _keepAnchor(next));
+    _persist();
   }
 
   /// Called when the app returns to the foreground: the SSE connection may
@@ -637,59 +676,20 @@ class ChatController extends Notifier<ChatState> {
     String messageId,
     String compId,
     Map<String, dynamic> nextData,
-  ) {
-    if (!state.messages.any((m) => m.id == messageId)) return;
-    state = state.copyWith(
-      messages: [
-        for (final m in state.messages)
-          if (m.id == messageId)
-            m.copyWith(
-              components: [
-                for (final c in m.components) c.id == compId ? c.copyWith(data: nextData) : c,
-              ],
-            )
-          else
-            m,
-      ],
-    );
-    _persist();
-  }
+  ) =>
+      _patchMessage(messageId, (m) => m.copyWith(components: [for (final c in m.components) c.id == compId ? c.copyWith(data: nextData) : c]));
 
   /// Removes a deleted component from the currently open conversation immediately.
-  void removeComponentLocal(String messageId, String compId) {
-    if (!state.messages.any((m) => m.id == messageId)) return;
-    state = state.copyWith(
-      messages: [
-        for (final m in state.messages)
-          if (m.id == messageId)
-            m.copyWith(components: m.components.where((c) => c.id != compId).toList())
-          else
-            m,
-      ],
-    );
-    _persist();
-  }
+  void removeComponentLocal(String messageId, String compId) =>
+      _patchMessage(messageId, (m) => m.copyWith(components: m.components.where((c) => c.id != compId).toList()));
 
   /// Reflects a component state edit performed on the home board inside the open conversation.
-  void syncComponentStateFromPin(
-    String messageId,
-    String compId,
-    Map<String, dynamic> nextState,
-  ) {
+  void syncComponentStateFromPin(String messageId, String compId, Map<String, dynamic> nextState) =>
+      _patchMessage(messageId, (m) => m.copyWith(components: [for (final c in m.components) c.id == compId ? c.copyWith(state: nextState) : c]));
+
+  void _patchMessage(String messageId, Message Function(Message) transform) {
     if (!state.messages.any((m) => m.id == messageId)) return;
-    state = state.copyWith(
-      messages: [
-        for (final m in state.messages)
-          if (m.id == messageId)
-            m.copyWith(
-              components: [
-                for (final c in m.components) c.id == compId ? c.copyWith(state: nextState) : c,
-              ],
-            )
-          else
-            m,
-      ],
-    );
+    state = state.copyWith(messages: [for (final m in state.messages) m.id == messageId ? transform(m) : m]);
     _persist();
   }
 

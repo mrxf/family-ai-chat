@@ -19,12 +19,18 @@ class ShareSelectPage extends StatefulWidget {
     this.initialFocusId,
     this.conversationTitle,
     this.assistant,
+    this.selectAllByDefault = false,
+    this.confirmLabel,
+    this.pickIdsOnly = false,
   });
 
   final List<Message> messages;
   final String? initialFocusId;
   final String? conversationTitle;
   final Assistant? assistant;
+  final bool selectAllByDefault;
+  final String? confirmLabel;
+  final bool pickIdsOnly;
 
   @override
   State<ShareSelectPage> createState() => _ShareSelectPageState();
@@ -36,6 +42,9 @@ class _ShareSelectPageState extends State<ShareSelectPage> {
   Set<String> _defaultSelection() {
     final msgs = widget.messages;
     if (msgs.isEmpty) return {};
+    if (widget.selectAllByDefault) {
+      return {for (final m in msgs) m.id};
+    }
     final focusId = widget.initialFocusId;
     if (focusId != null) {
       final idx = msgs.indexWhere((m) => m.id == focusId);
@@ -96,6 +105,10 @@ class _ShareSelectPageState extends State<ShareSelectPage> {
   void _openPreview() {
     final chosen = [for (final m in widget.messages) if (_selected.contains(m.id)) m];
     if (chosen.isEmpty) return;
+    if (widget.pickIdsOnly) {
+      Navigator.of(context).pop([for (final m in chosen) m.id]);
+      return;
+    }
     Navigator.of(context).push(
       appRoute(
         (_) => SharePosterPage(
@@ -210,7 +223,7 @@ class _ShareSelectPageState extends State<ShareSelectPage> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '下一步可预览图片并切换卡片主题',
+                            widget.pickIdsOnly ? '将生成口令，对方导入后可独立继续对话' : '下一步可预览图片并切换卡片主题',
                             style: TextStyle(fontSize: 12.5, color: p.muted),
                           ),
                         ],
@@ -232,10 +245,10 @@ class _ShareSelectPageState extends State<ShareSelectPage> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            AppIcon(AppIcons.sparkles, size: 18, color: count > 0 ? Colors.white : p.faint),
+                            AppIcon(widget.pickIdsOnly ? AppIcons.link : AppIcons.sparkles, size: 18, color: count > 0 ? Colors.white : p.faint),
                             const SizedBox(width: 6),
                             Text(
-                              '生成分享图片',
+                              widget.confirmLabel ?? '生成分享图片',
                               style: TextStyle(
                                 fontSize: 15.5,
                                 fontWeight: FontWeight.w600,

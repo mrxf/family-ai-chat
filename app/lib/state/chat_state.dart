@@ -119,6 +119,7 @@ class ChatState {
   final String? resolvedModelId;
   final bool think;
   final bool isPrivate;
+  final bool isShared;
   final List<Message> messages;
 
   /// Messages before this index are laid out upward from the scroll anchor,
@@ -127,6 +128,9 @@ class ChatState {
   final int anchor;
   final bool loading, hasMore, loadingOlder;
   final String? activeId;
+  final String activeUserId;
+  final String activeUserName;
+  final int lastSyncUpdatedAt;
 
   /// Bumps whenever a different conversation is shown (resets scroll).
   final int epoch;
@@ -144,12 +148,16 @@ class ChatState {
     this.resolvedModelId,
     this.think = false,
     this.isPrivate = false,
+    this.isShared = false,
     this.messages = const [],
     this.anchor = 0,
     this.loading = false,
     this.hasMore = false,
     this.loadingOlder = false,
     this.activeId,
+    this.activeUserId = '',
+    this.activeUserName = '',
+    this.lastSyncUpdatedAt = 0,
     this.epoch = 0,
     this.pendingQuote,
     this.highlightMessageId,
@@ -165,12 +173,16 @@ class ChatState {
     Object? resolvedModelId = _keep,
     bool? think,
     bool? isPrivate,
+    bool? isShared,
     List<Message>? messages,
     int? anchor,
     bool? loading,
     bool? hasMore,
     bool? loadingOlder,
     Object? activeId = _keep,
+    String? activeUserId,
+    String? activeUserName,
+    int? lastSyncUpdatedAt,
     int? epoch,
     Object? pendingQuote = _keep,
     Object? highlightMessageId = _keep,
@@ -182,12 +194,16 @@ class ChatState {
         resolvedModelId: resolvedModelId == _keep ? this.resolvedModelId : resolvedModelId as String?,
         think: think ?? this.think,
         isPrivate: isPrivate ?? this.isPrivate,
+        isShared: isShared ?? this.isShared,
         messages: messages ?? this.messages,
         anchor: anchor ?? this.anchor,
         loading: loading ?? this.loading,
         hasMore: hasMore ?? this.hasMore,
         loadingOlder: loadingOlder ?? this.loadingOlder,
         activeId: activeId == _keep ? this.activeId : activeId as String?,
+        activeUserId: activeUserId ?? this.activeUserId,
+        activeUserName: activeUserName ?? this.activeUserName,
+        lastSyncUpdatedAt: lastSyncUpdatedAt ?? this.lastSyncUpdatedAt,
         epoch: epoch ?? this.epoch,
         pendingQuote: pendingQuote == _keep ? this.pendingQuote : pendingQuote as QuotedComponent?,
         highlightMessageId: highlightMessageId == _keep ? this.highlightMessageId : highlightMessageId as String?,

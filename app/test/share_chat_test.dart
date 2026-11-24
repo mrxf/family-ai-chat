@@ -156,6 +156,13 @@ void main() {
     await tester.tap(find.byTooltip('分享对话'));
     await tester.pumpAndSettle();
 
+    // Unified share sheet presents family share, short-code share, and poster image.
+    expect(find.text('共享给家人'), findsOneWidget);
+    expect(find.text('分享短口令（可继续对话）'), findsOneWidget);
+    expect(find.text('生成长图海报'), findsOneWidget);
+    await tester.tap(find.text('生成长图海报'));
+    await tester.pumpAndSettle();
+
     // Step 1: Selection page shows both messages selected by default.
     expect(find.text('选择分享内容'), findsOneWidget);
     expect(find.text('已选 2 条对话'), findsOneWidget);

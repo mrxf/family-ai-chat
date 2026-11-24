@@ -29,7 +29,11 @@ func (s *Store) CreateFile(ctx context.Context, f *File) error {
 
 func (s *Store) GetFile(ctx context.Context, id, userID string) (*File, error) {
 	var f File
-	err := s.queryRow(ctx, `SELECT id, user_id, mime, size, sha256, width, height, private, path, created_at FROM files WHERE id = ? AND user_id = ?`, id, userID).
+	err := s.queryRow(ctx, `SELECT f.id, f.user_id, f.mime, f.size, f.sha256, f.width, f.height, f.private, f.path, f.created_at
+		FROM files f
+		WHERE f.id = ? AND (f.user_id = ? OR EXISTS (
+			SELECT 1 FROM file_grants fg WHERE fg.file_id = f.id AND fg.user_id = ?
+		))`, id, userID, userID).
 		Scan(&f.ID, &f.UserID, &f.Mime, &f.Size, &f.SHA256, &f.Width, &f.Height, &f.Private, &f.Path, &f.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)

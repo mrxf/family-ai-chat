@@ -9,17 +9,23 @@ import (
 )
 
 type Conversation struct {
-	ID          string  `json:"id"`
-	UserID      string  `json:"-"`
-	AssistantID *string `json:"assistant_id"`
-	ModelID     *string `json:"model_id"`
-	AutoMode    bool    `json:"auto_mode"`
-	Title       string  `json:"title"`
-	Pinned      bool    `json:"pinned"`
-	Private     bool    `json:"private"`
-	CreatedAt   int64   `json:"created_at"`
-	UpdatedAt   int64   `json:"updated_at"`
-	Snippet     string  `json:"snippet,omitempty"`
+	ID          string               `json:"id"`
+	UserID      string               `json:"-"`
+	OwnerID     string               `json:"owner_id,omitempty"`
+	OwnerName   string               `json:"owner_name,omitempty"`
+	IsShared    bool                 `json:"is_shared,omitempty"`
+	IsOwner     bool                 `json:"is_owner,omitempty"`
+	MemberCount int                  `json:"member_count,omitempty"`
+	Members     []ConversationMember `json:"members,omitempty"`
+	AssistantID *string              `json:"assistant_id"`
+	ModelID     *string              `json:"model_id"`
+	AutoMode    bool                 `json:"auto_mode"`
+	Title       string               `json:"title"`
+	Pinned      bool                 `json:"pinned"`
+	Private     bool                 `json:"private"`
+	CreatedAt   int64                `json:"created_at"`
+	UpdatedAt   int64                `json:"updated_at"`
+	Snippet     string               `json:"snippet,omitempty"`
 }
 
 const convCols = `id, user_id, assistant_id, model_id, auto_mode, title, pinned, private, created_at, updated_at`
@@ -49,9 +55,17 @@ func (s *Store) CreateConversation(ctx context.Context, c *Conversation) error {
 	return err
 }
 
-// GetConversation returns the conversation only if it belongs to userID.
+// GetConversation returns the conversation if userID is the owner or a shared member.
 func (s *Store) GetConversation(ctx context.Context, id, userID string) (*Conversation, error) {
-	return scanConv(s.queryRow(ctx, `SELECT `+convCols+` FROM conversations WHERE id = ? AND user_id = ?`, id, userID))
+	c, err := scanConv(s.queryRow(ctx, `SELECT `+prefixCols(convCols, "c.")+` FROM conversations c
+		WHERE c.id = ? AND (c.user_id = ? OR EXISTS (
+			SELECT 1 FROM conversation_members cm WHERE cm.conversation_id = c.id AND cm.user_id = ?
+		))`, id, userID, userID))
+	if err != nil {
+		return nil, err
+	}
+	_ = s.HydrateConversationsSharing(ctx, []*Conversation{c}, userID)
+	return c, nil
 }
 
 type ConversationQuery struct {
@@ -76,8 +90,8 @@ func (s *Store) ListConversations(ctx context.Context, q ConversationQuery) ([]*
 		selectCols += `, COALESCE((SELECT m.content FROM messages m WHERE m.conversation_id = c.id AND m.content ` + s.like() + ` ? ESCAPE '\' ORDER BY m.id DESC LIMIT 1), '')`
 		args = append(args, like)
 	}
-	where := []string{"c.user_id = ?", "c.private = 0"}
-	args = append(args, q.UserID)
+	where := []string{"(c.user_id = ? OR EXISTS (SELECT 1 FROM conversation_members cm WHERE cm.conversation_id = c.id AND cm.user_id = ?))", "c.private = 0"}
+	args = append(args, q.UserID, q.UserID)
 	if q.Before > 0 {
 		where = append(where, "c.updated_at < ?")
 		args = append(args, q.Before)
@@ -112,7 +126,11 @@ func (s *Store) ListConversations(ctx context.Context, q ConversationQuery) ([]*
 		c.Snippet = makeSnippet(body, search)
 		out = append(out, &c)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	_ = s.HydrateConversationsSharing(ctx, out, q.UserID)
+	return out, nil
 }
 
 // makeSnippet extracts a compact single-line excerpt around the first match of needle.
@@ -209,8 +227,9 @@ func (s *Store) UpdateConversation(ctx context.Context, id, userID string, p Con
 		args = append(args, nullable(*p.AssistantID))
 	}
 	if len(sets) > 0 {
-		args = append(args, id, userID)
-		if err := affected(s.exec(ctx, `UPDATE conversations SET `+strings.Join(sets, ", ")+` WHERE id = ? AND user_id = ?`, args...)); err != nil {
+		args = append(args, id, userID, userID)
+		if err := affected(s.exec(ctx, `UPDATE conversations SET `+strings.Join(sets, ", ")+`
+			WHERE id = ? AND (user_id = ? OR EXISTS (SELECT 1 FROM conversation_members cm WHERE cm.conversation_id = conversations.id AND cm.user_id = ?))`, args...)); err != nil {
 			return nil, err
 		}
 	}
@@ -244,10 +263,18 @@ func (s *Store) DeleteConversationCleanup(ctx context.Context, id, userID string
 	var paths []string
 	err := s.tx(ctx, func(tx *Tx) error {
 		// Match extraction/turn locking so an episode cannot appear between deletes.
-		var lockedID string
+		var ownerID string
 		var isPrivate bool
-		if err := tx.queryRow(ctx, `SELECT id, private FROM conversations WHERE id=? AND user_id=?`+s.forUpdate(), id, userID).Scan(&lockedID, &isPrivate); err != nil {
+		if err := tx.queryRow(ctx, `SELECT user_id, private FROM conversations WHERE id=?`+s.forUpdate(), id).Scan(&ownerID, &isPrivate); err != nil {
 			return notFound(err)
+		}
+		// Non-owner shared member deleting a shared conversation only leaves the share.
+		if ownerID != userID {
+			if err := affected(tx.exec(ctx, `DELETE FROM conversation_members WHERE conversation_id = ? AND user_id = ?`, id, userID)); err != nil {
+				return err
+			}
+			_, err := tx.exec(ctx, `UPDATE conversations SET updated_at = ? WHERE id = ?`, Now(), id)
+			return err
 		}
 		var fileIDs []string
 		if isPrivate {

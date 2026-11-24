@@ -270,6 +270,7 @@ type toolTurn struct {
 	foldedBeforeID       string
 	run                  *Run
 	private              bool
+	shared               bool
 	images               int
 	memCalls             int
 	historyCalls         int

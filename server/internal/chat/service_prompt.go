@@ -55,6 +55,9 @@ func (s *Service) systemPromptWithTools(ctx context.Context, user *store.User, c
 	if conv.Private {
 		b.WriteString(privatePrompt)
 	} else {
+		if conv.IsShared {
+			b.WriteString("\n\n# 家庭共享对话\n本次对话是家庭成员之间的共享对话，多位家人可能会交替发言（消息前的 `[称呼]:` 标明了发言人）。请自然称呼当前发言人并兼顾所有人的上下文；每位家人的个人记忆仅供你参考以更好回答他本人，切勿主动向其他家人泄露某位成员私下的个人记忆。")
+		}
 		if user.DisplayName != "" {
 			fmt.Fprintf(&b, "\n正在和你对话的用户称呼是「%s」。", user.DisplayName)
 		}
@@ -232,6 +235,9 @@ func (s *Service) buildRequestWithOpts(ctx context.Context, user *store.User, co
 			continue
 		}
 		lm := llm.Message{Role: m.Role, Content: m.Content}
+		if conv.IsShared && m.Role == "user" && m.SenderName != "" {
+			lm.Content = "[" + m.SenderName + "]: " + lm.Content
+		}
 		if m.Role == "user" && m.QuotedComponent != nil {
 			lm.Content = quotedComponentPromptNote(m.QuotedComponent) + lm.Content
 		}

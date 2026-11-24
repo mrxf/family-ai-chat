@@ -24,6 +24,7 @@ import '../auth/self_host_info_sheet.dart';
 import '../automations/scheduled_tasks_page.dart';
 import '../memories/memories_page.dart';
 import '../schedules/schedules_page.dart';
+import '../share/share_page.dart';
 import 'settings_dialogs.dart';
 import 'update.dart';
 
@@ -134,6 +135,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     title: 'AI 定时任务',
                     subtitle: automationSubtitle,
                     onTap: () => Navigator.of(context).push(appRoute((_) => const ScheduledTasksPage())),
+                  ),
+                  Divider(height: 1, indent: 56, color: p.line),
+                  _Tile(
+                    icon: AppIcons.hub,
+                    title: '共享与分享管理',
+                    subtitle: '管理共享中的家庭对话、一键收回或撤销短口令',
+                    onTap: () => Navigator.of(context).push(appRoute((_) => const ShareManagementPage())),
                   ),
                 ],
               ),

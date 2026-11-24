@@ -16,6 +16,7 @@ import '../admin/admin_common.dart' show Tag;
 import '../auth/self_host_info_sheet.dart';
 import '../schedules/schedules_page.dart';
 import '../settings/settings_page.dart';
+import '../share/share_page.dart';
 import 'search_page.dart';
 
 /// Compact windows: the conversation list slides in as a drawer.
@@ -140,26 +141,53 @@ class ConversationPanel extends ConsumerWidget {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: Pressable(
-            scale: 0.98,
-            onTap: () {
-              _dismiss(context);
-              if (!inDrawer && context.windowSize.isExpanded) {
-                ref.read(desktopNavProvider.notifier).showChat();
-              }
-              ref.read(chatProvider.notifier).newChat();
-            },
-            child: Container(
-              height: 50,
-              decoration: BoxDecoration(gradient: Palette.brandGradient, borderRadius: BorderRadius.circular(16), boxShadow: [
-                BoxShadow(color: Palette.brand.withValues(alpha: 0.28), blurRadius: 14, offset: const Offset(0, 5)),
-              ]),
-              child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                AppIcon(AppIcons.plus, color: Colors.white, size: 21),
-                SizedBox(width: 6),
-                Text('新对话', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
-              ]),
-            ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Pressable(
+                  scale: 0.98,
+                  onTap: () {
+                    _dismiss(context);
+                    if (!inDrawer && context.windowSize.isExpanded) {
+                      ref.read(desktopNavProvider.notifier).showChat();
+                    }
+                    ref.read(chatProvider.notifier).newChat();
+                  },
+                  child: Container(
+                    height: 50,
+                    decoration: BoxDecoration(gradient: Palette.brandGradient, borderRadius: BorderRadius.circular(16), boxShadow: [
+                      BoxShadow(color: Palette.brand.withValues(alpha: 0.28), blurRadius: 14, offset: const Offset(0, 5)),
+                    ]),
+                    child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      AppIcon(AppIcons.plus, color: Colors.white, size: 21),
+                      SizedBox(width: 6),
+                      Text('新对话', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
+                    ]),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: '打开分享口令',
+                child: Pressable(
+                  scale: 0.95,
+                  onTap: () {
+                    _dismiss(context);
+                    showPasteShareCodeSheet(context, ref);
+                  },
+                  child: Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: p.surfaceAlt,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: p.line),
+                    ),
+                    child: Center(child: AppIcon(AppIcons.paste, color: p.text, size: 20)),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         Expanded(
@@ -308,6 +336,16 @@ class _ConvTile extends StatelessWidget {
         decoration: BoxDecoration(color: selected ? p.surface : Colors.transparent, borderRadius: BorderRadius.circular(14)),
         child: Row(children: [
           if (conv.pinned) Padding(padding: const EdgeInsets.only(right: 6), child: AppIcon(AppIcons.pin, size: 15, color: p.accent)),
+          if (conv.isShared)
+            Container(
+              margin: const EdgeInsets.only(right: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(color: p.accentSoft, borderRadius: BorderRadius.circular(6)),
+              child: Text(
+                '共享',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: p.accent, height: 1.1),
+              ),
+            ),
           Expanded(
             child: Text(
               conv.title.isEmpty ? '新对话' : conv.title,
@@ -316,6 +354,11 @@ class _ConvTile extends StatelessWidget {
               style: TextStyle(fontSize: 16, fontWeight: selected ? FontWeight.w600 : FontWeight.w400, color: p.text),
             ),
           ),
+          if (conv.isShared && conv.memberCount > 1)
+            Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: Text('${conv.memberCount}人', style: TextStyle(fontSize: 12, color: p.faint)),
+            ),
         ]),
       ),
     );

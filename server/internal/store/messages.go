@@ -56,6 +56,9 @@ const (
 type Message struct {
 	ID               string             `json:"id"`
 	ConversationID   string             `json:"conversation_id"`
+	SenderUserID     string             `json:"sender_user_id,omitempty"`
+	SenderName       string             `json:"sender_name,omitempty"`
+	SenderAvatar     string             `json:"sender_avatar,omitempty"`
 	Role             string             `json:"role"`
 	Content          string             `json:"content"`
 	Reasoning        string             `json:"reasoning"`
@@ -75,12 +78,12 @@ type Message struct {
 	UpdatedAt        int64              `json:"updated_at"`
 }
 
-const msgCols = `id, conversation_id, role, content, reasoning, attachments, sources, components, quoted_component, status, error, model_id, prompt_tokens, completion_tokens, first_token_ms, duration_ms, created_at, updated_at`
+const msgCols = `id, conversation_id, sender_user_id, role, content, reasoning, attachments, sources, components, quoted_component, status, error, model_id, prompt_tokens, completion_tokens, first_token_ms, duration_ms, created_at, updated_at`
 
 func scanMsg(row interface{ Scan(...any) error }) (*Message, error) {
 	var m Message
 	var att, src, comps, quoted string
-	if err := row.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &m.Reasoning, &att, &src, &comps, &quoted, &m.Status, &m.Error, &m.ModelID,
+	if err := row.Scan(&m.ID, &m.ConversationID, &m.SenderUserID, &m.Role, &m.Content, &m.Reasoning, &att, &src, &comps, &quoted, &m.Status, &m.Error, &m.ModelID,
 		&m.PromptTokens, &m.CompletionTokens, &m.FirstTokenMs, &m.DurationMs, &m.CreatedAt, &m.UpdatedAt); err != nil {
 		return nil, notFound(err)
 	}
@@ -131,8 +134,8 @@ func insertMsg(ctx context.Context, tx *Tx, m *Message) error {
 			quoted = string(b)
 		}
 	}
-	_, err := tx.exec(ctx, `INSERT INTO messages (`+msgCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		m.ID, m.ConversationID, m.Role, m.Content, m.Reasoning, string(att), string(src), string(comps), quoted, m.Status, m.Error, m.ModelID,
+	_, err := tx.exec(ctx, `INSERT INTO messages (`+msgCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		m.ID, m.ConversationID, m.SenderUserID, m.Role, m.Content, m.Reasoning, string(att), string(src), string(comps), quoted, m.Status, m.Error, m.ModelID,
 		m.PromptTokens, m.CompletionTokens, m.FirstTokenMs, m.DurationMs, m.CreatedAt, m.UpdatedAt)
 	if isUnique(err) {
 		return ErrConflict
@@ -200,14 +203,18 @@ func (s *Store) GetMessage(ctx context.Context, id string) (*Message, error) {
 	return m, nil
 }
 
-// GetMessageForUser returns a message only if its conversation belongs to userID.
+// GetMessageForUser returns a message if its conversation belongs to or is shared with userID.
 func (s *Store) GetMessageForUser(ctx context.Context, id, userID string) (*Message, error) {
 	m, err := scanMsg(s.queryRow(ctx, `SELECT `+prefixCols(msgCols, "m.")+` FROM messages m
-		JOIN conversations c ON c.id = m.conversation_id WHERE m.id = ? AND c.user_id = ?`, id, userID))
+		JOIN conversations c ON c.id = m.conversation_id
+		WHERE m.id = ? AND (c.user_id = ? OR EXISTS (
+			SELECT 1 FROM conversation_members cm WHERE cm.conversation_id = c.id AND cm.user_id = ?
+		))`, id, userID, userID))
 	if err != nil {
 		return nil, err
 	}
 	_ = s.HydrateMessageComponents(ctx, []*Message{m})
+	_ = s.HydrateMessageSenders(ctx, []*Message{m})
 	return m, nil
 }
 
@@ -263,6 +270,7 @@ func (s *Store) ListMessagesAfter(ctx context.Context, convID, after, before str
 		out[i], out[j] = out[j], out[i]
 	}
 	_ = s.HydrateMessageComponents(ctx, out)
+	_ = s.HydrateMessageSenders(ctx, out)
 	return out, after != "" || moreInRange, nil
 }
 

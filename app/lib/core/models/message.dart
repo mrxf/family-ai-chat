@@ -1,8 +1,13 @@
 import 'json_read.dart';
 import 'pinned_component.dart';
+import 'sharing.dart';
 
 class Conversation {
   final String id, title, snippet;
+  final String ownerId, ownerName;
+  final bool isShared, isOwner;
+  final int memberCount;
+  final List<ConversationMember> members;
   final String? assistantId, modelId;
   final bool autoMode, pinned, isPrivate;
   final int createdAt, updatedAt;
@@ -10,6 +15,12 @@ class Conversation {
     required this.id,
     required this.title,
     this.snippet = '',
+    this.ownerId = '',
+    this.ownerName = '',
+    this.isShared = false,
+    this.isOwner = true,
+    this.memberCount = 0,
+    this.members = const [],
     this.assistantId,
     this.modelId,
     this.autoMode = false,
@@ -22,6 +33,12 @@ class Conversation {
         id: asStr(j['id']),
         title: asStr(j['title']),
         snippet: asStr(j['snippet']),
+        ownerId: asStr(j['owner_id']),
+        ownerName: asStr(j['owner_name']),
+        isShared: j['is_shared'] == true,
+        isOwner: j['is_owner'] != false,
+        memberCount: asInt(j['member_count']),
+        members: ((j['members'] as List?) ?? const []).map((e) => ConversationMember.fromJson((e as Map).cast())).toList(),
         assistantId: asStrOrNull(j['assistant_id']),
         modelId: asStrOrNull(j['model_id']),
         autoMode: j['auto_mode'] == true,
@@ -33,6 +50,12 @@ class Conversation {
   Map<String, dynamic> toJson() => {
         'id': id,
         'title': title,
+        if (ownerId.isNotEmpty) 'owner_id': ownerId,
+        if (ownerName.isNotEmpty) 'owner_name': ownerName,
+        if (isShared) 'is_shared': true,
+        'is_owner': isOwner,
+        if (memberCount > 0) 'member_count': memberCount,
+        if (members.isNotEmpty) 'members': members.map((m) => m.toJson()).toList(),
         'assistant_id': assistantId,
         'model_id': modelId,
         if (autoMode) 'auto_mode': true,
@@ -42,10 +65,28 @@ class Conversation {
         'updated_at': updatedAt,
       };
 
-  Conversation copyWith({String? title, String? snippet, bool? pinned, int? updatedAt, String? modelId, bool? autoMode}) => Conversation(
+  Conversation copyWith({
+    String? title,
+    String? snippet,
+    bool? pinned,
+    int? updatedAt,
+    String? modelId,
+    bool? autoMode,
+    bool? isShared,
+    bool? isOwner,
+    int? memberCount,
+    List<ConversationMember>? members,
+  }) =>
+      Conversation(
         id: id,
         title: title ?? this.title,
         snippet: snippet ?? this.snippet,
+        ownerId: ownerId,
+        ownerName: ownerName,
+        isShared: isShared ?? this.isShared,
+        isOwner: isOwner ?? this.isOwner,
+        memberCount: memberCount ?? this.memberCount,
+        members: members ?? this.members,
         assistantId: assistantId,
         modelId: modelId ?? this.modelId,
         autoMode: autoMode ?? this.autoMode,
@@ -176,6 +217,7 @@ MsgStatus _status(String s) => switch (s) {
 
 class Message {
   final String id, conversationId, role, content, reasoning, error;
+  final String senderUserId, senderName, senderAvatar;
   final List<Attachment> attachments;
   final List<WebSource> sources;
   final List<MessageComponent> components;
@@ -188,6 +230,9 @@ class Message {
     required this.id,
     required this.conversationId,
     required this.role,
+    this.senderUserId = '',
+    this.senderName = '',
+    this.senderAvatar = '',
     this.content = '',
     this.reasoning = '',
     this.error = '',
@@ -209,6 +254,9 @@ class Message {
         id: asStr(j['id']),
         conversationId: asStr(j['conversation_id']),
         role: asStr(j['role']),
+        senderUserId: asStr(j['sender_user_id']),
+        senderName: asStr(j['sender_name']),
+        senderAvatar: asStr(j['sender_avatar']),
         content: asStr(j['content']),
         reasoning: asStr(j['reasoning']),
         error: asStr(j['error']),
@@ -227,6 +275,9 @@ class Message {
         'id': id,
         'conversation_id': conversationId,
         'role': role,
+        if (senderUserId.isNotEmpty) 'sender_user_id': senderUserId,
+        if (senderName.isNotEmpty) 'sender_name': senderName,
+        if (senderAvatar.isNotEmpty) 'sender_avatar': senderAvatar,
         'content': content,
         'reasoning': reasoning,
         'error': error,
@@ -243,6 +294,9 @@ class Message {
 
   Message copyWith({
     String? id,
+    String? senderUserId,
+    String? senderName,
+    String? senderAvatar,
     String? content,
     String? reasoning,
     MsgStatus? status,
@@ -257,6 +311,9 @@ class Message {
         id: id ?? this.id,
         conversationId: conversationId,
         role: role,
+        senderUserId: senderUserId ?? this.senderUserId,
+        senderName: senderName ?? this.senderName,
+        senderAvatar: senderAvatar ?? this.senderAvatar,
         content: content ?? this.content,
         reasoning: reasoning ?? this.reasoning,
         error: error ?? this.error,

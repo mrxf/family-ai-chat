@@ -9,3 +9,4 @@ export 'picked_image.dart';
 export 'pinned_component.dart';
 export 'schedule.dart';
 export 'scheduled_task.dart';
+export 'sharing.dart';

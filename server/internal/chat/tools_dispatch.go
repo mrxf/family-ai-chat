@@ -65,11 +65,15 @@ func (s *Service) runTools(ctx context.Context, t *toolTurn, calls []llm.ToolCal
 			if len(args.Queries) > 0 && !strings.EqualFold(strings.TrimSpace(args.Mode), "recent") {
 				memLabel = joinShortQueries(args.Queries, 28)
 			}
-			stepIdx := t.run.startStep("memory", "翻看记忆："+memLabel, "")
-			t.run.setActivity("正在翻看记忆…")
-			t.postActivity = "正在结合记忆整理回答…"
-			results[i] = s.Memory.Recall(ctx, t.user, t.assistantID, t.convID, args)
-			t.run.finishStep(stepIdx, "done", "已翻看记忆："+memLabel, "")
+			if t.shared {
+				results[i] = s.Memory.Recall(ctx, t.user, t.assistantID, t.convID, args)
+			} else {
+				stepIdx := t.run.startStep("memory", "翻看记忆："+memLabel, "")
+				t.run.setActivity("正在翻看记忆…")
+				t.postActivity = "正在结合记忆整理回答…"
+				results[i] = s.Memory.Recall(ctx, t.user, t.assistantID, t.convID, args)
+				t.run.finishStep(stepIdx, "done", "已翻看记忆："+memLabel, "")
+			}
 
 		case readConversationTool.Name:
 			usedReadTool = true
@@ -92,11 +96,15 @@ func (s *Service) runTools(ctx context.Context, t *toolTurn, calls []llm.ToolCal
 			if cid == "" {
 				cid = strings.TrimSpace(args.ConvID)
 			}
-			stepIdx := t.run.startStep("memory", "查阅历史对话", "")
-			t.run.setActivity("正在查看之前的对话…")
-			t.postActivity = "正在结合历史对话整理回答…"
-			results[i] = s.Memory.ReadConversation(ctx, t.user, t.assistantID, cid, args.Focus)
-			t.run.finishStep(stepIdx, "done", "已查阅历史对话详情", "")
+			if t.shared {
+				results[i] = s.Memory.ReadConversation(ctx, t.user, t.assistantID, cid, args.Focus)
+			} else {
+				stepIdx := t.run.startStep("memory", "查阅历史对话", "")
+				t.run.setActivity("正在查看之前的对话…")
+				t.postActivity = "正在结合历史对话整理回答…"
+				results[i] = s.Memory.ReadConversation(ctx, t.user, t.assistantID, cid, args.Focus)
+				t.run.finishStep(stepIdx, "done", "已查阅历史对话详情", "")
+			}
 
 		case readEarlierTool.Name:
 			usedReadTool = true

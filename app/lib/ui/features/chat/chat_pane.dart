@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../state/chat.dart';
+import '../../../state/session.dart';
+import '../../../state/sharing.dart';
 import '../../adaptive/breakpoints.dart';
 import '../../adaptive/readable_width.dart';
 import '../../theme/icons.dart';
@@ -20,9 +22,15 @@ class ChatPane extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final chat = ref.watch(chatProvider);
+    // Keep shared conversations synced while open.
+    ref.watch(sharedSyncProvider);
+    final conv = ref.watch(currentConversationProvider);
+    final myId = ref.watch(sessionProvider.select((s) => s.user?.id ?? ''));
+    final otherBusy = conv != null && conv.isShared && chat.busy && chat.activeUserId.isNotEmpty && chat.activeUserId != myId;
     return Column(
       children: [
         if (chat.isPrivate && !chat.isEmpty && !chat.loading) const _PrivateBanner(),
+        if (otherBusy) _SharedBusyBanner(userName: chat.activeUserName.isEmpty ? '家人' : chat.activeUserName),
         Expanded(
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
@@ -77,6 +85,39 @@ class _PrivateBanner extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: 13, color: p.privateAccent, fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SharedBusyBanner extends StatelessWidget {
+  const _SharedBusyBanner({required this.userName});
+  final String userName;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+      decoration: BoxDecoration(
+        color: p.accentSoft,
+        border: Border(bottom: BorderSide(color: p.accent.withValues(alpha: 0.16))),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          AppIcon(AppIcons.family, size: 15, color: p.accent),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              '$userName 正在和小暖对话中，回答完成后即可继续发送…',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 13, color: p.accent, fontWeight: FontWeight.w500),
             ),
           ),
         ],

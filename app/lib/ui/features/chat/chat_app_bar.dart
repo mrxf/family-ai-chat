@@ -5,6 +5,7 @@ import '../../../core/models/models.dart';
 import '../../../state/chat.dart';
 import '../../../state/conversations.dart';
 import '../../../state/session.dart';
+import '../../../state/sharing.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
@@ -28,6 +29,8 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final chat = ref.watch(chatProvider);
+    final conv = ref.watch(currentConversationProvider);
+    final p = context.pal;
     return AppBar(
       leading: leading,
       automaticallyImplyLeading: false,
@@ -42,6 +45,35 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
             },
           )
         else ...[
+          if (conv != null && conv.isShared)
+            Padding(
+              padding: const EdgeInsets.only(right: 2),
+              child: Tooltip(
+                message: conv.isOwner ? '管理共享成员或收回共享' : '查看共享成员',
+                child: Pressable(
+                  scale: 0.95,
+                  onTap: () => showSharedMembersSheet(context, ref, conv),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: p.accentSoft,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AppIcon(AppIcons.family, size: 15, color: p.accent),
+                        const SizedBox(width: 4),
+                        Text(
+                          '共享${conv.memberCount > 1 ? ' · ${conv.memberCount}' : ''}',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: p.accent),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           if (!chat.isEmpty && !chat.loading)
             IconButton(tooltip: '分享对话', icon: const AppIcon(AppIcons.share, size: 22), onPressed: () => openShareChat(context, ref)),
           IconButton(

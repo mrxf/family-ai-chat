@@ -383,10 +383,21 @@ func (s *Server) getConversation(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	active := ""
+	activeUserID := ""
+	activeUserName := ""
 	if run := s.Chat.Hub.ActiveInConversation(c.ID); run != nil {
 		active = run.MessageID
+		activeUserID = run.UserID
+		activeUserName = run.UserName
 	}
-	writeJSON(w, 200, map[string]any{"conversation": c, "messages": msgs, "has_more": hasMore, "active_message_id": active})
+	writeJSON(w, 200, map[string]any{
+		"conversation":      c,
+		"messages":          msgs,
+		"has_more":          hasMore,
+		"active_message_id": active,
+		"active_user_id":    activeUserID,
+		"active_user_name":  activeUserName,
+	})
 }
 
 func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
@@ -561,7 +572,7 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	run := s.Chat.Hub.Get(id)
-	if run == nil || run.UserID != u.ID {
+	if run == nil {
 		// Already finished (or interrupted): replay the stored result.
 		send("snapshot", map[string]any{
 			"content": msg.Content, "reasoning": msg.Reasoning, "status": msg.Status,

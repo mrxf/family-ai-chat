@@ -32,6 +32,7 @@ type Run struct {
 	MessageID      string
 	ConversationID string
 	UserID         string
+	UserName       string
 
 	cancel context.CancelCauseFunc
 	done   chan struct{}

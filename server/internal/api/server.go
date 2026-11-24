@@ -119,6 +119,19 @@ func (s *Server) Routes() http.Handler {
 			r.Patch("/conversations/{id}", s.updateConversation)
 			r.Delete("/conversations/{id}", s.deleteConversation)
 			r.Get("/conversations/{id}/messages", s.listMessages)
+			r.Get("/conversations/{id}/sync", s.syncConversation)
+			r.Delete("/conversations/{id}/messages/{msgId}", s.deleteConversationMessage)
+			r.Post("/conversations/{id}/messages/delete", s.deleteConversationMessages)
+			r.Post("/conversations/{id}/members", s.addConversationMembers)
+			r.Delete("/conversations/{id}/members/{userId}", s.removeConversationMember)
+			r.Delete("/conversations/{id}/members", s.revokeAllConversationMembers)
+			r.Post("/conversations/{id}/shares", s.createConversationShare)
+			r.Get("/family/members", s.listFamilyMembers)
+			r.Get("/shared-conversations", s.listOwnedSharedConversations)
+			r.Get("/shares", s.listUserShares)
+			r.Delete("/shares/{id}", s.revokeConversationShare)
+			r.Get("/shares/{code}/preview", s.previewConversationShare)
+			r.Post("/shares/{code}/import", s.importConversationShare)
 			r.Post("/chat", s.send)
 			r.Post("/conversations/{id}/regenerate", s.regenerate)
 			r.Get("/messages/{id}/stream", s.stream)
@@ -240,6 +253,14 @@ func (s *Server) writeStoreErr(w http.ResponseWriter, r *http.Request, err error
 		writeErr(w, 400, "empty", "消息不能为空")
 	case errors.Is(err, chat.ErrNothingToRedo):
 		writeErr(w, 400, "nothing", "没有可以重新生成的回答")
+	case errors.Is(err, store.ErrForbidden):
+		writeErr(w, 403, "forbidden", "没有权限执行这个操作")
+	case errors.Is(err, store.ErrPrivateNotShareable):
+		writeErr(w, 400, "private_not_shareable", "隐私对话不支持分享或共享")
+	case errors.Is(err, store.ErrShareExpired):
+		writeErr(w, 410, "share_expired", "这条分享口令已过期")
+	case errors.Is(err, store.ErrShareRevoked):
+		writeErr(w, 410, "share_revoked", "这条分享口令已被分享人撤销")
 	case errors.Is(err, chat.ErrPrivateMismatch):
 		writeErr(w, 400, "private_mismatch", "不能把隐私消息发到普通对话中")
 	default:

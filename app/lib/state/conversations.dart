@@ -99,6 +99,14 @@ class ConversationsNotifier extends Notifier<ConvListState> {
     _persist();
   }
 
+  /// Replaces an existing conversation entry in place (or prepends if not present yet).
+  void replaceConversation(Conversation c) {
+    final exists = state.items.any((x) => x.id == c.id);
+    final next = exists ? [for (final x in state.items) x.id == c.id ? c : x] : [c, ...state.items];
+    state = state.copyWith(items: next);
+    _persist();
+  }
+
   Future<void> rename(String id, String title) async {
     patchLocal(id, (c) => c.copyWith(title: title));
     await _api?.updateConversation(id, {'title': title});
@@ -143,10 +151,11 @@ class ConversationGroup {
 /// Buckets [items] by pin state and last activity relative to [now], in
 /// display order. Empty buckets are omitted; order inside a bucket is kept.
 List<ConversationGroup> groupByRecency(List<Conversation> items, DateTime now) {
-  const order = ['置顶', '今天', '昨天', '最近 7 天', '最近 30 天', '更早'];
+  const order = ['置顶', '共享', '今天', '昨天', '最近 7 天', '最近 30 天', '更早'];
   final today = DateTime(now.year, now.month, now.day);
   String bucket(Conversation c) {
     if (c.pinned) return '置顶';
+    if (c.isShared) return '共享';
     final d = DateTime.fromMillisecondsSinceEpoch(c.updatedAt);
     if (!d.isBefore(today)) return '今天';
     if (!d.isBefore(today.subtract(const Duration(days: 1)))) return '昨天';

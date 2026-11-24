@@ -94,8 +94,10 @@ func (s *Store) UpdateMessageComponentWithMeta(ctx context.Context, messageID, u
 	err = s.tx(ctx, func(tx *Tx) error {
 		q := `SELECT ` + prefixCols(msgCols, "m.") + ` FROM messages m
 			JOIN conversations c ON c.id = m.conversation_id
-			WHERE m.id = ? AND c.user_id = ?` + s.forUpdate()
-		m, err := scanMsg(tx.queryRow(ctx, q, messageID, userID))
+			WHERE m.id = ? AND (c.user_id = ? OR EXISTS (
+				SELECT 1 FROM conversation_members cm WHERE cm.conversation_id = c.id AND cm.user_id = ?
+			))` + s.forUpdate()
+		m, err := scanMsg(tx.queryRow(ctx, q, messageID, userID, userID))
 		if err != nil {
 			return err
 		}
@@ -142,8 +144,10 @@ func (s *Store) DeleteMessageComponent(ctx context.Context, messageID, userID, c
 	err := s.tx(ctx, func(tx *Tx) error {
 		q := `SELECT ` + prefixCols(msgCols, "m.") + ` FROM messages m
 			JOIN conversations c ON c.id = m.conversation_id
-			WHERE m.id = ? AND c.user_id = ?` + s.forUpdate()
-		m, err := scanMsg(tx.queryRow(ctx, q, messageID, userID))
+			WHERE m.id = ? AND (c.user_id = ? OR EXISTS (
+				SELECT 1 FROM conversation_members cm WHERE cm.conversation_id = c.id AND cm.user_id = ?
+			))` + s.forUpdate()
+		m, err := scanMsg(tx.queryRow(ctx, q, messageID, userID, userID))
 		if err != nil {
 			return err
 		}
@@ -225,8 +229,10 @@ func (s *Store) ListUserComponents(ctx context.Context, userID, convID string, i
 		rows, err := s.query(ctx, `SELECT m.id, m.conversation_id, c.title, m.updated_at, m.components
 			FROM messages m
 			JOIN conversations c ON c.id = m.conversation_id
-			WHERE m.conversation_id = ? AND c.user_id = ? AND m.components <> '[]' AND m.components <> ''
-			ORDER BY m.id DESC LIMIT 20`, convID, userID)
+			WHERE m.conversation_id = ? AND (c.user_id = ? OR EXISTS (
+				SELECT 1 FROM conversation_members cm WHERE cm.conversation_id = c.id AND cm.user_id = ?
+			)) AND m.components <> '[]' AND m.components <> ''
+			ORDER BY m.id DESC LIMIT 20`, convID, userID, userID)
 		if err != nil {
 			return nil, err
 		}

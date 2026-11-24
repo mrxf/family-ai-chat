@@ -138,11 +138,16 @@ func insertComponentEntityTx(ctx context.Context, tx *Tx, ent *ComponentEntity, 
 	return err
 }
 
-// GetComponentEntity returns a non-deleted component entity owned by userID.
+const componentAccessCond = `(user_id = ? OR (origin_conversation_id <> '' AND EXISTS (
+	SELECT 1 FROM conversation_members cm WHERE cm.conversation_id = components.origin_conversation_id AND cm.user_id = ?
+)))`
+
+// GetComponentEntity returns a non-deleted component entity accessible to userID
+// (either owned by userID or originating in a shared conversation userID belongs to).
 func (s *Store) GetComponentEntity(ctx context.Context, entityID, userID string) (*ComponentEntity, error) {
 	ent, err := scanComponentEntity(s.queryRow(ctx,
-		`SELECT `+componentEntityCols+` FROM components WHERE id = ? AND user_id = ? AND deleted_at = 0`,
-		entityID, userID))
+		`SELECT `+componentEntityCols+` FROM components WHERE id = ? AND `+componentAccessCond+` AND deleted_at = 0`,
+		entityID, userID, userID))
 	if err != nil {
 		return nil, err
 	}
@@ -152,8 +157,8 @@ func (s *Store) GetComponentEntity(ctx context.Context, entityID, userID string)
 // ListComponentVersions returns up to MaxComponentVersions snapshots for entityID ordered newest-first.
 func (s *Store) ListComponentVersions(ctx context.Context, entityID, userID string) (*ComponentEntity, []ComponentVersion, error) {
 	ent, err := scanComponentEntity(s.queryRow(ctx,
-		`SELECT `+componentEntityCols+` FROM components WHERE id = ? AND user_id = ?`,
-		entityID, userID))
+		`SELECT `+componentEntityCols+` FROM components WHERE id = ? AND `+componentAccessCond,
+		entityID, userID, userID))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -162,11 +167,13 @@ func (s *Store) ListComponentVersions(ctx context.Context, entityID, userID stri
 		v.source_type, v.source_conversation_id, COALESCE(c.title, ''),
 		v.source_message_id, v.source_task_id, COALESCE(t.title, ''), v.created_at
 		FROM component_versions v
-		LEFT JOIN conversations c ON c.id = v.source_conversation_id AND c.user_id = ?
+		LEFT JOIN conversations c ON c.id = v.source_conversation_id AND (c.user_id = ? OR EXISTS (
+			SELECT 1 FROM conversation_members cm WHERE cm.conversation_id = c.id AND cm.user_id = ?
+		))
 		LEFT JOIN scheduled_tasks t ON t.id = v.source_task_id AND t.user_id = ?
 		WHERE v.component_id = ?
 		ORDER BY v.version DESC
-		LIMIT ?`, userID, userID, entityID, MaxComponentVersions)
+		LIMIT ?`, userID, userID, userID, entityID, MaxComponentVersions)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -200,8 +207,8 @@ func (s *Store) UpdateComponentEntity(ctx context.Context, entityID, userID stri
 	var updated *ComponentEntity
 	err := s.tx(ctx, func(tx *Tx) error {
 		cur, err := scanComponentEntity(tx.queryRow(ctx,
-			`SELECT `+componentEntityCols+` FROM components WHERE id = ? AND user_id = ? AND deleted_at = 0`+s.forUpdate(),
-			entityID, userID))
+			`SELECT `+componentEntityCols+` FROM components WHERE id = ? AND `+componentAccessCond+` AND deleted_at = 0`+s.forUpdate(),
+			entityID, userID, userID))
 		if err != nil {
 			return err
 		}
@@ -229,10 +236,10 @@ func (s *Store) UpdateComponentEntity(ctx context.Context, entityID, userID stri
 				SET title = ?, current_version = ?, data = ?, state = ?,
 					last_source_type = ?, last_source_conversation_id = ?, last_source_message_id = ?, last_source_task_id = ?,
 					updated_at = ?
-				WHERE id = ? AND user_id = ?`,
+				WHERE id = ?`,
 				cur.Title, cur.CurrentVersion, string(cur.Data), string(cur.State),
 				cur.LastSourceType, cur.LastSourceConversationID, cur.LastSourceMessageID, cur.LastSourceTaskID,
-				cur.UpdatedAt, cur.ID, userID); err != nil {
+				cur.UpdatedAt, cur.ID); err != nil {
 				return err
 			}
 			summary := strings.TrimSpace(meta.ChangeSummary)
@@ -253,10 +260,13 @@ func (s *Store) UpdateComponentEntity(ctx context.Context, entityID, userID stri
 				}
 			}
 		} else if state != nil {
-			if _, err := tx.exec(ctx, `UPDATE components SET state = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
-				string(cur.State), cur.UpdatedAt, cur.ID, userID); err != nil {
+			if _, err := tx.exec(ctx, `UPDATE components SET state = ?, updated_at = ? WHERE id = ?`,
+				string(cur.State), cur.UpdatedAt, cur.ID); err != nil {
 				return err
 			}
+		}
+		if cur.OriginConversationID != "" {
+			_, _ = tx.exec(ctx, `UPDATE conversations SET updated_at = ? WHERE id = ?`, cur.UpdatedAt, cur.OriginConversationID)
 		}
 		updated = cur
 		return nil
@@ -293,16 +303,19 @@ func (s *Store) DeleteComponentEntity(ctx context.Context, entityID, userID stri
 func (s *Store) EnsureComponentEntityForMessage(ctx context.Context, messageID, userID, compID, fallbackTitle string) (*ComponentEntity, error) {
 	var result *ComponentEntity
 	err := s.tx(ctx, func(tx *Tx) error {
-		q := `SELECT ` + prefixCols(msgCols, "m.") + `, c.private FROM messages m
+		q := `SELECT ` + prefixCols(msgCols, "m.") + `, c.private, c.user_id FROM messages m
 			JOIN conversations c ON c.id = m.conversation_id
-			WHERE m.id = ? AND c.user_id = ?` + s.forUpdate()
+			WHERE m.id = ? AND (c.user_id = ? OR EXISTS (
+				SELECT 1 FROM conversation_members cm WHERE cm.conversation_id = c.id AND cm.user_id = ?
+			))` + s.forUpdate()
 		var m Message
 		var att, src, comps, quoted string
 		var isPrivate bool
-		if err := tx.queryRow(ctx, q, messageID, userID).Scan(
-			&m.ID, &m.ConversationID, &m.Role, &m.Content, &m.Reasoning, &att, &src, &comps, &quoted,
+		var convOwnerID string
+		if err := tx.queryRow(ctx, q, messageID, userID, userID).Scan(
+			&m.ID, &m.ConversationID, &m.SenderUserID, &m.Role, &m.Content, &m.Reasoning, &att, &src, &comps, &quoted,
 			&m.Status, &m.Error, &m.ModelID, &m.PromptTokens, &m.CompletionTokens, &m.FirstTokenMs, &m.DurationMs,
-			&m.CreatedAt, &m.UpdatedAt, &isPrivate,
+			&m.CreatedAt, &m.UpdatedAt, &isPrivate, &convOwnerID,
 		); err != nil {
 			return notFound(err)
 		}
@@ -323,8 +336,8 @@ func (s *Store) EnsureComponentEntityForMessage(ctx context.Context, messageID, 
 		}
 		if mc.EntityID != "" {
 			ent, err := scanComponentEntity(tx.queryRow(ctx,
-				`SELECT `+componentEntityCols+` FROM components WHERE id = ? AND user_id = ?`,
-				mc.EntityID, userID))
+				`SELECT `+componentEntityCols+` FROM components WHERE id = ? AND `+componentAccessCond,
+				mc.EntityID, userID, userID))
 			if err == nil {
 				result = ent
 				return nil
@@ -336,7 +349,7 @@ func (s *Store) EnsureComponentEntityForMessage(ctx context.Context, messageID, 
 		// Check if another call already created an entity for this origin ref.
 		existing, err := scanComponentEntity(tx.queryRow(ctx,
 			`SELECT `+componentEntityCols+` FROM components WHERE origin_message_id = ? AND origin_component_id = ? AND user_id = ?`,
-			messageID, compID, userID))
+			messageID, compID, convOwnerID))
 		if err == nil {
 			mc.EntityID = existing.ID
 			if mc.Version <= 0 {
@@ -366,7 +379,7 @@ func (s *Store) EnsureComponentEntityForMessage(ctx context.Context, messageID, 
 		}
 		ent := &ComponentEntity{
 			ID:                       NewID(),
-			UserID:                   userID,
+			UserID:                   convOwnerID,
 			Kind:                     mc.Kind,
 			Title:                    strings.TrimSpace(fallbackTitle),
 			CurrentVersion:           1,

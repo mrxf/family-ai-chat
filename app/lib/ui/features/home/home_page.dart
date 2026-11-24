@@ -22,6 +22,7 @@ import '../../widgets/base_widgets.dart';
 import '../chat/composer/composer.dart';
 import '../schedules/schedules_page.dart';
 import '../settings/update.dart';
+import '../share/share_page.dart';
 
 /// The signed-in home screen.
 ///
@@ -58,6 +59,9 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
     );
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) checkForUpdate(context, ref, silent: true);
+    });
+    Future.delayed(const Duration(milliseconds: 700), () {
+      if (mounted) unawaited(inspectClipboardForShareCode(context, ref));
     });
     final reminders = ref.read(reminderServiceProvider);
     reminders.attach(onOpenSchedules: _openSchedulesFromNotification);
@@ -132,6 +136,7 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
       ref.invalidate(scheduledTasksProvider);
       unawaited(ref.read(pinnedComponentsProvider.notifier).refresh());
       unawaited(ref.read(homeSuggestionsProvider.notifier).refresh());
+      unawaited(inspectClipboardForShareCode(context, ref));
     } else if (state == AppLifecycleState.paused) {
       Speaker.instance.stop();
     }

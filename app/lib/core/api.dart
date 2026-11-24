@@ -245,6 +245,8 @@ class Api {
       messages: ((d['messages'] as List?) ?? []).map((e) => Message.fromJson((e as Map).cast())).toList(),
       hasMore: d['has_more'] == true,
       activeMessageId: (d['active_message_id'] as String?) ?? '',
+      activeUserId: (d['active_user_id'] as String?) ?? '',
+      activeUserName: (d['active_user_name'] as String?) ?? '',
     );
   }
 
@@ -257,6 +259,74 @@ class Api {
       Conversation.fromJson((await _req('PATCH', '/api/conversations/$id', body: patch) as Map).cast());
 
   Future<void> deleteConversation(String id) => _req('DELETE', '/api/conversations/$id');
+
+  // ---- sharing & family collaboration ----
+  Future<List<FamilyMember>> familyMembers() async =>
+      _list(((await _req('GET', '/api/family/members')) as Map)['items'], FamilyMember.fromJson);
+
+  Future<List<Conversation>> ownedSharedConversations() async =>
+      _list(((await _req('GET', '/api/shared-conversations')) as Map)['items'], Conversation.fromJson);
+
+  Future<Conversation> addConversationMembers(String convId, List<String> userIds) async {
+    final d = (await _req('POST', '/api/conversations/$convId/members', body: {'user_ids': userIds}) as Map).cast<String, dynamic>();
+    return Conversation.fromJson((d['conversation'] as Map).cast());
+  }
+
+  Future<Conversation?> removeConversationMember(String convId, String userId) async {
+    final d = (await _req('DELETE', '/api/conversations/$convId/members/$userId') as Map).cast<String, dynamic>();
+    return d['conversation'] is Map ? Conversation.fromJson((d['conversation'] as Map).cast()) : null;
+  }
+
+  Future<Conversation?> revokeAllConversationMembers(String convId) async {
+    final d = (await _req('DELETE', '/api/conversations/$convId/members') as Map).cast<String, dynamic>();
+    return d['conversation'] is Map ? Conversation.fromJson((d['conversation'] as Map).cast()) : null;
+  }
+
+  Future<int> deleteConversationMessage(String convId, String msgId) async {
+    final d = (await _req('DELETE', '/api/conversations/$convId/messages/$msgId') as Map).cast<String, dynamic>();
+    return (d['deleted'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<int> deleteConversationMessages(String convId, List<String> msgIds) async {
+    final d = (await _req('POST', '/api/conversations/$convId/messages/delete', body: {'message_ids': msgIds}) as Map).cast<String, dynamic>();
+    return (d['deleted'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<ConversationSyncResult> syncConversation(String convId, {int since = 0}) async {
+    final d = (await _req('GET', '/api/conversations/$convId/sync', query: {if (since > 0) 'since': since}) as Map).cast<String, dynamic>();
+    final changed = d['changed'] == true;
+    return ConversationSyncResult(
+      changed: changed,
+      updatedAt: (d['updated_at'] as num?)?.toInt() ?? 0,
+      conversation: d['conversation'] is Map ? Conversation.fromJson((d['conversation'] as Map).cast()) : null,
+      messages: changed ? ((d['messages'] as List?) ?? []).map((e) => Message.fromJson((e as Map).cast())).toList() : const [],
+      hasMore: d['has_more'] == true,
+      activeMessageId: (d['active_message_id'] as String?) ?? '',
+      activeUserId: (d['active_user_id'] as String?) ?? '',
+      activeUserName: (d['active_user_name'] as String?) ?? '',
+    );
+  }
+
+  Future<ConversationShare> createConversationShare(String convId, {List<String>? messageIds}) async {
+    final d = (await _req('POST', '/api/conversations/$convId/shares', body: {
+      if (messageIds != null && messageIds.isNotEmpty) 'message_ids': messageIds,
+    }) as Map)
+        .cast<String, dynamic>();
+    return ConversationShare.fromJson(d);
+  }
+
+  Future<List<ConversationShare>> userShares() async =>
+      _list(((await _req('GET', '/api/shares')) as Map)['items'], ConversationShare.fromJson);
+
+  Future<void> revokeShare(String shareId) => _req('DELETE', '/api/shares/$shareId');
+
+  Future<ConversationShare> previewShare(String code) async =>
+      ConversationShare.fromJson((await _req('GET', '/api/shares/${Uri.encodeComponent(code)}/preview') as Map).cast());
+
+  Future<Conversation> importShare(String code) async {
+    final d = (await _req('POST', '/api/shares/${Uri.encodeComponent(code)}/import') as Map).cast<String, dynamic>();
+    return Conversation.fromJson((d['conversation'] as Map).cast());
+  }
 
   // ---- chat ----
   Future<SendResult> send({
@@ -506,7 +576,37 @@ class ConversationDetail {
   final List<Message> messages;
   final bool hasMore;
   final String activeMessageId;
-  const ConversationDetail({required this.conversation, required this.messages, required this.hasMore, required this.activeMessageId});
+  final String activeUserId;
+  final String activeUserName;
+  const ConversationDetail({
+    required this.conversation,
+    required this.messages,
+    required this.hasMore,
+    required this.activeMessageId,
+    this.activeUserId = '',
+    this.activeUserName = '',
+  });
+}
+
+class ConversationSyncResult {
+  final bool changed;
+  final int updatedAt;
+  final Conversation? conversation;
+  final List<Message> messages;
+  final bool hasMore;
+  final String activeMessageId;
+  final String activeUserId;
+  final String activeUserName;
+  const ConversationSyncResult({
+    required this.changed,
+    required this.updatedAt,
+    this.conversation,
+    this.messages = const [],
+    this.hasMore = false,
+    this.activeMessageId = '',
+    this.activeUserId = '',
+    this.activeUserName = '',
+  });
 }
 
 class SendResult {

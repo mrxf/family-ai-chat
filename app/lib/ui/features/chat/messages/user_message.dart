@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/models/models.dart';
 import '../../../../state/chat.dart';
+import '../../../../state/session.dart';
 import '../../../theme/icons.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/base_widgets.dart';
@@ -20,15 +21,34 @@ class UserMessage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final p = context.pal;
     final m = message;
+    final isShared = ref.watch(chatProvider.select((s) => s.isShared));
+    final myId = isShared ? ref.watch(sessionProvider.select((s) => s.user?.id ?? '')) : '';
+    final isOtherMember = isShared && m.senderUserId.isNotEmpty && m.senderUserId != myId;
+    final alignEnd = !isOtherMember;
     // 80% of the conversation column (the window on phones, the centered
     // chat column on wide windows).
     return LayoutBuilder(builder: (context, constraints) {
       final maxW = constraints.maxWidth * 0.8;
       return Padding(
-        padding: const EdgeInsets.fromLTRB(48, 10, 16, 6),
+        padding: EdgeInsets.fromLTRB(alignEnd ? 48 : 16, 10, alignEnd ? 16 : 48, 6),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
+          crossAxisAlignment: alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
+            if (isShared && m.senderName.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Avatar(label: m.senderName, emoji: m.senderAvatar, size: 18),
+                    const SizedBox(width: 5),
+                    Text(
+                      isOtherMember ? m.senderName : '${m.senderName}（我）',
+                      style: TextStyle(fontSize: 12, color: p.muted, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
             if (m.quotedComponent != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
@@ -46,7 +66,7 @@ class UserMessage extends ConsumerWidget {
             if (m.attachments.isNotEmpty)
               Padding(
                 padding: EdgeInsets.only(bottom: m.content.isEmpty ? 0 : 6),
-                child: ImageGrid(attachments: m.attachments, alignEnd: true),
+                child: ImageGrid(attachments: m.attachments, alignEnd: alignEnd),
               ),
             if (m.content.isNotEmpty)
               Row(
@@ -71,15 +91,22 @@ class UserMessage extends ConsumerWidget {
                         constraints: BoxConstraints(maxWidth: maxW),
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
                         decoration: BoxDecoration(
-                          color: p.userBubble,
-                          borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(22),
-                            topRight: Radius.circular(22),
-                            bottomLeft: Radius.circular(22),
-                            bottomRight: Radius.circular(6),
+                          color: isOtherMember ? p.surfaceAlt : p.userBubble,
+                          border: isOtherMember ? Border.all(color: p.line) : null,
+                          borderRadius: BorderRadius.only(
+                            topLeft: const Radius.circular(22),
+                            topRight: const Radius.circular(22),
+                            bottomLeft: Radius.circular(alignEnd ? 22 : 6),
+                            bottomRight: Radius.circular(alignEnd ? 6 : 22),
                           ),
                         ),
-                        child: Text(m.content, style: Theme.of(context).textTheme.bodyLarge!.copyWith(color: p.userText, height: 1.5)),
+                        child: Text(
+                          m.content,
+                          style: Theme.of(context).textTheme.bodyLarge!.copyWith(
+                                color: isOtherMember ? p.text : p.userText,
+                                height: 1.5,
+                              ),
+                        ),
                       ),
                     ),
                   ),

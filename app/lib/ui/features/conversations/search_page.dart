@@ -11,6 +11,7 @@ import '../../theme/icons.dart';
 import '../../widgets/sheets.dart';
 import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
+import '../share/share_page.dart';
 
 /// Opens the full-screen conversation search page with a soft fade transition.
 /// Returns the selected conversation ID, or null if dismissed.
@@ -56,14 +57,27 @@ void showConversationMenu(
       onUpdated?.call(c.copyWith(pinned: !c.pinned));
       convs.togglePin(c);
     }),
-    SheetAction(AppIcons.delete, '删除', () async {
-      if (!await confirm(context, title: '删除这个对话？', body: '删除后无法恢复。', ok: '删除', danger: true)) return;
+    if (c.isShared)
+      SheetAction(AppIcons.family, c.isOwner ? '管理共享成员 / 收回' : '查看共享成员', () {
+        showSharedMembersSheet(context, ref, c);
+      })
+    else if (c.isOwner && !c.isPrivate)
+      SheetAction(AppIcons.family, '共享给家人', () {
+        showFamilySharePickerSheet(context, ref, c);
+      }),
+    SheetAction(AppIcons.delete, c.isShared ? (c.isOwner ? '解散并删除' : '退出共享') : '删除', () async {
+      final title = c.isShared ? (c.isOwner ? '解散并删除这个共享对话？' : '退出这个共享对话？') : '删除这个对话？';
+      final body = c.isShared
+          ? (c.isOwner ? '删除后将解散共享，所有家人的记录也会一并清除且无法恢复。' : '退出后仅从你的列表移除，不影响发起人和其他家人。')
+          : '删除后无法恢复。';
+      final okLabel = c.isShared ? (c.isOwner ? '解散并删除' : '退出共享') : '删除';
+      if (!await confirm(context, title: title, body: body, ok: okLabel, danger: true)) return;
       try {
         await convs.delete(c.id);
         onDeleted?.call();
         if (ref.read(chatProvider).conversationId == c.id) ref.read(chatProvider.notifier).newChat();
       } catch (_) {
-        if (context.mounted) showToast(context, '删除失败，请检查网络');
+        if (context.mounted) showToast(context, '操作失败，请检查网络');
       }
     }, danger: true),
   ]);

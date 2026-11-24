@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/api.dart';
 import '../../core/models/models.dart';
 import '../../state/chat.dart';
 import '../../state/session.dart';
+import '../../state/sharing.dart';
 import '../adaptive/adaptive_modal.dart';
 import '../adaptive/app_route.dart';
 import '../features/share/share_page.dart';
@@ -112,20 +114,61 @@ Future<String?> showTextEditor(BuildContext context, {required String title, req
   );
 }
 
+bool _canDeleteMessage(WidgetRef ref, Message m) {
+  final chat = ref.read(chatProvider);
+  if (chat.isPrivate || chat.busy || chat.conversationId == null || m.id.startsWith('local-')) return false;
+  final conv = ref.read(currentConversationProvider);
+  if (conv == null || conv.isOwner) return true;
+  final myId = ref.read(sessionProvider).user?.id ?? '';
+  if (m.isUser) return m.senderUserId == myId;
+  final idx = chat.messages.indexWhere((x) => x.id == m.id);
+  if (idx > 0 && chat.messages[idx - 1].isUser && chat.messages[idx - 1].senderUserId == myId) {
+    return true;
+  }
+  return false;
+}
+
+Future<void> _deleteSingleMessage(BuildContext context, WidgetRef ref, Message m) async {
+  final cid = ref.read(chatProvider).conversationId;
+  final api = ref.read(sessionProvider).api;
+  if (cid == null || api == null) return;
+  final ok = await confirm(
+    context,
+    title: '删除这条消息？',
+    body: '删除后该消息会从对话历史中移除，小暖后续回答也不会再参考它。',
+    ok: '删除',
+    danger: true,
+  );
+  if (!ok || !context.mounted) return;
+  try {
+    await api.deleteConversationMessage(cid, m.id);
+    ref.read(chatProvider.notifier).removeMessageLocally(m.id);
+    if (context.mounted) showToast(context, '已删除消息');
+  } on ApiError catch (e) {
+    if (context.mounted) showToast(context, e.message);
+  } catch (_) {
+    if (context.mounted) showToast(context, '删除失败，请检查网络');
+  }
+}
+
 void showUserMessageActions(BuildContext context, WidgetRef ref, Message m) {
   final chat = ref.read(chatProvider.notifier);
   final busy = ref.read(chatProvider).busy;
+  final myId = ref.read(sessionProvider).user?.id ?? '';
+  final isOwnMsg = m.senderUserId.isEmpty || m.senderUserId == myId;
   showActionSheet(context, title: m.content, actions: [
     if (m.content.isNotEmpty)
       SheetAction(AppIcons.copy, '复制', () {
         Clipboard.setData(ClipboardData(text: m.content));
         showToast(context, '已复制');
       }),
-    if (!busy)
+    if (!busy && isOwnMsg)
       SheetAction(AppIcons.edit, '修改后重新发送', () async {
         final t = await showTextEditor(context, title: '修改问题', initial: m.content, ok: '重新发送');
         if (t != null && t.isNotEmpty) chat.editAndResend(m, t);
       }),
+    if (_canDeleteMessage(ref, m))
+      SheetAction(AppIcons.delete, '删除这条消息', () => _deleteSingleMessage(context, ref, m), danger: true),
   ]);
 }
 
@@ -149,6 +192,8 @@ void showAssistantMessageActions(BuildContext context, WidgetRef ref, Message m,
         final id = await showModelPicker(context, ref, title: '用哪个模型重新回答？');
         if (id != null) chat.regenerate(modelId: id);
       }),
+    if (_canDeleteMessage(ref, m))
+      SheetAction(AppIcons.delete, '删除这条消息', () => _deleteSingleMessage(context, ref, m), danger: true),
   ]);
 }
 
