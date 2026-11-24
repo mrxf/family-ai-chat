@@ -1,0 +1,18 @@
+app/lib/core/invite_code.dart
+  h_8f297825d1fe21 12
+app/lib/ui/features/auth/self_host_page.dart
+  h_8f297825d1fe21 17
+app/test/login_self_host_test.dart
+  h_8f297825d1fe21 244,275,281,322,332-333,381
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "b624d8a5034e377a4f2b131f5df823e08ab5a596",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
