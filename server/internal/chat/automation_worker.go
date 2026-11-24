@@ -257,21 +257,33 @@ func (s *Service) ExecuteScheduledTask(ctx context.Context, task *store.Schedule
 	}
 	runRec.MessageID = asstMsg.ID
 
+	runCtx, cancelRun := context.WithCancelCause(ctx)
+	defer cancelRun(nil)
 	run := &Run{
 		MessageID:      asstMsg.ID,
 		ConversationID: conv.ID,
 		UserID:         user.ID,
+		modelID:        model.ID,
 		done:           make(chan struct{}),
 		subs:           map[chan struct{}]struct{}{},
 	}
+	unregisterRun := s.Hub.registerDetached(run, cancelRun)
+	finishedRun := false
+	defer func() {
+		if !finishedRun {
+			run.finish(asstMsg)
+		}
+		unregisterRun()
+	}()
+	run.setActivity("正在执行定时任务…")
 	turn := &toolTurn{
-		user:         user,
-		convID:       conv.ID,
-		assistantID:  conv.AssistantID,
-		asstID:       asstMsg.ID,
-		userQuestion: task.Prompt,
-		run:          run,
-		private:      false,
+		user:             user,
+		convID:           conv.ID,
+		assistantID:      conv.AssistantID,
+		asstID:           asstMsg.ID,
+		userQuestion:     task.Prompt,
+		run:              run,
+		private:          false,
 		activeSkills:     map[string]bool{},
 		automation:       true,
 		automationTaskID: task.ID,
@@ -318,11 +330,13 @@ func (s *Service) ExecuteScheduledTask(ctx context.Context, task *store.Schedule
 		}
 		roundStart := run.contentLen()
 		roundReasoningStart := run.reasoningLen()
-		res, err := s.streamWithRetry(ctx, s.client(provider), req, func(ev llm.Event) {
+		res, err := s.streamWithRetry(runCtx, s.client(provider), req, func(ev llm.Event) {
 			if ev.Reasoning != "" {
+				run.setActivity("")
 				run.appendReasoning(ev.Reasoning)
 			}
 			if ev.Content != "" {
+				run.setActivity("")
 				run.appendContent(ev.Content)
 			}
 		})
@@ -356,7 +370,7 @@ func (s *Service) ExecuteScheduledTask(ctx context.Context, task *store.Schedule
 			Reasoning: strings.TrimSpace(reasoning[roundReasoningStart:]),
 			ToolCalls: calls,
 		})
-		results, stopTools := s.runTools(ctx, turn, calls)
+		results, stopTools := s.runTools(runCtx, turn, calls)
 		for i, result := range results {
 			messages = append(messages, llm.Message{Role: "tool", ToolCallID: calls[i].ID, Content: result})
 		}
@@ -396,9 +410,11 @@ func (s *Service) ExecuteScheduledTask(ctx context.Context, task *store.Schedule
 	defer cancel()
 	_ = s.Store.FinishMessage(pctx, asstMsg)
 	_ = s.Store.TouchConversation(pctx, conv.ID)
+	run.finish(asstMsg)
+	finishedRun = true
 
 	// Auto-bind target component if the task wasn't bound yet and this run created/pinned one.
-	if task.TargetMessageID == "" {
+	if task.TargetEntityID == "" && task.TargetMessageID == "" {
 		bindMsg, bindComp := turn.lastPinnedMsgID, turn.lastPinnedCompID
 		if bindMsg == "" || bindComp == "" {
 			bindMsg, bindComp = turn.lastCreatedMsgID, turn.lastCreatedCompID

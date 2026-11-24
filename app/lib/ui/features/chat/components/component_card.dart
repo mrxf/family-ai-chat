@@ -17,12 +17,14 @@ class ChatComponentCard extends StatelessWidget {
     required this.messageId,
     required this.component,
     required this.isLastMessage,
+    this.compactFeed = false,
     this.onStateChanged,
   });
 
   final String messageId;
   final MessageComponent component;
   final bool isLastMessage;
+  final bool compactFeed;
   final ValueChanged<Map<String, dynamic>>? onStateChanged;
 
   @override
@@ -31,7 +33,7 @@ class ChatComponentCard extends StatelessWidget {
       'app_action' => AppActionCard(messageId: messageId, component: component),
       'weather' => WeatherCard(component: component),
       'todo' => TodoCard(messageId: messageId, component: component, onStateChanged: onStateChanged),
-      'feed' => FeedCard(component: component),
+      'feed' => FeedCard(component: component, compact: compactFeed),
       'chart' => ChartCard(component: component),
       'quiz' => QuizCard(messageId: messageId, component: component, onStateChanged: onStateChanged),
       'metrics' => MetricsCard(component: component),

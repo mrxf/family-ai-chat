@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../state/pinned_components.dart';
+import '../../../state/scheduled_tasks.dart';
 import '../../adaptive/breakpoints.dart';
 import '../../theme/icons.dart';
 import '../../theme/theme.dart';
@@ -17,7 +19,7 @@ import 'components/suggestions_card.dart';
 ///
 /// Column count scales smoothly from 1 column on phones up to 4 columns on 4K
 /// desktop windows based on parent constraints (never MediaQuery screen width).
-class PinnedComponentsBoard extends ConsumerWidget {
+class PinnedComponentsBoard extends ConsumerStatefulWidget {
   const PinnedComponentsBoard({
     super.key,
     required this.onSuggestion,
@@ -41,10 +43,50 @@ class PinnedComponentsBoard extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PinnedComponentsBoard> createState() => _PinnedComponentsBoardState();
+}
+
+class _PinnedComponentsBoardState extends ConsumerState<PinnedComponentsBoard> {
+  Timer? _pollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() {
+      if (!mounted) return;
+      unawaited(ref.read(pinnedComponentsProvider.notifier).refresh());
+      ref.invalidate(scheduledTasksProvider);
+    });
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  void _syncPolling(bool hasRunning) {
+    if (hasRunning && _pollTimer == null) {
+      _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+        if (!mounted) return;
+        ref.invalidate(scheduledTasksProvider);
+        unawaited(ref.read(pinnedComponentsProvider.notifier).refresh());
+      });
+    } else if (!hasRunning && _pollTimer != null) {
+      _pollTimer?.cancel();
+      _pollTimer = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final p = context.pal;
     final board = ref.watch(pinnedComponentsProvider);
     final notifier = ref.read(pinnedComponentsProvider.notifier);
+    final hasRunningTask = ref.watch(
+      scheduledTasksProvider.select((async) => async.value?.items.any((t) => t.isRunning) ?? false),
+    );
+    _syncPolling(hasRunningTask);
 
     final cards = <Widget>[
       for (var i = 0; i < board.items.length; i++)
@@ -57,6 +99,7 @@ class PinnedComponentsBoard extends ConsumerWidget {
             messageId: board.items[i].messageId,
             component: board.items[i].component,
             isLastMessage: false,
+            compactFeed: true,
             onStateChanged: (nextState) =>
                 notifier.updateComponentState(board.items[i].messageId, board.items[i].componentId, nextState),
           ),
@@ -64,8 +107,8 @@ class PinnedComponentsBoard extends ConsumerWidget {
       if (board.suggestionsPinned)
         SuggestionsCard(
           key: const ValueKey('builtin-suggestions'),
-          onSuggestion: onSuggestion,
-          includeDraw: includeDraw,
+          onSuggestion: widget.onSuggestion,
+          includeDraw: widget.includeDraw,
           onUnpin: () {
             notifier.setSuggestionsPinned(false);
             showToast(context, '已取消固定「猜你想问」，可在下方随时恢复');
@@ -85,7 +128,7 @@ class PinnedComponentsBoard extends ConsumerWidget {
       builder: (context, constraints) {
         const gap = 16.0;
         final availW = constraints.maxWidth.isFinite ? constraints.maxWidth : ContentWidth.chat;
-        final cols = columnCountForWidth(availW, cards.length);
+        final cols = PinnedComponentsBoard.columnCountForWidth(availW, cards.length);
         // Keep a single card at the comfortable chat width; let multi-column boards breathe up to 4K width.
         final boardMaxW = cols == 1 ? ContentWidth.chat : math.min(availW, 1680.0);
 

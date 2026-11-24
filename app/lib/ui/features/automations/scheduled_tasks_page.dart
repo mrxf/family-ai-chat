@@ -167,7 +167,10 @@ class _ScheduledTasksPageState extends ConsumerState<ScheduledTasksPage> {
     _syncPolling(hasRunning);
 
     final pinTitleMap = <String, String>{
-      for (final pin in pins) '${pin.messageId}|${pin.componentId}': describeComponent(pin.component).title,
+      for (final pin in pins) ...{
+        if (pin.effectiveEntityId.isNotEmpty) 'ent:${pin.effectiveEntityId}': describeComponent(pin.component).title,
+        '${pin.messageId}|${pin.componentId}': describeComponent(pin.component).title,
+      },
     };
 
     final embedded = widget.embedded;
@@ -239,7 +242,8 @@ class _ScheduledTasksPageState extends ConsumerState<ScheduledTasksPage> {
                   for (final task in data.items)
                     _TaskCard(
                       task: task,
-                      boundCardTitle: pinTitleMap['${task.targetMessageId}|${task.targetComponentId}'],
+                      boundCardTitle: (task.targetEntityId.isNotEmpty ? pinTitleMap['ent:${task.targetEntityId}'] : null) ??
+                          pinTitleMap['${task.targetMessageId}|${task.targetComponentId}'],
                       showQuickActions: embedded,
                       busy: _busy,
                       onToggle: (v) => _toggleEnabled(task, v),

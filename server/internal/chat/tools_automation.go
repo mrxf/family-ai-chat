@@ -64,13 +64,17 @@ var createScheduledTaskTool = llm.Tool{
 				"type":        "string",
 				"description": "Only for schedule_kind=\"once\": \"YYYY-MM-DD HH:MM\" in Asia/Shanghai.",
 			},
+			"target_entity_id": map[string]any{
+				"type":        "string",
+				"description": "Preferred canonical entity_id of the existing live component card to bind for in-place updates.",
+			},
 			"target_message_id": map[string]any{
 				"type":        "string",
-				"description": "Optional message_id of the existing component card to bind for in-place updates.",
+				"description": "Legacy fallback message_id of the existing component card (only needed if target_entity_id is unavailable).",
 			},
 			"target_component_id": map[string]any{
 				"type":        "string",
-				"description": "Optional component_id of the existing component card to bind for in-place updates.",
+				"description": "Legacy fallback component_id of the existing component card (paired with target_message_id).",
 			},
 			"run_immediately": map[string]any{
 				"type":        "boolean",
@@ -97,6 +101,7 @@ var updateScheduledTaskTool = llm.Tool{
 			"interval_minutes":    map[string]any{"type": "integer"},
 			"run_at":              map[string]any{"type": "string"},
 			"enabled":             map[string]any{"type": "boolean", "description": "true to resume, false to pause."},
+			"target_entity_id":    map[string]any{"type": "string", "description": "Preferred canonical entity_id of the bound component card."},
 			"target_message_id":   map[string]any{"type": "string"},
 			"target_component_id": map[string]any{"type": "string"},
 		},
@@ -137,19 +142,19 @@ const automationSkillSOP = `# AI 定时任务与自动化管理指南
 - **AI 定时任务 (` + "`automation`" + `)**：到点唤醒 **AI** 在后台自动干活（如“每天早上 7 点帮我查最新大模型新闻并更新卡片”“每晚 9 点分析我今天的日程和未完成待办清单”“每 2 小时帮我关注某话题动态”）。
 
 ## 二、绑定卡片与“滚动更新”场景的最佳实践（非常重要）
-当用户提出类似「每天早上 7 点帮我查询最新大模型新闻，更新前三条，把原来的前三条放到后面三条」的需求时：
+当用户提出类似「每天早上 9 点帮我查询最新 AI 新闻，更新前三条，把原来的前三条放到后面三条」的需求时：
 1. **检查是否已有目标卡片**：
-   - 若用户本轮已引用某张卡片（上下文里已有其 ` + "`message_id`" + ` / ` + "`component_id`" + `），直接将其绑定到 ` + "`create_scheduled_task`" + ` 的 ` + "`target_message_id`" + ` / ` + "`target_component_id`" + `。
+   - 若用户本轮已引用某张卡片（上下文里已有其 ` + "`entity_id`" + ` 或 ` + "`message_id`" + ` / ` + "`component_id`" + `），直接将其绑定到 ` + "`create_scheduled_task`" + ` 的 ` + "`target_entity_id`" + `（优先传 ` + "`target_entity_id`" + `）。
    - 若未引用，先调 ` + "`ui_components`" + ` 技能的 ` + "`list_components`" + ` 看首页是否已有对应卡片。
-   - **若还没有这张卡片**：强烈建议在本轮**先用 ` + "`web_search`" + ` 查出首批内容 → 调用 ` + "`show_feed`" + `（资讯/新闻类）或 ` + "`show_todo`" + `（任务类）创建卡片 → 调用 ` + "`pin_component`" + ` 固定到首页 → 再用新卡片的 ` + "`message_id`" + ` 与 ` + "`component_id`" + ` 调用 ` + "`create_scheduled_task`" + ` 绑定定时更新**！这样用户马上就能在首页看到初始卡片，且第二天早上 7 点会自动原地滚动更新同一张卡片。
+   - **若还没有这张卡片**：强烈建议在本轮**先用 ` + "`web_search`" + ` 查出首批内容 → 调用 ` + "`show_feed`" + `（资讯/新闻类）或 ` + "`show_todo`" + `（任务类）创建卡片 → 调用 ` + "`pin_component`" + ` 固定到首页 → 再用新卡片的 ` + "`entity_id`" + ` 调用 ` + "`create_scheduled_task`" + ` 的 ` + "`target_entity_id`" + ` 绑定定时更新**！这样用户马上就能在首页看到初始卡片，且每天到点会自动原地滚动更新同一张卡片并递增版本号。
 2. **写好自包含的任务指令 (` + "`prompt`" + `)**：
    - 后台定时执行时看不到本轮闲聊，所以 ` + "`prompt`" + ` 必须写清具体动作与规则！例如：
-     - 「使用 web_search 查询近 24 小时最新的 3 条大模型重磅新闻，然后调用 update_component 更新绑定的资讯卡片：用 prepend_items 插入这 3 条最新新闻（tag 设为「今日」），设置 previous_tag="往期" 且 max_items=6，让原来的前 3 条自动顺延到第 4-6 条。」
+     - 「使用 web_search 查询近 24 小时最新的 3 条 AI 重磅新闻，然后调用 update_component 更新绑定的资讯卡片：用 prepend_items 插入这 3 条最新新闻（tag 设为「今日」），设置 previous_tag="往期" 且 max_items=6，让原来的前 3 条自动顺延到第 4-6 条。」
      - 「调用 list_schedules 查看今明两天日程，并调用 list_components 查看首页未完成待办清单，综合分析今天的完成情况与明天的优先事项，给出精炼复盘建议。」
 
 ## 三、表达规范
 - 创建或修改后，用简洁亲切的话向用户确认：**任务名称、触发时间/周期、每次会自动做什么、已绑定哪张首页卡片（若有）**，并告知用户可随时在「AI 定时任务」页面手动试跑、暂停或查看每次执行记录。
-- 严禁向用户输出内部 ` + "`task_id`" + `、` + "`message_id`" + ` 或 ` + "`component_id`" + `。`
+- 严禁向用户输出内部 ` + "`task_id`" + `、` + "`entity_id`" + `、` + "`message_id`" + ` 或 ` + "`component_id`" + `。`
 
 const automationLeaseSummary = "AI 定时任务技能（automation）当前已激活，可直接调用 list_scheduled_tasks / create_scheduled_task / update_scheduled_task / delete_scheduled_task / run_scheduled_task。"
 
@@ -216,7 +221,9 @@ func formatScheduledTaskForLLM(tk *store.ScheduledTask) string {
 	if tk.NextRunAt > 0 {
 		parts = append(parts, "下次:"+time.UnixMilli(tk.NextRunAt).In(shanghai).Format("01-02 15:04"))
 	}
-	if tk.TargetMessageID != "" && tk.TargetComponentID != "" {
+	if tk.TargetEntityID != "" {
+		parts = append(parts, fmt.Sprintf("绑定实体:%s", tk.TargetEntityID))
+	} else if tk.TargetMessageID != "" && tk.TargetComponentID != "" {
 		parts = append(parts, fmt.Sprintf("绑定卡片:%s/%s", tk.TargetMessageID, tk.TargetComponentID))
 	}
 	if tk.LastStatus != "" {
@@ -288,6 +295,7 @@ func (s *Service) execCreateScheduledTask(ctx context.Context, t *toolTurn, rawA
 		DayOfMonth        int    `json:"day_of_month"`
 		IntervalMinutes   int    `json:"interval_minutes"`
 		RunAt             string `json:"run_at"`
+		TargetEntityID    string `json:"target_entity_id"`
 		TargetMessageID   string `json:"target_message_id"`
 		TargetComponentID string `json:"target_component_id"`
 		RunImmediately    bool   `json:"run_immediately"`
@@ -303,12 +311,24 @@ func (s *Service) execCreateScheduledTask(ctx context.Context, t *toolTurn, rawA
 			return fmt.Sprintf("run_at 时间格式无法解析：%q，请使用 \"YYYY-MM-DD HH:MM\"。", args.RunAt)
 		}
 	}
+	targetEntID := strings.TrimSpace(args.TargetEntityID)
 	targetMsgID := strings.TrimSpace(args.TargetMessageID)
 	targetCompID := strings.TrimSpace(args.TargetComponentID)
-	if targetMsgID != "" && targetCompID != "" {
-		if _, _, err := s.Store.GetMessageComponent(ctx, targetMsgID, t.user.ID, targetCompID); err != nil {
-			return "绑定的目标卡片不存在，请先调用 list_components 核对真实的 message_id 和 component_id。"
+	if targetEntID != "" {
+		ent, err := s.Store.GetComponentEntity(ctx, targetEntID, t.user.ID)
+		if err != nil {
+			return "绑定的目标卡片不存在，请先调用 list_components 核对真实的 entity_id。"
 		}
+		if targetMsgID == "" {
+			targetMsgID = ent.OriginMessageID
+			targetCompID = ent.OriginComponentID
+		}
+	} else if targetMsgID != "" && targetCompID != "" {
+		ent, err := s.Store.EnsureComponentEntityForMessage(ctx, targetMsgID, t.user.ID, targetCompID, "")
+		if err != nil {
+			return "绑定的目标卡片不存在，请先调用 list_components 核对真实的 entity_id 或 message_id + component_id。"
+		}
+		targetEntID = ent.ID
 	} else {
 		targetMsgID, targetCompID = "", ""
 	}
@@ -324,6 +344,7 @@ func (s *Service) execCreateScheduledTask(ctx context.Context, t *toolTurn, rawA
 		IntervalMinutes:   args.IntervalMinutes,
 		RunAt:             runAtMs,
 		Enabled:           true,
+		TargetEntityID:    targetEntID,
 		TargetMessageID:   targetMsgID,
 		TargetComponentID: targetCompID,
 		Source:            "ai",
@@ -367,6 +388,7 @@ func (s *Service) execUpdateScheduledTask(ctx context.Context, t *toolTurn, rawA
 		IntervalMinutes   *int    `json:"interval_minutes"`
 		RunAt             *string `json:"run_at"`
 		Enabled           *bool   `json:"enabled"`
+		TargetEntityID    *string `json:"target_entity_id"`
 		TargetMessageID   *string `json:"target_message_id"`
 		TargetComponentID *string `json:"target_component_id"`
 	}
@@ -377,6 +399,29 @@ func (s *Service) execUpdateScheduledTask(ctx context.Context, t *toolTurn, rawA
 	if id == "" {
 		return "参数错误：需要提供真实的 task_id。"
 	}
+	tEnt := args.TargetEntityID
+	tMsg := args.TargetMessageID
+	tComp := args.TargetComponentID
+	if tEnt != nil && strings.TrimSpace(*tEnt) != "" {
+		eid := strings.TrimSpace(*tEnt)
+		ent, err := s.Store.GetComponentEntity(ctx, eid, t.user.ID)
+		if err != nil {
+			return "绑定的目标卡片不存在，请先调用 list_components 核对真实的 entity_id。"
+		}
+		tEnt = &eid
+		if tMsg == nil || strings.TrimSpace(*tMsg) == "" {
+			om, oc := ent.OriginMessageID, ent.OriginComponentID
+			tMsg, tComp = &om, &oc
+		}
+	} else if tMsg != nil && tComp != nil &&
+		strings.TrimSpace(*tMsg) != "" && strings.TrimSpace(*tComp) != "" {
+		ent, err := s.Store.EnsureComponentEntityForMessage(ctx, strings.TrimSpace(*tMsg), t.user.ID, strings.TrimSpace(*tComp), "")
+		if err != nil {
+			return "绑定的目标卡片不存在，请先调用 list_components 核对真实的 entity_id 或 message_id + component_id。"
+		}
+		eid := ent.ID
+		tEnt = &eid
+	}
 	patch := store.ScheduledTaskPatch{
 		Title:             args.Title,
 		Prompt:            args.Prompt,
@@ -386,8 +431,9 @@ func (s *Service) execUpdateScheduledTask(ctx context.Context, t *toolTurn, rawA
 		DayOfMonth:        args.DayOfMonth,
 		IntervalMinutes:   args.IntervalMinutes,
 		Enabled:           args.Enabled,
-		TargetMessageID:   args.TargetMessageID,
-		TargetComponentID: args.TargetComponentID,
+		TargetEntityID:    tEnt,
+		TargetMessageID:   tMsg,
+		TargetComponentID: tComp,
 	}
 	if args.RunAt != nil && strings.TrimSpace(*args.RunAt) != "" {
 		if ms, ok := parseFlexibleScheduleTime(*args.RunAt, false, time.Now().In(shanghai)); ok {

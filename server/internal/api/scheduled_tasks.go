@@ -123,6 +123,7 @@ func (s *Server) updateScheduledTask(w http.ResponseWriter, r *http.Request) {
 		RunAt             *int64  `json:"run_at"`
 		Enabled           *bool   `json:"enabled"`
 		ModelID           *string `json:"model_id"`
+		TargetEntityID    *string `json:"target_entity_id"`
 		TargetMessageID   *string `json:"target_message_id"`
 		TargetComponentID *string `json:"target_component_id"`
 	}
@@ -137,12 +138,34 @@ func (s *Server) updateScheduledTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if in.TargetMessageID != nil && in.TargetComponentID != nil &&
-		strings.TrimSpace(*in.TargetMessageID) != "" && strings.TrimSpace(*in.TargetComponentID) != "" {
-		if _, _, err := s.Store.GetMessageComponent(r.Context(), strings.TrimSpace(*in.TargetMessageID), uid, strings.TrimSpace(*in.TargetComponentID)); err != nil {
+	tEnt := in.TargetEntityID
+	tMsg := in.TargetMessageID
+	tComp := in.TargetComponentID
+	if tEnt != nil && strings.TrimSpace(*tEnt) != "" {
+		eid := strings.TrimSpace(*tEnt)
+		ent, err := s.Store.GetComponentEntity(r.Context(), eid, uid)
+		if err != nil {
 			writeErr(w, 400, "bad_target", "绑定的目标卡片不存在")
 			return
 		}
+		tEnt = &eid
+		if tMsg == nil || strings.TrimSpace(*tMsg) == "" {
+			om, oc := ent.OriginMessageID, ent.OriginComponentID
+			tMsg, tComp = &om, &oc
+		}
+	} else if tMsg != nil && tComp != nil &&
+		strings.TrimSpace(*tMsg) != "" && strings.TrimSpace(*tComp) != "" {
+		ent, err := s.Store.EnsureComponentEntityForMessage(r.Context(), strings.TrimSpace(*tMsg), uid, strings.TrimSpace(*tComp), "")
+		if err != nil {
+			writeErr(w, 400, "bad_target", "绑定的目标卡片不存在")
+			return
+		}
+		eid := ent.ID
+		tEnt = &eid
+	} else if (tEnt != nil && strings.TrimSpace(*tEnt) == "") ||
+		(tMsg != nil && strings.TrimSpace(*tMsg) == "" && tComp != nil && strings.TrimSpace(*tComp) == "") {
+		empty := ""
+		tEnt, tMsg, tComp = &empty, &empty, &empty
 	}
 	updated, err := s.Store.UpdateScheduledTask(r.Context(), id, uid, store.ScheduledTaskPatch{
 		Title:             in.Title,
@@ -155,8 +178,9 @@ func (s *Server) updateScheduledTask(w http.ResponseWriter, r *http.Request) {
 		RunAt:             in.RunAt,
 		Enabled:           in.Enabled,
 		ModelID:           in.ModelID,
-		TargetMessageID:   in.TargetMessageID,
-		TargetComponentID: in.TargetComponentID,
+		TargetEntityID:    tEnt,
+		TargetMessageID:   tMsg,
+		TargetComponentID: tComp,
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {

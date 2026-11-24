@@ -16,6 +16,7 @@ Future<ScheduledTaskDraft?> showScheduledTaskEditor(
   ScheduledTask? existing,
   String? initialTitle,
   String? initialPrompt,
+  String? initialTargetEntityId,
   String? initialTargetMessageId,
   String? initialTargetComponentId,
   Future<void> Function(ScheduledTaskDraft)? onSave,
@@ -30,6 +31,7 @@ Future<ScheduledTaskDraft?> showScheduledTaskEditor(
         existing: existing,
         initialTitle: initialTitle,
         initialPrompt: initialPrompt,
+        initialTargetEntityId: initialTargetEntityId,
         initialTargetMessageId: initialTargetMessageId,
         initialTargetComponentId: initialTargetComponentId,
         onSave: onSave,
@@ -42,6 +44,7 @@ class _ScheduledTaskEditorSheet extends ConsumerStatefulWidget {
     this.existing,
     this.initialTitle,
     this.initialPrompt,
+    this.initialTargetEntityId,
     this.initialTargetMessageId,
     this.initialTargetComponentId,
     this.onSave,
@@ -51,6 +54,7 @@ class _ScheduledTaskEditorSheet extends ConsumerStatefulWidget {
   final ScheduledTask? existing;
   final String? initialTitle;
   final String? initialPrompt;
+  final String? initialTargetEntityId;
   final String? initialTargetMessageId;
   final String? initialTargetComponentId;
   final Future<void> Function(ScheduledTaskDraft)? onSave;
@@ -72,11 +76,33 @@ class _ScheduledTaskEditorSheetState extends ConsumerState<_ScheduledTaskEditorS
   late DateTime _onceDate;
   late bool _enabled;
   bool _runImmediately = false;
+  late String _targetEntityId;
   late String _targetMessageId;
   late String _targetComponentId;
   bool _saving = false;
 
   static const _weekdays = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+  static const _templates = [
+    (
+      label: '每日 AI 新闻',
+      title: '每日 AI 前沿新闻',
+      time: TimeOfDay(hour: 9, minute: 0),
+      prompt: '使用 web_search 查询近 24 小时最新的 3 条 AI 领域重磅新闻。如果已绑定卡片，请调用 update_component 用 prepend_items 插入最新 3 条（tag 设为「今日」），设置 previous_tag="往期"、max_items=6；如果尚未绑定卡片，请先调用 show_feed 生成「每日 AI 新闻」资讯卡片并调用 pin_component 固定到首页。',
+    ),
+    (
+      label: '每晚待办复盘',
+      title: '每晚日程与待办复盘',
+      time: TimeOfDay(hour: 21, minute: 0),
+      prompt: '调用 list_schedules 查看今明两天日程，并调用 list_components 查看首页未完成待办清单，总结今天进展并整理明天最重要的 3 件事。',
+    ),
+    (
+      label: '每日天气简报',
+      title: '每日天气更新',
+      time: TimeOfDay(hour: 7, minute: 30),
+      prompt: '使用 web_search 查询本地今日及未来 7 天天气预报。如果已绑定天气卡片，请调用 update_component 原地更新为最新一周天气；如果尚未绑定，请先调用 show_weather 生成天气卡片并调用 pin_component 固定到首页。',
+    ),
+  ];
 
   @override
   void initState() {
@@ -116,6 +142,7 @@ class _ScheduledTaskEditorSheetState extends ConsumerState<_ScheduledTaskEditorS
     }
 
     _enabled = ex?.enabled ?? true;
+    _targetEntityId = ex?.targetEntityId ?? widget.initialTargetEntityId ?? '';
     _targetMessageId = ex?.targetMessageId ?? widget.initialTargetMessageId ?? '';
     _targetComponentId = ex?.targetComponentId ?? widget.initialTargetComponentId ?? '';
   }
@@ -175,6 +202,7 @@ class _ScheduledTaskEditorSheetState extends ConsumerState<_ScheduledTaskEditorS
       intervalMinutes: _kind == ScheduledTaskKind.interval ? intervalMins : 0,
       runAt: _kind == ScheduledTaskKind.once ? onceDt.millisecondsSinceEpoch : 0,
       enabled: _enabled,
+      targetEntityId: _targetEntityId,
       targetMessageId: _targetMessageId,
       targetComponentId: _targetComponentId,
       runImmediately: widget.existing == null && _runImmediately,
@@ -190,13 +218,22 @@ class _ScheduledTaskEditorSheetState extends ConsumerState<_ScheduledTaskEditorS
     }
   }
 
+  String _pinKey(PinnedComponent pin) =>
+      pin.effectiveEntityId.isNotEmpty ? 'ent:${pin.effectiveEntityId}' : '${pin.messageId}|${pin.componentId}';
+
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
     final pins = ref.watch(pinnedComponentsProvider).items;
-    final currentTargetKey = _targetMessageId.isNotEmpty && _targetComponentId.isNotEmpty
-        ? '$_targetMessageId|$_targetComponentId'
-        : '';
+    final matchedPin = pins.where((pin) {
+      if (_targetEntityId.isNotEmpty && pin.effectiveEntityId == _targetEntityId) return true;
+      return _targetMessageId.isNotEmpty &&
+          _targetComponentId.isNotEmpty &&
+          pin.messageId == _targetMessageId &&
+          pin.componentId == _targetComponentId;
+    }).firstOrNull;
+    final currentTargetKey = matchedPin != null ? _pinKey(matchedPin) : '';
+    final hasAnyTarget = _targetEntityId.isNotEmpty || (_targetMessageId.isNotEmpty && _targetComponentId.isNotEmpty);
 
     return PopScope(
       canPop: !_saving,
@@ -211,6 +248,29 @@ class _ScheduledTaskEditorSheetState extends ConsumerState<_ScheduledTaskEditorS
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(widget.title, style: Theme.of(context).textTheme.titleMedium),
+                if (widget.existing == null && !hasAnyTarget) ...[
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      for (final tpl in _templates)
+                        ActionChip(
+                          avatar: AppIcon(AppIcons.sparkles, size: 14, color: p.accent),
+                          label: Text(tpl.label, style: const TextStyle(fontSize: 12.5)),
+                          onPressed: _saving
+                              ? null
+                              : () => setState(() {
+                                    _titleCtrl.text = tpl.title;
+                                    _promptCtrl.text = tpl.prompt;
+                                    _kind = ScheduledTaskKind.daily;
+                                    _time = tpl.time;
+                                    _runImmediately = true;
+                                  }),
+                        ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 14),
                 TextFormField(
                   controller: _titleCtrl,
@@ -336,21 +396,19 @@ class _ScheduledTaskEditorSheetState extends ConsumerState<_ScheduledTaskEditorS
                     ],
                   ),
                 ],
-                if (pins.isNotEmpty || currentTargetKey.isNotEmpty) ...[
+                if (pins.isNotEmpty || hasAnyTarget) ...[
                   const SizedBox(height: 16),
                   Text('绑定要原地更新的首页卡片（选填）', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: p.muted)),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
-                    initialValue: pins.any((pin) => '${pin.messageId}|${pin.componentId}' == currentTargetKey)
-                        ? currentTargetKey
-                        : '',
+                    initialValue: currentTargetKey,
                     isExpanded: true,
                     decoration: const InputDecoration(isDense: true),
                     items: [
                       const DropdownMenuItem(value: '', child: Text('不绑定（自动分析或首次运行时创建）')),
                       for (final pin in pins)
                         DropdownMenuItem(
-                          value: '${pin.messageId}|${pin.componentId}',
+                          value: _pinKey(pin),
                           child: Text(
                             '${describeComponent(pin.component).kindLabel} · ${describeComponent(pin.component).title}',
                             maxLines: 1,
@@ -362,12 +420,16 @@ class _ScheduledTaskEditorSheetState extends ConsumerState<_ScheduledTaskEditorS
                         ? null
                         : (v) => setState(() {
                               if (v == null || v.isEmpty) {
+                                _targetEntityId = '';
                                 _targetMessageId = '';
                                 _targetComponentId = '';
                               } else {
-                                final segs = v.split('|');
-                                _targetMessageId = segs[0];
-                                _targetComponentId = segs.length > 1 ? segs[1] : '';
+                                final picked = pins.where((pin) => _pinKey(pin) == v).firstOrNull;
+                                if (picked != null) {
+                                  _targetEntityId = picked.effectiveEntityId;
+                                  _targetMessageId = picked.messageId;
+                                  _targetComponentId = picked.componentId;
+                                }
                               }
                             }),
                   ),

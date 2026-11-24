@@ -185,7 +185,7 @@ class _ScheduledTaskRunsBodyState extends ConsumerState<_ScheduledTaskRunsBody> 
                                   style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
                                   onPressed: () => _openConversation(r.conversationId, r.messageId),
                                   icon: const AppIcon(AppIcons.arrowUpRight, size: 14),
-                                  label: const Text('查看完整执行对话', style: TextStyle(fontSize: 12.5)),
+                                  label: Text(isRun ? '查看实时执行过程' : '查看完整执行对话', style: const TextStyle(fontSize: 12.5)),
                                 ),
                               ),
                             ],

@@ -29,6 +29,7 @@ class ScheduledTask {
   final int runAt;
   final bool enabled;
   final String? modelId;
+  final String targetEntityId;
   final String targetMessageId;
   final String targetComponentId;
   final String? conversationId;
@@ -54,6 +55,7 @@ class ScheduledTask {
     this.runAt = 0,
     this.enabled = true,
     this.modelId,
+    this.targetEntityId = '',
     this.targetMessageId = '',
     this.targetComponentId = '',
     this.conversationId,
@@ -68,7 +70,8 @@ class ScheduledTask {
     this.updatedAt = 0,
   });
 
-  bool get hasTargetComponent => targetMessageId.isNotEmpty && targetComponentId.isNotEmpty;
+  bool get hasTargetComponent =>
+      targetEntityId.isNotEmpty || (targetMessageId.isNotEmpty && targetComponentId.isNotEmpty);
   bool get isRunning => lastStatus == 'running';
 
   String get scheduleLabel {
@@ -119,6 +122,7 @@ class ScheduledTask {
         runAt: asInt(j['run_at']),
         enabled: j['enabled'] != false,
         modelId: asStrOrNull(j['model_id']),
+        targetEntityId: asStr(j['target_entity_id']),
         targetMessageId: asStr(j['target_message_id']),
         targetComponentId: asStr(j['target_component_id']),
         conversationId: asStrOrNull(j['conversation_id']),
@@ -145,6 +149,7 @@ class ScheduledTaskDraft {
   final int runAt;
   final bool enabled;
   final String? modelId;
+  final String targetEntityId;
   final String targetMessageId;
   final String targetComponentId;
   final bool runImmediately;
@@ -160,6 +165,7 @@ class ScheduledTaskDraft {
     this.runAt = 0,
     this.enabled = true,
     this.modelId,
+    this.targetEntityId = '',
     this.targetMessageId = '',
     this.targetComponentId = '',
     this.runImmediately = false,
@@ -176,6 +182,7 @@ class ScheduledTaskDraft {
         'run_at': runAt,
         'enabled': enabled,
         'model_id': modelId ?? '',
+        'target_entity_id': targetEntityId,
         'target_message_id': targetMessageId,
         'target_component_id': targetComponentId,
         if (runImmediately) 'run_immediately': true,
@@ -238,7 +245,13 @@ class ScheduledTasksResult {
     this.totalCount = 0,
   });
 
-  ScheduledTask? findByTarget(String messageId, String componentId) {
+  ScheduledTask? findByTarget(String messageId, String componentId, {String? entityId}) {
+    final eid = entityId ?? '';
+    if (eid.isNotEmpty) {
+      for (final t in items) {
+        if (t.targetEntityId == eid) return t;
+      }
+    }
     if (messageId.isEmpty || componentId.isEmpty) return null;
     for (final t in items) {
       if (t.targetMessageId == messageId && t.targetComponentId == componentId) return t;

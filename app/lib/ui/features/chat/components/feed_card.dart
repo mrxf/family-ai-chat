@@ -31,8 +31,11 @@ String formatComponentUpdatedAt(dynamic rawMs) {
 /// Highlights the top 3 items with accent rank pills, supports tapping an item
 /// to expand its summary or open its external URL, and displays last-updated time.
 class FeedCard extends StatefulWidget {
-  const FeedCard({super.key, required this.component});
+  const FeedCard({super.key, required this.component, this.compact = false});
   final MessageComponent component;
+
+  /// When true (e.g. on the home pinned board), collapses items beyond the top 3 behind a toggle.
+  final bool compact;
 
   @override
   State<FeedCard> createState() => _FeedCardState();
@@ -40,6 +43,7 @@ class FeedCard extends StatefulWidget {
 
 class _FeedCardState extends State<FeedCard> {
   final Set<String> _expanded = {};
+  bool _showAll = false;
 
   Future<void> _openUrl(String rawUrl) async {
     final uri = Uri.tryParse(rawUrl);
@@ -73,6 +77,10 @@ class _FeedCardState extends State<FeedCard> {
       ));
     }
     if (items.isEmpty) return const SizedBox.shrink();
+
+    final collapsible = widget.compact && items.length > 3;
+    final visibleItems = collapsible && !_showAll ? items.take(3).toList() : items;
+    final hiddenCount = items.length - visibleItems.length;
 
     return Container(
       decoration: BoxDecoration(
@@ -115,23 +123,44 @@ class _FeedCardState extends State<FeedCard> {
             ],
           ),
           const SizedBox(height: 10),
-          for (var i = 0; i < items.length; i++) ...[
+          for (var i = 0; i < visibleItems.length; i++) ...[
             if (i > 0) Divider(height: 1, color: p.line.withValues(alpha: 0.6)),
             _FeedRow(
               rank: i + 1,
-              title: items[i].title,
-              summary: items[i].summary,
-              tag: items[i].tag,
-              source: items[i].source,
-              url: items[i].url,
-              pub: items[i].pub,
-              expanded: _expanded.contains(items[i].id),
-              onToggleExpand: items[i].summary.isEmpty
+              title: visibleItems[i].title,
+              summary: visibleItems[i].summary,
+              tag: visibleItems[i].tag,
+              source: visibleItems[i].source,
+              url: visibleItems[i].url,
+              pub: visibleItems[i].pub,
+              expanded: _expanded.contains(visibleItems[i].id),
+              onToggleExpand: visibleItems[i].summary.isEmpty
                   ? null
                   : () => setState(() {
-                        if (!_expanded.remove(items[i].id)) _expanded.add(items[i].id);
+                        if (!_expanded.remove(visibleItems[i].id)) _expanded.add(visibleItems[i].id);
                       }),
-              onOpenUrl: items[i].url.isEmpty ? null : () => _openUrl(items[i].url),
+              onOpenUrl: visibleItems[i].url.isEmpty ? null : () => _openUrl(visibleItems[i].url),
+            ),
+          ],
+          if (collapsible) ...[
+            Divider(height: 1, color: p.line.withValues(alpha: 0.6)),
+            Pressable(
+              scale: 0.99,
+              onTap: () => setState(() => _showAll = !_showAll),
+              child: Padding(
+                padding: const EdgeInsets.only(top: 9, bottom: 2),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      _showAll ? '收起往期内容' : '展开其余 $hiddenCount 条往期内容',
+                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: p.muted),
+                    ),
+                    const SizedBox(width: 4),
+                    AppIcon(_showAll ? AppIcons.chevronUp : AppIcons.chevronDown, size: 15, color: p.muted),
+                  ],
+                ),
+              ),
             ),
           ],
         ],

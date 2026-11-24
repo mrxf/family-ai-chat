@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/api.dart';
 import '../../../../core/models/models.dart';
 import '../../../../platform/platform_capabilities.dart';
 import '../../../../state/chat.dart';
@@ -152,6 +153,7 @@ class _ChatComponentActionShellState extends ConsumerState<ChatComponentActionSh
       initialPrompt: isFeed
           ? '查询最新内容，更新《${meta.title}》卡片的前 3 条，把原来的前 3 条放到第 4-6 条（tag 标为往期）。'
           : '根据最新情况分析和更新《${meta.title}》卡片内容。',
+      initialTargetEntityId: comp.entityId.isNotEmpty ? comp.entityId : widget.component.entityId,
       initialTargetMessageId: widget.messageId,
       initialTargetComponentId: widget.component.id,
       onSave: (draft) async {
@@ -405,6 +407,7 @@ class HomePinnedComponentShell extends ConsumerWidget {
       initialPrompt: isFeed
           ? '查询最新内容，更新《${meta.title}》卡片的前 3 条，把原来的前 3 条放到第 4-6 条（tag 标为往期）。'
           : '根据最新情况分析和更新《${meta.title}》卡片内容。',
+      initialTargetEntityId: pin.effectiveEntityId,
       initialTargetMessageId: pin.messageId,
       initialTargetComponentId: pin.componentId,
       onSave: (draft) async {
@@ -440,9 +443,26 @@ class HomePinnedComponentShell extends ConsumerWidget {
     if (context.mounted) showToast(context, err ?? '已删除卡片');
   }
 
+  Future<void> _runBoundTaskNow(BuildContext context, WidgetRef ref, ScheduledTask bound) async {
+    if (bound.isRunning) return;
+    try {
+      await ref.read(apiProvider).runScheduledTaskNow(bound.id);
+      ref.invalidate(scheduledTasksProvider);
+      if (context.mounted) showToast(context, '已开始在后台更新，完成后会自动刷新卡片');
+    } catch (e) {
+      if (context.mounted) showToast(context, ApiError.from(e).message);
+    }
+  }
+
   void _openMenu(BuildContext context, WidgetRef ref, ScheduledTask? bound) {
     final ver = pin.component.effectiveVersion;
     showActionSheet(context, actions: [
+      if (bound != null)
+        SheetAction(
+          AppIcons.refresh,
+          bound.isRunning ? '后台更新中…' : '立即更新一次',
+          () => _runBoundTaskNow(context, ref, bound),
+        ),
       if (pin.effectiveEntityId.isNotEmpty)
         SheetAction(AppIcons.history, '查看版本历史（v$ver）', () => _openVersionHistory(context)),
       if (pin.conversationId.isNotEmpty)
@@ -471,7 +491,9 @@ class HomePinnedComponentShell extends ConsumerWidget {
     final p = context.pal;
     final sourceTitle = pin.conversationTitle.trim().isEmpty ? '原对话' : pin.conversationTitle.trim();
     final boundTask = ref.watch(
-      scheduledTasksProvider.select((async) => async.value?.findByTarget(pin.messageId, pin.componentId)),
+      scheduledTasksProvider.select(
+        (async) => async.value?.findByTarget(pin.messageId, pin.componentId, entityId: pin.effectiveEntityId),
+      ),
     );
     final hasEntity = pin.effectiveEntityId.isNotEmpty;
     final ver = pin.component.effectiveVersion;
@@ -547,10 +569,19 @@ class HomePinnedComponentShell extends ConsumerWidget {
                       if (boundTask != null) ...[
                         const SizedBox(width: 6),
                         Tooltip(
-                          message: '点击查看或管理定时更新（${boundTask.scheduleLabel}）',
+                          message: boundTask.isRunning && (boundTask.conversationId?.isNotEmpty ?? false)
+                              ? '点击查看实时执行过程'
+                              : '点击查看或管理定时更新（${boundTask.scheduleLabel}）',
                           child: Pressable(
                             scale: 0.96,
-                            onTap: () => showScheduledTaskRunsSheet(context, boundTask),
+                            onTap: () {
+                              final cid = boundTask.conversationId ?? '';
+                              if (boundTask.isRunning && cid.isNotEmpty) {
+                                ref.read(chatProvider.notifier).open(cid);
+                                return;
+                              }
+                              showScheduledTaskRunsSheet(context, boundTask);
+                            },
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                               decoration: BoxDecoration(
@@ -580,6 +611,24 @@ class HomePinnedComponentShell extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: 4),
+                if (boundTask != null)
+                  Tooltip(
+                    message: boundTask.isRunning ? '后台更新中…' : '立即运行定时更新',
+                    child: Pressable(
+                      scale: 0.92,
+                      onTap: boundTask.isRunning ? null : () => _runBoundTaskNow(context, ref, boundTask),
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: boundTask.isRunning
+                            ? SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 1.8, color: p.accent),
+                              )
+                            : AppIcon(AppIcons.refresh, size: 16, color: p.accent),
+                      ),
+                    ),
+                  ),
                 if (isComponentDirectlyEditable(pin.component))
                   _HomeIconAction(
                     icon: AppIcons.edit,

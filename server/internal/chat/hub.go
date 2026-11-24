@@ -321,6 +321,27 @@ func (h *Hub) ActiveInConversation(convID string) *Run {
 	return nil
 }
 
+// registerDetached registers an externally managed background run (such as a scheduled
+// automation task) so clients can attach to its live SSE stream without consuming the
+// user's interactive chat concurrency slot. Call the returned cleanup func after run.finish.
+func (h *Hub) registerDetached(r *Run, cancel context.CancelCauseFunc) func() {
+	r.cancel = cancel
+	if r.done == nil {
+		r.done = make(chan struct{})
+	}
+	if r.subs == nil {
+		r.subs = map[chan struct{}]struct{}{}
+	}
+	h.mu.Lock()
+	h.runs[r.MessageID] = r
+	h.mu.Unlock()
+	return func() {
+		h.mu.Lock()
+		delete(h.runs, r.MessageID)
+		h.mu.Unlock()
+	}
+}
+
 // start registers a run and executes fn in its own goroutine, detached from
 // any HTTP request. fn must call run.finish when done.
 func (h *Hub) start(r *Run, fn func(ctx context.Context)) {
