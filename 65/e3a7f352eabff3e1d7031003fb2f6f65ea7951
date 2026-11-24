@@ -1,0 +1,36 @@
+app/lib/core/models/scheduled_task.dart
+  h_8f297825d1fe21 32,58,73-74,125,152,168,185,248-254
+app/lib/ui/features/automations/scheduled_task_editor.dart
+  h_8f297825d1fe21 19,34,47,57,79,86-106,145,205,221-223,228-236,251-273,399,404,411,423,427-432
+app/lib/ui/features/automations/scheduled_task_runs_sheet.dart
+  h_8f297825d1fe21 188
+app/lib/ui/features/automations/scheduled_tasks_page.dart
+  h_8f297825d1fe21 170-173,245-246
+app/lib/ui/features/chat/components/component_card.dart
+  h_8f297825d1fe21 20,27,36
+app/lib/ui/features/chat/components/component_card_shell.dart
+  h_8f297825d1fe21 4,156,410,446-456,460-465,494-496,572-574,577-584,614-631
+app/lib/ui/features/chat/components/feed_card.dart
+  h_8f297825d1fe21 34,37-39,46,81-84,126,130-137,140,142-163
+app/lib/ui/features/chat/pinned_components_board.dart
+  h_8f297825d1fe21 1,8,22,46-82,86-89,102,110-111,131
+server/internal/api/scheduled_tasks.go
+  h_8f297825d1fe21 126,141-147,151-168,181-183
+server/internal/chat/automation_worker.go
+  h_8f297825d1fe21 260-261,266,270-278,280-286,333,335,339,373,413-414,417
+server/internal/chat/hub.go
+  h_8f297825d1fe21 324-344
+server/internal/chat/tools_automation.go
+  h_8f297825d1fe21 67-70,73,77,104,145,147,149,152,157,224-226,298,314,317-329,331,347,391,402-424,434-436
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "65e3a7f352eabff3e1d7031003fb2f6f65ea7951",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
