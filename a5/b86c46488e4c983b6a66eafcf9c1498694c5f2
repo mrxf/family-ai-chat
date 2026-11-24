@@ -1,0 +1,14 @@
+server/internal/store/migrations/postgres/015_pinned_components.sql
+  h_8f297825d1fe21 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "a5b86c46488e4c983b6a66eafcf9c1498694c5f2",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
