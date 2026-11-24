@@ -1,0 +1,16 @@
+app/lib/ui/features/conversations/conversation_panel.dart
+  h_8f297825d1fe21 130-149
+app/lib/ui/features/share/share_code_sheet.dart
+  h_8f297825d1fe21 20,105,107,109,111-127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "c4e1ff64c72caab7c4e8c97421b7be756fe30929",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
