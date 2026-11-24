@@ -92,6 +92,9 @@ func run() error {
 	if err := apiSrv.InitSetup(ctx); err != nil {
 		return err
 	}
+	if svc.Automation != nil {
+		svc.Automation.Start()
+	}
 	srv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           apiSrv.Routes(),

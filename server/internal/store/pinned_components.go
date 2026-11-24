@@ -174,3 +174,16 @@ func (s *Store) UnpinComponent(ctx context.Context, userID, messageID, component
 		userID, messageID, componentID)
 	return err
 }
+
+// ReorderPinnedComponents updates sort_order on pinned components owned by userID according to pinIDs.
+func (s *Store) ReorderPinnedComponents(ctx context.Context, userID string, pinIDs []string) error {
+	return s.tx(ctx, func(tx *Tx) error {
+		for idx, id := range pinIDs {
+			if _, err := tx.exec(ctx, `UPDATE pinned_components SET sort_order = ? WHERE id = ? AND user_id = ?`,
+				idx+1, id, userID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

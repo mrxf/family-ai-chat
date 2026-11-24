@@ -182,6 +182,105 @@ class PinnedComponentsNotifier extends Notifier<PinnedComponentsState> {
     }
   }
 
+  /// Updates a pinned component's mutable content data, syncing with the server
+  /// and any open conversation. Returns null on success or an error message.
+  Future<String?> updateComponentData(
+    String messageId,
+    String componentId,
+    Map<String, dynamic> nextData,
+  ) async {
+    final api = _api;
+    if (api == null) return '尚未登录';
+    final before = state.items;
+    syncComponentDataFromChat(messageId, componentId, nextData);
+    ref.read(chatProvider.notifier).syncComponentDataFromPin(messageId, componentId, nextData);
+    try {
+      final saved = await api.updateMessageComponent(messageId, componentId, data: nextData);
+      if (!ref.mounted || !identical(_api, api)) return null;
+      syncComponentDataFromChat(messageId, componentId, saved.data);
+      ref.read(chatProvider.notifier).syncComponentDataFromPin(messageId, componentId, saved.data);
+      return null;
+    } catch (e) {
+      if (ref.mounted && identical(_api, api)) {
+        state = state.copyWith(items: before);
+        _persist();
+      }
+      return ApiError.from(e).message;
+    }
+  }
+
+  /// Permanently deletes a component and removes it from both Home and open chat.
+  Future<String?> deleteComponent(String messageId, String componentId) async {
+    final api = _api;
+    if (api == null) return '尚未登录';
+    final before = state.items;
+    state = state.copyWith(
+      items: before.where((p) => !(p.messageId == messageId && p.componentId == componentId)).toList(),
+    );
+    _persist();
+    ref.read(chatProvider.notifier).removeComponentLocal(messageId, componentId);
+    try {
+      await api.deleteMessageComponent(messageId, componentId);
+      return null;
+    } catch (e) {
+      if (ref.mounted && identical(_api, api)) {
+        state = state.copyWith(items: before);
+        _persist();
+      }
+      return ApiError.from(e).message;
+    }
+  }
+
+  /// Moves a pinned component left/up (-1) or right/down (+1) on the home board.
+  Future<String?> movePin(String pinId, int delta) async {
+    final api = _api;
+    if (api == null) return '尚未登录';
+    final idx = state.items.indexWhere((p) => p.id == pinId);
+    final nextIdx = idx + delta;
+    if (idx < 0 || nextIdx < 0 || nextIdx >= state.items.length) return null;
+    final before = state.items;
+    final reordered = [...before];
+    final item = reordered.removeAt(idx);
+    reordered.insert(nextIdx, item);
+    state = state.copyWith(items: reordered);
+    _persist();
+    try {
+      final saved = await api.reorderPinnedComponents([for (final p in reordered) p.id]);
+      if (!ref.mounted || !identical(_api, api)) return null;
+      state = state.copyWith(items: saved);
+      _persist();
+      return null;
+    } catch (e) {
+      if (ref.mounted && identical(_api, api)) {
+        state = state.copyWith(items: before);
+        _persist();
+      }
+      return ApiError.from(e).message;
+    }
+  }
+
+  /// Reflects an in-chat component data edit on the home board immediately.
+  void syncComponentDataFromChat(
+    String messageId,
+    String componentId,
+    Map<String, dynamic> nextData,
+  ) {
+    var changed = false;
+    final next = [
+      for (final p in state.items)
+        if (p.messageId == messageId && p.componentId == componentId)
+          () {
+            changed = true;
+            return p.copyWith(component: p.component.copyWith(data: nextData));
+          }()
+        else
+          p,
+    ];
+    if (!changed) return;
+    state = state.copyWith(items: next);
+    _persist();
+  }
+
   /// Reflects an in-chat component state edit on the home board immediately.
   void syncComponentStateFromChat(
     String messageId,

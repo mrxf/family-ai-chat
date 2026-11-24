@@ -155,12 +155,20 @@ class QuotedComponent {
 
 /// Returns whether a component kind can be pinned to the home board.
 bool isComponentPinnable(MessageComponent c) =>
-    c.id.isNotEmpty && const {'weather', 'todo', 'chart', 'metrics', 'quiz'}.contains(c.kind);
+    c.id.isNotEmpty && const {'weather', 'todo', 'feed', 'chart', 'metrics', 'quiz'}.contains(c.kind);
 
 /// Extracts a human-readable kind label, title and state summary for a component.
 ({String kindLabel, String title, String summary}) describeComponent(MessageComponent c) {
   final d = c.data;
   switch (c.kind) {
+    case 'feed':
+      final title = '${d['title'] ?? ''}'.trim();
+      final rawItems = d['items'] is List ? (d['items'] as List) : const [];
+      final firstTitle = rawItems.isNotEmpty && rawItems.first is Map ? '${(rawItems.first as Map)['title'] ?? ''}'.trim() : '';
+      final summary = rawItems.isEmpty
+          ? '${d['subtitle'] ?? ''}'.trim()
+          : (firstTitle.isEmpty ? '共 ${rawItems.length} 条' : '共 ${rawItems.length} 条 · $firstTitle');
+      return (kindLabel: '动态资讯', title: title.isEmpty ? '动态资讯' : title, summary: summary);
     case 'weather':
       final loc = '${d['location'] ?? ''}'.trim();
       final dateLabel = '${d['date_label'] ?? ''}'.trim();

@@ -57,3 +57,22 @@ func (s *Server) unpinComponent(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
+
+func (s *Server) reorderPinnedComponents(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		IDs []string `json:"ids"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if err := s.Store.ReorderPinnedComponents(r.Context(), currentUser(r).ID, in.IDs); err != nil {
+		s.writeStoreErr(w, r, err)
+		return
+	}
+	items, err := s.Store.ListPinnedComponents(r.Context(), currentUser(r).ID)
+	if err != nil {
+		s.writeStoreErr(w, r, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"items": items})
+}

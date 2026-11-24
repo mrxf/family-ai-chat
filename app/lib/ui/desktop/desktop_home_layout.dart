@@ -6,6 +6,7 @@ import '../../platform/platform_capabilities.dart';
 import '../../state/chat.dart';
 import '../../state/desktop_nav.dart';
 import '../../state/memories.dart';
+import '../../state/scheduled_tasks.dart';
 import '../../state/schedules.dart';
 import '../../state/session.dart';
 import '../adaptive/breakpoints.dart';
@@ -19,6 +20,7 @@ import '../features/chat/chat_pane.dart';
 import '../features/chat/composer/composer.dart';
 import '../features/conversations/conversation_panel.dart';
 import '../features/conversations/search_page.dart';
+import '../features/automations/scheduled_tasks_page.dart';
 import '../features/memories/memories_page.dart';
 import '../features/schedules/schedules_page.dart';
 import '../theme/theme.dart';
@@ -71,11 +73,15 @@ class _DesktopHomeLayoutState extends ConsumerState<DesktopHomeLayout> {
     if (nav.section == DesktopSection.schedules) {
       return const SchedulesPage(embedded: true);
     }
+    if (nav.section == DesktopSection.automations) {
+      return const ScheduledTasksPage(embedded: true);
+    }
     final tab = nav.settingsTab.isAdminOnly && !isAdmin ? SettingsTab.general : nav.settingsTab;
     return switch (tab) {
       SettingsTab.general => const DesktopGeneralSettingsPane(),
       SettingsTab.memories => const MemoriesPage(embedded: true),
       SettingsTab.schedules => const SchedulesPage(embedded: true),
+      SettingsTab.automations => const ScheduledTasksPage(embedded: true),
       SettingsTab.account => const DesktopAccountSettingsPane(),
       SettingsTab.adminUsers => const AdminUsersPage(embedded: true),
       SettingsTab.adminModels => const ModelsPage(embedded: true),
@@ -102,6 +108,7 @@ class _DesktopHomeLayoutState extends ConsumerState<DesktopHomeLayout> {
       if (next == DesktopSection.settings && prev != DesktopSection.settings) {
         ref.invalidate(memoriesProvider);
         ref.invalidate(schedulesProvider);
+        ref.invalidate(scheduledTasksProvider);
       }
     });
 

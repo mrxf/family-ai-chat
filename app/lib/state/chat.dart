@@ -12,6 +12,7 @@ import '../platform/reminders/reminder_service.dart';
 import 'chat_state.dart';
 import 'conversations.dart';
 import 'pinned_components.dart';
+import 'scheduled_tasks.dart';
 import 'schedules.dart';
 import 'session.dart';
 
@@ -611,6 +612,62 @@ class ChatController extends Notifier<ChatState> {
     }
   }
 
+  /// Updates an interactive component's content data in place and persists it.
+  Future<String?> updateComponentData(String messageId, String compId, Map<String, dynamic> nextData) async {
+    if (messageId.isEmpty || compId.isEmpty) return '无效卡片';
+    final api = _apiOrNull;
+    if (api == null) return '尚未登录';
+    syncComponentDataFromPin(messageId, compId, nextData);
+    ref.read(pinnedComponentsProvider.notifier).syncComponentDataFromChat(messageId, compId, nextData);
+    if (messageId.startsWith('local-')) return null;
+    try {
+      final saved = await api.updateMessageComponent(messageId, compId, data: nextData);
+      syncComponentDataFromPin(messageId, compId, saved.data);
+      ref.read(pinnedComponentsProvider.notifier).syncComponentDataFromChat(messageId, compId, saved.data);
+      return null;
+    } catch (e) {
+      return ApiError.from(e).message;
+    }
+  }
+
+  /// Reflects a component data edit performed on the home board inside the open conversation.
+  void syncComponentDataFromPin(
+    String messageId,
+    String compId,
+    Map<String, dynamic> nextData,
+  ) {
+    if (!state.messages.any((m) => m.id == messageId)) return;
+    state = state.copyWith(
+      messages: [
+        for (final m in state.messages)
+          if (m.id == messageId)
+            m.copyWith(
+              components: [
+                for (final c in m.components) c.id == compId ? c.copyWith(data: nextData) : c,
+              ],
+            )
+          else
+            m,
+      ],
+    );
+    _persist();
+  }
+
+  /// Removes a deleted component from the currently open conversation immediately.
+  void removeComponentLocal(String messageId, String compId) {
+    if (!state.messages.any((m) => m.id == messageId)) return;
+    state = state.copyWith(
+      messages: [
+        for (final m in state.messages)
+          if (m.id == messageId)
+            m.copyWith(components: m.components.where((c) => c.id != compId).toList())
+          else
+            m,
+      ],
+    );
+    _persist();
+  }
+
   /// Reflects a component state edit performed on the home board inside the open conversation.
   void syncComponentStateFromPin(
     String messageId,
@@ -680,6 +737,17 @@ class ChatController extends Notifier<ChatState> {
     }
     if (!state.isPrivate && v.steps.any((s) => s.kind == 'schedule')) {
       unawaited(syncSchedulesAfterChat(ref));
+    }
+    if (!state.isPrivate && v.steps.any((s) => s.kind == 'automation')) {
+      unawaited(syncScheduledTasksAfterChat(ref));
+    }
+    if (!state.isPrivate && v.steps.any((s) => s.kind == 'component')) {
+      unawaited(ref.read(pinnedComponentsProvider.notifier).refresh());
+      // Refresh the open conversation if an earlier message's component was updated/deleted in place.
+      final updatedInPlace = v.steps.any((s) => s.kind == 'component' && (s.title.contains('更新') || s.title.contains('删除')));
+      if (updatedInPlace && cid != null) {
+        unawaited(_reload(cid));
+      }
     }
     _persist();
   }

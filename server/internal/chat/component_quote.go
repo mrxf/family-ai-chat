@@ -111,6 +111,18 @@ func summarizeComponentForQuote(c store.MessageComponent) (title, summary string
 			}
 		}
 		summary = fmt.Sprintf("已完成 %d/%d 项", doneCount, len(d.Items))
+	case "feed":
+		var d feedCardData
+		_ = json.Unmarshal(c.Data, &d)
+		title = strings.TrimSpace(d.Title)
+		if title == "" {
+			title = "动态资讯"
+		}
+		if len(d.Items) > 0 {
+			summary = fmt.Sprintf("共 %d 条 · %s", len(d.Items), clipRunes(d.Items[0].Title, 24))
+		} else {
+			summary = strings.TrimSpace(d.Subtitle)
+		}
 	case "chart":
 		var d chartCardData
 		_ = json.Unmarshal(c.Data, &d)
@@ -168,8 +180,25 @@ func quotedComponentPromptNote(q *store.QuotedComponent) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("（用户引用了以下卡片发起提问，请结合卡片中的最新数据与状态直接回答，不要输出这条附注：\n")
+	b.WriteString("（用户引用了以下卡片发起提问，请结合卡片中的最新数据与状态直接回答，不要输出这条附注和内部ID：\n")
+	if q.MessageID != "" && q.ComponentID != "" {
+		fmt.Fprintf(&b, "- 卡片内部引用（用于 update_component / create_scheduled_task，切勿输出给用户）：message_id=%s, component_id=%s\n", q.MessageID, q.ComponentID)
+	}
 	switch q.Kind {
+	case "feed":
+		var d feedCardData
+		_ = json.Unmarshal(q.Data, &d)
+		fmt.Fprintf(&b, "- 类型：动态资讯卡片《%s》（共 %d 条）\n", q.Title, len(d.Items))
+		for i, it := range d.Items {
+			line := fmt.Sprintf("  %d. [%s] %s", i+1, it.ID, it.Title)
+			if it.Tag != "" {
+				line += " #" + it.Tag
+			}
+			if it.Summary != "" {
+				line += " — " + it.Summary
+			}
+			b.WriteString(line + "\n")
+		}
 	case "todo":
 		var d todoCardData
 		var st todoCardState

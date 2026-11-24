@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/models.dart';
 import '../../../state/chat.dart';
+import '../../../state/desktop_nav.dart';
 import '../../../state/pinned_components.dart';
+import '../../../state/scheduled_tasks.dart';
 import '../../../state/session.dart';
 import '../../adaptive/app_route.dart';
 import '../../adaptive/breakpoints.dart';
@@ -16,6 +18,7 @@ import '../../widgets/base_widgets.dart';
 import '../../widgets/mascot/mascot_anim.dart';
 import '../admin/models_page.dart';
 import '../auth/self_host_info_sheet.dart';
+import '../automations/scheduled_tasks_page.dart';
 import 'pinned_components_board.dart';
 
 String greeting() {
@@ -103,6 +106,29 @@ class Welcome extends ConsumerWidget {
                               onTap: () => showSelfHostInfoSheet(context, ref),
                             ),
                           ],
+                          const SizedBox(width: 4),
+                          SoftIconButton(
+                            icon: AppIcons.repeat,
+                            tooltip: 'AI 定时任务',
+                            size: 36,
+                            onTap: () {
+                              if (context.windowSize.isExpanded) {
+                                ref.read(desktopNavProvider.notifier).showAutomations();
+                              } else {
+                                Navigator.of(context).push(appRoute((_) => const ScheduledTasksPage()));
+                              }
+                            },
+                          ),
+                          SoftIconButton(
+                            icon: AppIcons.refresh,
+                            tooltip: '刷新首页卡片',
+                            size: 36,
+                            onTap: () {
+                              ref.read(pinnedComponentsProvider.notifier).refresh();
+                              ref.invalidate(scheduledTasksProvider);
+                              showToast(context, '已刷新首页卡片');
+                            },
+                          ),
                         ],
                       ),
                     ] else ...[

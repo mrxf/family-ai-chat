@@ -100,6 +100,13 @@ func (s *Server) Routes() http.Handler {
 			r.Delete("/schedules/{id}", s.deleteSchedule)
 			r.Delete("/schedules", s.clearCompletedSchedules)
 
+			r.Get("/scheduled-tasks", s.listScheduledTasks)
+			r.Post("/scheduled-tasks", s.createScheduledTask)
+			r.Patch("/scheduled-tasks/{id}", s.updateScheduledTask)
+			r.Delete("/scheduled-tasks/{id}", s.deleteScheduledTask)
+			r.Post("/scheduled-tasks/{id}/run", s.runScheduledTaskNow)
+			r.Get("/scheduled-tasks/{id}/runs", s.listScheduledTaskRuns)
+
 			r.Get("/models", s.listModels)
 			r.Get("/assistants", s.listAssistants)
 			r.Post("/assistants", s.createAssistant)
@@ -117,8 +124,10 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/messages/{id}/stream", s.stream)
 			r.Post("/messages/{id}/cancel", s.cancel)
 			r.Patch("/messages/{id}/components/{compId}", s.updateMessageComponent)
+			r.Delete("/messages/{id}/components/{compId}", s.deleteMessageComponent)
 			r.Get("/pinned-components", s.listPinnedComponents)
 			r.Post("/pinned-components", s.pinComponent)
+			r.Put("/pinned-components/order", s.reorderPinnedComponents)
 			r.Delete("/pinned-components/{messageId}/{compId}", s.unpinComponent)
 			r.Get("/suggestions", s.getHomeSuggestions)
 

@@ -199,6 +199,27 @@ class Api {
     return d is Map ? ((d['deleted'] as num?)?.toInt() ?? 0) : 0;
   }
 
+  // ---- AI scheduled automation tasks ----
+  Future<ScheduledTasksResult> scheduledTasks() async =>
+      ScheduledTasksResult.fromJson((await _req('GET', '/api/scheduled-tasks') as Map).cast());
+
+  Future<ScheduledTask> createScheduledTask(ScheduledTaskDraft draft) async =>
+      ScheduledTask.fromJson((await _req('POST', '/api/scheduled-tasks', body: draft.toJson()) as Map).cast());
+
+  Future<ScheduledTask> updateScheduledTask(String id, Map<String, dynamic> patch) async =>
+      ScheduledTask.fromJson((await _req('PATCH', '/api/scheduled-tasks/${Uri.encodeComponent(id)}', body: patch) as Map).cast());
+
+  Future<void> deleteScheduledTask(String id) =>
+      _req('DELETE', '/api/scheduled-tasks/${Uri.encodeComponent(id)}');
+
+  Future<void> runScheduledTaskNow(String id) =>
+      _req('POST', '/api/scheduled-tasks/${Uri.encodeComponent(id)}/run');
+
+  Future<List<ScheduledTaskRun>> scheduledTaskRuns(String id) async {
+    final d = await _req('GET', '/api/scheduled-tasks/${Uri.encodeComponent(id)}/runs');
+    return ((d['items'] as List?) ?? const []).map((e) => ScheduledTaskRun.fromJson((e as Map).cast())).toList();
+  }
+
   // ---- conversations ----
   Future<List<Conversation>> conversations({int? before, String? q, int limit = 50}) async {
     final d = await _req('GET', '/api/conversations', query: {
@@ -269,15 +290,31 @@ class Api {
     String messageId,
     String compId,
     Map<String, dynamic> state,
-  ) async {
+  ) =>
+      updateMessageComponent(messageId, compId, state: state);
+
+  Future<MessageComponent> updateMessageComponent(
+    String messageId,
+    String compId, {
+    Map<String, dynamic>? data,
+    Map<String, dynamic>? state,
+  }) async {
     final d = await _req(
       'PATCH',
       '/api/messages/${Uri.encodeComponent(messageId)}/components/${Uri.encodeComponent(compId)}',
-      body: {'state': state},
+      body: {
+        'data': ?data,
+        'state': ?state,
+      },
     );
     final comp = (d as Map)['component'];
-    return comp is Map ? MessageComponent.fromJson(comp.cast()) : MessageComponent(id: compId, kind: '', state: state);
+    return comp is Map
+        ? MessageComponent.fromJson(comp.cast())
+        : MessageComponent(id: compId, kind: '', data: data ?? const {}, state: state ?? const {});
   }
+
+  Future<void> deleteMessageComponent(String messageId, String compId) =>
+      _req('DELETE', '/api/messages/${Uri.encodeComponent(messageId)}/components/${Uri.encodeComponent(compId)}');
 
   // ---- pinned components ----
   Future<List<PinnedComponent>> pinnedComponents() async {
@@ -295,6 +332,11 @@ class Api {
 
   Future<void> unpinComponent(String messageId, String compId) =>
       _req('DELETE', '/api/pinned-components/${Uri.encodeComponent(messageId)}/${Uri.encodeComponent(compId)}');
+
+  Future<List<PinnedComponent>> reorderPinnedComponents(List<String> pinIds) async {
+    final d = await _req('PUT', '/api/pinned-components/order', body: {'ids': pinIds});
+    return ((d['items'] as List?) ?? const []).map((e) => PinnedComponent.fromJson((e as Map).cast())).toList();
+  }
 
   // ---- home suggestions ----
   Future<List<HomeSuggestion>> homeSuggestions() async {

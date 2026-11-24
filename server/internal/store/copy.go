@@ -10,7 +10,7 @@ import (
 )
 
 // Foreign-key order, shared by copy and reverse-order cleanup.
-const businessTables = "users sessions providers models settings assistants conversations messages pinned_components files image_log asr_configs search_configs memories schedules user_suggestions"
+const businessTables = "users sessions providers models settings assistants conversations messages pinned_components files image_log asr_configs search_configs memories schedules user_suggestions scheduled_tasks scheduled_task_runs"
 
 // TableCount records row counts verified before committing a copy.
 type TableCount struct {

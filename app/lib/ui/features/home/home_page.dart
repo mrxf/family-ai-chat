@@ -10,6 +10,7 @@ import '../../../state/chat.dart';
 import '../../../state/desktop_nav.dart';
 import '../../../state/incoming_share.dart';
 import '../../../state/pinned_components.dart';
+import '../../../state/scheduled_tasks.dart';
 import '../../../state/schedules.dart';
 import '../../../state/session.dart';
 import '../../../state/suggestions.dart';
@@ -128,6 +129,7 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
       ref.read(chatProvider.notifier).onResume();
       ref.read(sessionProvider.notifier).refresh();
       ref.invalidate(schedulesProvider);
+      ref.invalidate(scheduledTasksProvider);
       unawaited(ref.read(pinnedComponentsProvider.notifier).refresh());
       unawaited(ref.read(homeSuggestionsProvider.notifier).refresh());
     } else if (state == AppLifecycleState.paused) {

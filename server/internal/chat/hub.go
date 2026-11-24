@@ -198,11 +198,21 @@ func (r *Run) addComponent(c store.MessageComponent) []store.MessageComponent {
 // UpdateComponentState synchronizes an in-flight run's component state if the user
 // interacts with a rendered card while the message is still streaming.
 func (r *Run) UpdateComponentState(compID string, state json.RawMessage) bool {
+	return r.UpdateComponent(compID, nil, state)
+}
+
+// UpdateComponent synchronizes an in-flight run's component data and/or state.
+func (r *Run) UpdateComponent(compID string, data, state json.RawMessage) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for i := range r.components {
 		if r.components[i].ID == compID {
-			r.components[i].State = append(json.RawMessage(nil), state...)
+			if len(data) > 0 {
+				r.components[i].Data = append(json.RawMessage(nil), data...)
+			}
+			if len(state) > 0 {
+				r.components[i].State = append(json.RawMessage(nil), state...)
+			}
 			r.componentsSeq++
 			r.notifyLocked()
 			return true

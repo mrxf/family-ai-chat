@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 enum DesktopSection {
   chat,
   schedules,
+  automations,
   settings,
 }
 
@@ -12,6 +13,7 @@ enum SettingsTab {
   general,
   memories,
   schedules,
+  automations,
   account,
   adminUsers,
   adminModels,
@@ -72,6 +74,13 @@ class DesktopNavNotifier extends Notifier<DesktopNavState> {
   void showSchedules() {
     state = state.copyWith(
       section: DesktopSection.schedules,
+      paneEpoch: state.paneEpoch + 1,
+    );
+  }
+
+  void showAutomations() {
+    state = state.copyWith(
+      section: DesktopSection.automations,
       paneEpoch: state.paneEpoch + 1,
     );
   }

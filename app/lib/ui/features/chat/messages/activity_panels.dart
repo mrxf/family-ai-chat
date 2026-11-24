@@ -151,6 +151,7 @@ class _TaskAndSourcesPanelState extends State<TaskAndSourcesPanel> {
         'history' => AppIcons.history,
         'memory' => AppIcons.manageSearch,
         'schedule' => AppIcons.calendar,
+        'automation' => AppIcons.repeat,
         'component' => AppIcons.cards,
         'ask_user' => AppIcons.question,
         'skill' => AppIcons.sparkles,

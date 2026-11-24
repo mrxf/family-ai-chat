@@ -5,6 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../platform/platform_capabilities.dart';
 import '../../../state/memories.dart';
+import '../../../state/scheduled_tasks.dart';
 import '../../../state/schedules.dart';
 import '../../../state/session.dart';
 import '../../adaptive/app_route.dart';
@@ -19,6 +20,7 @@ import '../admin/usage_page.dart';
 import '../admin/web_search_page.dart';
 import '../auth/invite_generator_sheet.dart';
 import '../auth/self_host_info_sheet.dart';
+import '../automations/scheduled_tasks_page.dart';
 import '../memories/memories_page.dart';
 import '../schedules/schedules_page.dart';
 import 'settings_dialogs.dart';
@@ -39,6 +41,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     super.initState();
     ref.invalidate(memoriesProvider);
     ref.invalidate(schedulesProvider);
+    ref.invalidate(scheduledTasksProvider);
   }
 
   @override
@@ -64,6 +67,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           : (sc.pendingTotal > 0 ? '共 ${sc.pendingTotal} 项日程提醒' : '跟小暖说句话就能在手机上定准点提醒'),
       loading: () => '跟小暖说句话就能在手机上定准点提醒',
       error: (_, _) => '跟小暖说句话就能在手机上定准点提醒',
+    );
+
+    final scheduledTasks = ref.watch(scheduledTasksProvider);
+    final automationSubtitle = scheduledTasks.when(
+      skipLoadingOnRefresh: false,
+      data: (t) => t.activeCount > 0
+          ? '已启用 ${t.activeCount} 个 · 共 ${t.totalCount} 个自动任务'
+          : (t.totalCount > 0 ? '共 ${t.totalCount} 个任务（已暂停）' : '让小暖按时查新闻、分析任务并更新首页卡片'),
+      loading: () => '让小暖按时查新闻、分析任务并更新首页卡片',
+      error: (_, _) => '让小暖按时查新闻、分析任务并更新首页卡片',
     );
 
     return Scaffold(
@@ -113,6 +126,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     title: '我的日程',
                     subtitle: scheduleSubtitle,
                     onTap: () => Navigator.of(context).push(appRoute((_) => const SchedulesPage())),
+                  ),
+                  Divider(height: 1, indent: 56, color: p.line),
+                  _Tile(
+                    icon: AppIcons.repeat,
+                    title: 'AI 定时任务',
+                    subtitle: automationSubtitle,
+                    onTap: () => Navigator.of(context).push(appRoute((_) => const ScheduledTasksPage())),
                   ),
                 ],
               ),

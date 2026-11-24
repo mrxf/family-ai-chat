@@ -144,6 +144,31 @@ func populateCopyStore(t *testing.T, s *Store) {
 	if err := s.UpsertSearchConfig(ctx, &SearchConfig{Kind: "deepseek", APIKey: "test", BaseURL: "https://api.deepseek.com", Extra: map[string]string{"mode": "auto"}}); err != nil {
 		t.Fatal(err)
 	}
+	task := &ScheduledTask{
+		UserID:         u.ID,
+		Title:          "每日大模型新闻",
+		Prompt:         "查询最新大模型新闻并更新卡片前三条",
+		ScheduleKind:   TaskScheduleDaily,
+		TimeOfDay:      "07:00",
+		Enabled:        true,
+		ConversationID: &c.ID,
+		Source:         "ai",
+	}
+	if err := s.CreateScheduledTask(ctx, task); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateScheduledTaskRun(ctx, &ScheduledTaskRun{
+		TaskID:         task.ID,
+		UserID:         u.ID,
+		TriggerSource:  "manual",
+		Status:         TaskRunStatusSuccess,
+		Summary:        "已更新前三条",
+		ConversationID: c.ID,
+		StartedAt:      Now() - 5000,
+		FinishedAt:     Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func snapshot(t *testing.T, s *Store) map[string][]string {

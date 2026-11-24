@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../platform/platform_capabilities.dart';
 import '../../state/desktop_nav.dart';
 import '../../state/memories.dart';
+import '../../state/scheduled_tasks.dart';
 import '../../state/schedules.dart';
 import '../../state/session.dart';
 import '../features/auth/self_host_info_sheet.dart';
@@ -29,6 +30,7 @@ class DesktopSettingsSidebar extends ConsumerWidget {
     final isAdmin = user?.isAdmin == true;
     final memCount = ref.watch(memoriesProvider).value?.total ?? 0;
     final pendingSchedules = ref.watch(schedulesProvider).value?.pendingTotal ?? 0;
+    final activeAutomations = ref.watch(scheduledTasksProvider).value?.activeCount ?? 0;
     final cmdLabel = ref.watch(platformCapabilitiesProvider).usesCommandKey ? '⌘,' : 'Ctrl+,';
 
     return Column(
@@ -92,6 +94,14 @@ class DesktopSettingsSidebar extends ConsumerWidget {
                 accentBadge: pendingSchedules > 0,
                 selected: nav.settingsTab == SettingsTab.schedules,
                 onTap: () => navCtrl.selectSettingsTab(SettingsTab.schedules),
+              ),
+              _NavItem(
+                icon: AppIcons.repeat,
+                label: 'AI 定时任务',
+                badge: activeAutomations > 0 ? '$activeAutomations' : null,
+                accentBadge: activeAutomations > 0,
+                selected: nav.settingsTab == SettingsTab.automations,
+                onTap: () => navCtrl.selectSettingsTab(SettingsTab.automations),
               ),
               _NavItem(
                 icon: AppIcons.shield,

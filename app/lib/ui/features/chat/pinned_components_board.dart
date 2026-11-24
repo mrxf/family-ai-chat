@@ -47,16 +47,18 @@ class PinnedComponentsBoard extends ConsumerWidget {
     final notifier = ref.read(pinnedComponentsProvider.notifier);
 
     final cards = <Widget>[
-      for (final pin in board.items)
+      for (var i = 0; i < board.items.length; i++)
         HomePinnedComponentShell(
-          key: ValueKey('pin-${pin.messageId}-${pin.componentId}'),
-          pin: pin,
+          key: ValueKey('pin-${board.items[i].messageId}-${board.items[i].componentId}'),
+          pin: board.items[i],
+          canMovePrev: i > 0,
+          canMoveNext: i < board.items.length - 1,
           child: ChatComponentCard(
-            messageId: pin.messageId,
-            component: pin.component,
+            messageId: board.items[i].messageId,
+            component: board.items[i].component,
             isLastMessage: false,
             onStateChanged: (nextState) =>
-                notifier.updateComponentState(pin.messageId, pin.componentId, nextState),
+                notifier.updateComponentState(board.items[i].messageId, board.items[i].componentId, nextState),
           ),
         ),
       if (board.suggestionsPinned)

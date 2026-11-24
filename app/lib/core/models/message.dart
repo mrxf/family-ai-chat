@@ -93,7 +93,7 @@ class WebSource {
 
 class MessageComponent {
   final String id;
-  final String kind; // 'weather' | 'todo' | 'chart' | 'quiz' | 'metrics' | 'ask_user'
+  final String kind; // 'weather' | 'todo' | 'feed' | 'chart' | 'quiz' | 'metrics' | 'ask_user'
   final int pos; // rune offset in Message.content
   final Map<String, dynamic> data;
   final Map<String, dynamic> state;
@@ -122,11 +122,11 @@ class MessageComponent {
         if (state.isNotEmpty) 'state': state,
       };
 
-  MessageComponent copyWith({Map<String, dynamic>? state}) => MessageComponent(
+  MessageComponent copyWith({Map<String, dynamic>? data, Map<String, dynamic>? state}) => MessageComponent(
         id: id,
         kind: kind,
         pos: pos,
-        data: data,
+        data: data ?? this.data,
         state: state ?? this.state,
       );
 }
