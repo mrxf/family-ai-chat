@@ -22,8 +22,9 @@ class PinnedComponentsState {
     this.suggestionsPinned = true,
   });
 
-  bool isPinned(String messageId, String componentId) =>
-      items.any((p) => p.messageId == messageId && p.componentId == componentId);
+  bool isPinned(String messageId, String componentId, {String entityId = ''}) => items.any((p) =>
+      (entityId.isNotEmpty && p.effectiveEntityId == entityId) ||
+      (p.messageId == messageId && p.componentId == componentId));
 
   PinnedComponentsState copyWith({
     List<PinnedComponent>? items,
@@ -105,11 +106,12 @@ class PinnedComponentsNotifier extends Notifier<PinnedComponentsState> {
   }) async {
     final api = _api;
     if (api == null) return '尚未登录';
-    if (state.isPinned(messageId, component.id)) return null;
+    if (state.isPinned(messageId, component.id, entityId: component.entityId)) return null;
 
     final before = state.items;
     final optimistic = PinnedComponent(
       id: 'local-pin-$messageId-${component.id}',
+      entityId: component.entityId,
       conversationId: conversationId,
       conversationTitle: conversationTitle,
       messageId: messageId,
@@ -126,7 +128,9 @@ class PinnedComponentsNotifier extends Notifier<PinnedComponentsState> {
       state = state.copyWith(items: [
         saved,
         for (final p in state.items)
-          if (!(p.messageId == messageId && p.componentId == component.id)) p,
+          if (!(p.messageId == messageId && p.componentId == component.id) &&
+              !(saved.effectiveEntityId.isNotEmpty && p.effectiveEntityId == saved.effectiveEntityId))
+            p,
       ]);
       _persist();
       return null;
@@ -140,12 +144,16 @@ class PinnedComponentsNotifier extends Notifier<PinnedComponentsState> {
   }
 
   /// Unpins a component from the home board. Returns null on success or an error message.
-  Future<String?> unpin(String messageId, String componentId) async {
+  Future<String?> unpin(String messageId, String componentId, {String entityId = ''}) async {
     final api = _api;
     if (api == null) return '尚未登录';
     final before = state.items;
     state = state.copyWith(
-      items: before.where((p) => !(p.messageId == messageId && p.componentId == componentId)).toList(),
+      items: before
+          .where((p) =>
+              !(p.messageId == messageId && p.componentId == componentId) &&
+              !(entityId.isNotEmpty && p.effectiveEntityId == entityId))
+          .toList(),
     );
     _persist();
     try {
@@ -294,6 +302,55 @@ class PinnedComponentsNotifier extends Notifier<PinnedComponentsState> {
           () {
             changed = true;
             return p.copyWith(component: p.component.copyWith(state: nextState));
+          }()
+        else
+          p,
+    ];
+    if (!changed) return;
+    state = state.copyWith(items: next);
+    _persist();
+  }
+
+  /// Reflects a live state change keyed by canonical [entityId] on the home board.
+  void syncComponentStateByEntity(String entityId, Map<String, dynamic> nextState) {
+    if (entityId.isEmpty) return;
+    var changed = false;
+    final next = [
+      for (final p in state.items)
+        if (p.effectiveEntityId == entityId)
+          () {
+            changed = true;
+            return p.copyWith(component: p.component.copyWith(state: nextState));
+          }()
+        else
+          p,
+    ];
+    if (!changed) return;
+    state = state.copyWith(items: next);
+    _persist();
+  }
+
+  /// Reflects a refreshed canonical [ComponentEntity] onto matching home board pins.
+  void syncEntityFromLive(ComponentEntity entity) {
+    if (entity.id.isEmpty) return;
+    var changed = false;
+    final next = [
+      for (final p in state.items)
+        if (p.effectiveEntityId == entity.id)
+          () {
+            changed = true;
+            return p.copyWith(
+              entityId: entity.id,
+              updatedAt: entity.updatedAt,
+              component: p.component.copyWith(
+                entityId: entity.id,
+                version: entity.currentVersion,
+                latestVersion: entity.currentVersion,
+                deleted: entity.deleted,
+                data: entity.data,
+                state: entity.state,
+              ),
+            );
           }()
         else
           p,

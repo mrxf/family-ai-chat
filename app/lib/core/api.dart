@@ -320,6 +320,38 @@ class Api {
   Future<void> deleteMessageComponent(String messageId, String compId) =>
       _req('DELETE', '/api/messages/${Uri.encodeComponent(messageId)}/components/${Uri.encodeComponent(compId)}');
 
+  // ---- live component entities & version history ----
+  Future<ComponentEntity> getComponentEntity(String entityId) async {
+    final d = await _req('GET', '/api/components/${Uri.encodeComponent(entityId)}');
+    return ComponentEntity.fromJson((d as Map).cast());
+  }
+
+  Future<ComponentVersionsResponse> listComponentVersions(String entityId) async {
+    final d = await _req('GET', '/api/components/${Uri.encodeComponent(entityId)}/versions');
+    return ComponentVersionsResponse.fromJson((d as Map).cast());
+  }
+
+  Future<ComponentEntity> updateComponentEntity(
+    String entityId, {
+    Map<String, dynamic>? data,
+    Map<String, dynamic>? state,
+    String? changeSummary,
+  }) async {
+    final d = await _req(
+      'PATCH',
+      '/api/components/${Uri.encodeComponent(entityId)}',
+      body: {
+        'data': ?data,
+        'state': ?state,
+        'change_summary': ?changeSummary,
+      },
+    );
+    return ComponentEntity.fromJson((d as Map).cast());
+  }
+
+  Future<void> deleteComponentEntity(String entityId) =>
+      _req('DELETE', '/api/components/${Uri.encodeComponent(entityId)}');
+
   // ---- pinned components ----
   Future<List<PinnedComponent>> pinnedComponents() async {
     final d = await _req('GET', '/api/pinned-components');

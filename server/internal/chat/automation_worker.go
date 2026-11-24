@@ -272,8 +272,9 @@ func (s *Service) ExecuteScheduledTask(ctx context.Context, task *store.Schedule
 		userQuestion: task.Prompt,
 		run:          run,
 		private:      false,
-		activeSkills: map[string]bool{},
-		automation:   true,
+		activeSkills:     map[string]bool{},
+		automation:       true,
+		automationTaskID: task.ID,
 	}
 
 	ts := s.toolsFor(ctx, user, conv, model)
@@ -467,19 +468,55 @@ func (s *Service) resolveTaskModel(ctx context.Context, task *store.ScheduledTas
 }
 
 func (s *Service) buildTaskTargetContext(ctx context.Context, userID string, task *store.ScheduledTask) string {
-	if task.TargetMessageID == "" || task.TargetComponentID == "" {
-		return "（当前定时任务尚未绑定目标卡片；如果任务要求维护/更新卡片，可先调用 list_components 查找已有卡片，或创建一张新卡片并调用 pin_component 固定到首页。）"
+	var entityID string
+	var comp store.MessageComponent
+	var version int
+
+	if task.TargetEntityID != "" {
+		ent, err := s.Store.GetComponentEntity(ctx, task.TargetEntityID, userID)
+		if err != nil {
+			return fmt.Sprintf("（此前绑定的目标卡片 entity_id=%s 已不存在；如需要请先创建新卡片并调用 pin_component 固定到首页。）", task.TargetEntityID)
+		}
+		entityID = ent.ID
+		version = ent.CurrentVersion
+		comp = store.MessageComponent{
+			ID:       ent.OriginComponentID,
+			EntityID: ent.ID,
+			Kind:     ent.Kind,
+			Version:  ent.CurrentVersion,
+			Data:     ent.Data,
+			State:    ent.State,
+		}
+	} else {
+		if task.TargetMessageID == "" || task.TargetComponentID == "" {
+			return "（当前定时任务尚未绑定目标卡片；如果任务要求维护/更新卡片，可先调用 list_components 查找已有卡片，或创建一张新卡片并调用 pin_component 固定到首页。）"
+		}
+		_, mc, err := s.Store.GetMessageComponent(ctx, task.TargetMessageID, userID, task.TargetComponentID)
+		if err != nil {
+			return fmt.Sprintf("（此前绑定的目标卡片 message_id=%s component_id=%s 已不存在；如需要请先创建新卡片并调用 pin_component 固定到首页。）",
+				task.TargetMessageID, task.TargetComponentID)
+		}
+		comp = *mc
+		entityID = mc.EntityID
+		version = mc.Version
+		if entityID != "" {
+			if ent, err := s.Store.GetComponentEntity(ctx, entityID, userID); err == nil {
+				version = ent.CurrentVersion
+				comp.Data = ent.Data
+				comp.State = ent.State
+			}
+		}
 	}
-	_, comp, err := s.Store.GetMessageComponent(ctx, task.TargetMessageID, userID, task.TargetComponentID)
-	if err != nil {
-		return fmt.Sprintf("（此前绑定的目标卡片 message_id=%s component_id=%s 已不存在；如需要请先创建新卡片并调用 pin_component 固定到首页。）",
-			task.TargetMessageID, task.TargetComponentID)
-	}
-	title, summary := summarizeComponentForQuote(*comp)
+	title, summary := summarizeComponentForQuote(comp)
 	var b strings.Builder
 	fmt.Fprintf(&b, "## 已绑定的目标卡片（请直接调用 update_component 原地更新，不要重复创建新卡片）\n")
-	fmt.Fprintf(&b, "- message_id: %s\n- component_id: %s\n- kind: %s\n- 标题：%s（%s）\n",
-		task.TargetMessageID, task.TargetComponentID, comp.Kind, title, summary)
+	if entityID != "" {
+		fmt.Fprintf(&b, "- entity_id: %s (当前版本 v%d)\n", entityID, max(1, version))
+	}
+	if task.TargetMessageID != "" && task.TargetComponentID != "" {
+		fmt.Fprintf(&b, "- message_id: %s\n- component_id: %s\n", task.TargetMessageID, task.TargetComponentID)
+	}
+	fmt.Fprintf(&b, "- kind: %s\n- 标题：%s（%s）\n", comp.Kind, title, summary)
 	fmt.Fprintf(&b, "- 当前 data JSON：%s\n", string(comp.Data))
 	if len(comp.State) > 0 && string(comp.State) != "{}" {
 		fmt.Fprintf(&b, "- 当前 state JSON：%s\n", string(comp.State))

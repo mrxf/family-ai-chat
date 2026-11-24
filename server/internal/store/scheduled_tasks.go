@@ -41,6 +41,7 @@ type ScheduledTask struct {
 	RunAt             int64   `json:"run_at"`           // unix ms for once
 	Enabled           bool    `json:"enabled"`
 	ModelID           *string `json:"model_id,omitempty"`
+	TargetEntityID    string  `json:"target_entity_id,omitempty"`
 	TargetMessageID   string  `json:"target_message_id,omitempty"`
 	TargetComponentID string  `json:"target_component_id,omitempty"`
 	ConversationID    *string `json:"conversation_id,omitempty"`
@@ -67,6 +68,7 @@ type ScheduledTaskPatch struct {
 	RunAt             *int64
 	Enabled           *bool
 	ModelID           *string // empty string clears model override
+	TargetEntityID    *string
 	TargetMessageID   *string
 	TargetComponentID *string
 }
@@ -291,6 +293,7 @@ func normalizeScheduledTask(t *ScheduledTask, nowMs int64) error {
 	if t.ModelID != nil && strings.TrimSpace(*t.ModelID) == "" {
 		t.ModelID = nil
 	}
+	t.TargetEntityID = strings.TrimSpace(t.TargetEntityID)
 	t.TargetMessageID = strings.TrimSpace(t.TargetMessageID)
 	t.TargetComponentID = strings.TrimSpace(t.TargetComponentID)
 	if t.TargetMessageID == "" || t.TargetComponentID == "" {
@@ -303,14 +306,14 @@ func normalizeScheduledTask(t *ScheduledTask, nowMs int64) error {
 	return nil
 }
 
-const scheduledTaskCols = `id, user_id, title, prompt, schedule_kind, time_of_day, weekdays, day_of_month, interval_minutes, run_at, enabled, model_id, target_message_id, target_component_id, conversation_id, source, next_run_at, last_run_at, last_status, last_summary, last_error, run_count, created_at, updated_at`
+const scheduledTaskCols = `id, user_id, title, prompt, schedule_kind, time_of_day, weekdays, day_of_month, interval_minutes, run_at, enabled, model_id, target_entity_id, target_message_id, target_component_id, conversation_id, source, next_run_at, last_run_at, last_status, last_summary, last_error, run_count, created_at, updated_at`
 
 func scanScheduledTask(row interface{ Scan(...any) error }) (*ScheduledTask, error) {
 	var t ScheduledTask
 	err := row.Scan(
 		&t.ID, &t.UserID, &t.Title, &t.Prompt, &t.ScheduleKind,
 		&t.TimeOfDay, &t.Weekdays, &t.DayOfMonth, &t.IntervalMinutes, &t.RunAt,
-		&t.Enabled, &t.ModelID, &t.TargetMessageID, &t.TargetComponentID, &t.ConversationID,
+		&t.Enabled, &t.ModelID, &t.TargetEntityID, &t.TargetMessageID, &t.TargetComponentID, &t.ConversationID,
 		&t.Source, &t.NextRunAt, &t.LastRunAt, &t.LastStatus, &t.LastSummary, &t.LastError,
 		&t.RunCount, &t.CreatedAt, &t.UpdatedAt,
 	)
@@ -358,10 +361,10 @@ func (s *Store) CreateScheduledTask(ctx context.Context, item *ScheduledTask) er
 		item.UpdatedAt = now
 		item.NextRunAt = ComputeNextRunAt(item, now, shanghaiLoc)
 		_, err := tx.exec(ctx,
-			`INSERT INTO scheduled_tasks (`+scheduledTaskCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			`INSERT INTO scheduled_tasks (`+scheduledTaskCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			item.ID, item.UserID, item.Title, item.Prompt, item.ScheduleKind,
 			item.TimeOfDay, item.Weekdays, item.DayOfMonth, item.IntervalMinutes, item.RunAt,
-			item.Enabled, item.ModelID, item.TargetMessageID, item.TargetComponentID, item.ConversationID,
+			item.Enabled, item.ModelID, item.TargetEntityID, item.TargetMessageID, item.TargetComponentID, item.ConversationID,
 			item.Source, item.NextRunAt, item.LastRunAt, item.LastStatus, item.LastSummary, item.LastError,
 			item.RunCount, item.CreatedAt, item.UpdatedAt,
 		)
@@ -434,6 +437,9 @@ func (s *Store) UpdateScheduledTask(ctx context.Context, id, userID string, patc
 				cur.ModelID = &v
 			}
 		}
+		if patch.TargetEntityID != nil {
+			cur.TargetEntityID = *patch.TargetEntityID
+		}
 		if patch.TargetMessageID != nil {
 			cur.TargetMessageID = *patch.TargetMessageID
 		}
@@ -451,9 +457,9 @@ func (s *Store) UpdateScheduledTask(ctx context.Context, id, userID string, patc
 		}
 		cur.UpdatedAt = now
 		_, err = tx.exec(ctx,
-			`UPDATE scheduled_tasks SET title=?, prompt=?, schedule_kind=?, time_of_day=?, weekdays=?, day_of_month=?, interval_minutes=?, run_at=?, enabled=?, model_id=?, target_message_id=?, target_component_id=?, next_run_at=?, updated_at=? WHERE id=? AND user_id=?`,
+			`UPDATE scheduled_tasks SET title=?, prompt=?, schedule_kind=?, time_of_day=?, weekdays=?, day_of_month=?, interval_minutes=?, run_at=?, enabled=?, model_id=?, target_entity_id=?, target_message_id=?, target_component_id=?, next_run_at=?, updated_at=? WHERE id=? AND user_id=?`,
 			cur.Title, cur.Prompt, cur.ScheduleKind, cur.TimeOfDay, cur.Weekdays, cur.DayOfMonth,
-			cur.IntervalMinutes, cur.RunAt, cur.Enabled, cur.ModelID, cur.TargetMessageID, cur.TargetComponentID,
+			cur.IntervalMinutes, cur.RunAt, cur.Enabled, cur.ModelID, cur.TargetEntityID, cur.TargetMessageID, cur.TargetComponentID,
 			cur.NextRunAt, cur.UpdatedAt, id, userID,
 		)
 		updated = cur
@@ -535,13 +541,17 @@ func (s *Store) BindScheduledTaskTarget(ctx context.Context, taskID, userID, mes
 	if messageID == "" || compID == "" {
 		return nil
 	}
+	var entityID string
+	if ent, err := s.EnsureComponentEntityForMessage(ctx, messageID, userID, compID, ""); err == nil && ent != nil {
+		entityID = ent.ID
+	}
 	if force {
-		_, err := s.exec(ctx, `UPDATE scheduled_tasks SET target_message_id = ?, target_component_id = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
-			messageID, compID, Now(), taskID, userID)
+		_, err := s.exec(ctx, `UPDATE scheduled_tasks SET target_entity_id = ?, target_message_id = ?, target_component_id = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+			entityID, messageID, compID, Now(), taskID, userID)
 		return err
 	}
-	_, err := s.exec(ctx, `UPDATE scheduled_tasks SET target_message_id = ?, target_component_id = ?, updated_at = ? WHERE id = ? AND user_id = ? AND target_message_id = ''`,
-		messageID, compID, Now(), taskID, userID)
+	_, err := s.exec(ctx, `UPDATE scheduled_tasks SET target_entity_id = ?, target_message_id = ?, target_component_id = ?, updated_at = ? WHERE id = ? AND user_id = ? AND target_message_id = '' AND target_entity_id = ''`,
+		entityID, messageID, compID, Now(), taskID, userID)
 	return err
 }
 

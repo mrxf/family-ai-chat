@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/models/models.dart';
 import '../../../../platform/platform_capabilities.dart';
 import '../../../../state/chat.dart';
+import '../../../../state/component_entities.dart';
 import '../../../../state/conversations.dart';
 import '../../../../state/pinned_components.dart';
 import '../../../../state/scheduled_tasks.dart';
@@ -14,7 +15,9 @@ import '../../../widgets/base_widgets.dart';
 import '../../../widgets/sheets.dart';
 import '../../automations/scheduled_task_editor.dart';
 import '../../automations/scheduled_task_runs_sheet.dart';
+import 'component_card.dart';
 import 'component_editor.dart';
+import 'component_version_sheet.dart';
 
 /// Returns the representative icon for a component [kind].
 IconData componentKindIcon(String kind) => switch (kind) {
@@ -29,21 +32,22 @@ IconData componentKindIcon(String kind) => switch (kind) {
 
 /// Interactive wrapper for a pinnable component inside a conversation message.
 ///
-/// Adds non-intrusive pin / edit / schedule / quote actions below the card
-/// (revealed on hover on desktop, subtly available on touch, and always
-/// accessible via long-press / right-click) without obscuring any card interior.
+/// Renders historical version banners (with one-tap toggle to preview the latest
+/// version) and adds pin / edit / history / schedule / quote actions below the card.
 class ChatComponentActionShell extends ConsumerStatefulWidget {
   const ChatComponentActionShell({
     super.key,
     required this.messageId,
     required this.component,
     required this.child,
+    this.isLastMessage = false,
     this.enabled = true,
   });
 
   final String messageId;
   final MessageComponent component;
   final Widget child;
+  final bool isLastMessage;
   final bool enabled;
 
   @override
@@ -52,11 +56,46 @@ class ChatComponentActionShell extends ConsumerStatefulWidget {
 
 class _ChatComponentActionShellState extends ConsumerState<ChatComponentActionShell> {
   bool _hovered = false;
+  bool _viewingLatest = false;
+  bool _loadingLatest = false;
 
-  Future<void> _togglePin(bool isPinned) async {
+  MessageComponent _activeComponent(ComponentEntity? liveEntity) {
+    if (_viewingLatest && liveEntity != null) {
+      return liveEntity.toMessageComponent(idOverride: widget.component.id, pos: widget.component.pos);
+    }
+    return widget.component;
+  }
+
+  Future<void> _toggleLatest() async {
+    if (_viewingLatest) {
+      setState(() => _viewingLatest = false);
+      return;
+    }
+    final entityId = widget.component.entityId;
+    if (entityId.isEmpty) return;
+    setState(() => _loadingLatest = true);
+    final ent = await ref.read(componentEntitiesProvider.notifier).fetchLatest(entityId);
+    if (!mounted) return;
+    setState(() {
+      _loadingLatest = false;
+      if (ent != null) {
+        _viewingLatest = true;
+      } else {
+        showToast(context, '暂时无法加载最新版本');
+      }
+    });
+  }
+
+  void _openVersionHistory(MessageComponent comp) {
+    if (!comp.hasEntity) return;
+    final meta = describeComponent(comp);
+    showComponentVersionHistory(context, entityId: comp.entityId, fallbackTitle: meta.title);
+  }
+
+  Future<void> _togglePin(bool isPinned, MessageComponent comp) async {
     final notifier = ref.read(pinnedComponentsProvider.notifier);
     if (isPinned) {
-      final err = await notifier.unpin(widget.messageId, widget.component.id);
+      final err = await notifier.unpin(widget.messageId, widget.component.id, entityId: comp.entityId);
       if (mounted) showToast(context, err ?? '已取消固定');
       return;
     }
@@ -65,38 +104,47 @@ class _ChatComponentActionShellState extends ConsumerState<ChatComponentActionSh
     final title = convId.isEmpty ? '' : (ref.read(conversationsTitlesProvider)[convId] ?? '');
     final err = await notifier.pin(
       messageId: widget.messageId,
-      component: widget.component,
+      component: comp,
       conversationId: convId,
       conversationTitle: title,
     );
     if (mounted) showToast(context, err ?? '已固定到首页');
   }
 
-  void _quoteInNewChat() {
+  void _quoteInNewChat(MessageComponent comp) {
     final chat = ref.read(chatProvider);
     final convId = chat.conversationId ?? '';
     final title = convId.isEmpty ? '' : (ref.read(conversationsTitlesProvider)[convId] ?? '');
     final quote = QuotedComponent.fromComponent(
       messageId: widget.messageId,
-      component: widget.component,
+      component: comp,
       conversationId: convId,
       conversationTitle: title,
     );
     ref.read(chatProvider.notifier).quoteComponentToNewChat(quote);
   }
 
-  Future<void> _editComponent() async {
+  Future<void> _editComponent(MessageComponent comp) async {
     final saved = await showComponentEditor(
       context,
-      component: widget.component,
-      onSave: (nextData) => ref.read(chatProvider.notifier).updateComponentData(widget.messageId, widget.component.id, nextData),
+      component: comp,
+      onSave: (nextData) async {
+        if (comp.hasEntity) {
+          final err = await ref.read(componentEntitiesProvider.notifier).updateData(comp.entityId, nextData);
+          if (err == null) {
+            setState(() => _viewingLatest = true);
+          }
+          return err;
+        }
+        return ref.read(chatProvider.notifier).updateComponentData(widget.messageId, widget.component.id, nextData);
+      },
     );
     if (saved != null && mounted) showToast(context, '卡片内容已更新');
   }
 
-  Future<void> _scheduleUpdate() async {
-    final meta = describeComponent(widget.component);
-    final isFeed = widget.component.kind == 'feed';
+  Future<void> _scheduleUpdate(MessageComponent comp) async {
+    final meta = describeComponent(comp);
+    final isFeed = comp.kind == 'feed';
     await showScheduledTaskEditor(
       context,
       title: '为此卡片设定时更新',
@@ -127,17 +175,29 @@ class _ChatComponentActionShellState extends ConsumerState<ChatComponentActionSh
     if (mounted) showToast(context, err ?? '已删除卡片');
   }
 
-  void _openMenu(bool isPinned) {
+  void _openMenu(bool isPinned, MessageComponent comp) {
     showActionSheet(context, actions: [
+      if (widget.component.isOutdated)
+        SheetAction(
+          AppIcons.history,
+          _viewingLatest ? '切回历史版本 v${widget.component.effectiveVersion}' : '查看最新版本 v${widget.component.effectiveLatestVersion}',
+          _toggleLatest,
+        ),
+      if (comp.hasEntity)
+        SheetAction(
+          AppIcons.history,
+          '查看版本历史（v${comp.effectiveLatestVersion}）',
+          () => _openVersionHistory(comp),
+        ),
       SheetAction(
         isPinned ? AppIcons.unpin : AppIcons.pin,
         isPinned ? '从首页取消固定' : '固定到首页',
-        () => _togglePin(isPinned),
+        () => _togglePin(isPinned, comp),
       ),
-      if (isComponentDirectlyEditable(widget.component))
-        SheetAction(AppIcons.edit, '编辑卡片内容', _editComponent),
-      SheetAction(AppIcons.repeat, '设为定时更新', _scheduleUpdate),
-      SheetAction(AppIcons.chatBubble, '基于此卡片开新对话', _quoteInNewChat),
+      if (isComponentDirectlyEditable(comp))
+        SheetAction(AppIcons.edit, '编辑卡片内容', () => _editComponent(comp)),
+      SheetAction(AppIcons.repeat, '设为定时更新', () => _scheduleUpdate(comp)),
+      SheetAction(AppIcons.chatBubble, '基于此卡片开新对话', () => _quoteInNewChat(comp)),
       SheetAction(AppIcons.delete, '删除卡片', _deleteComponent, danger: true),
     ]);
   }
@@ -148,22 +208,68 @@ class _ChatComponentActionShellState extends ConsumerState<ChatComponentActionSh
       return widget.child;
     }
     final isDesktop = ref.watch(platformCapabilitiesProvider).isDesktop;
+    final liveEntity = widget.component.hasEntity
+        ? ref.watch(componentEntitiesProvider.select((m) => m[widget.component.entityId]))
+        : null;
+    final activeComp = _activeComponent(liveEntity);
     final isPinned = ref.watch(
-      pinnedComponentsProvider.select((s) => s.isPinned(widget.messageId, widget.component.id)),
+      pinnedComponentsProvider.select(
+        (s) => s.isPinned(widget.messageId, widget.component.id, entityId: widget.component.entityId),
+      ),
     );
+    final latestVer = liveEntity != null && liveEntity.currentVersion > widget.component.effectiveLatestVersion
+        ? liveEntity.currentVersion
+        : widget.component.effectiveLatestVersion;
+    final isOutdated = widget.component.hasEntity && latestVer > widget.component.effectiveVersion;
+    final isUpdatedBadge = widget.component.hasEntity && !isOutdated && widget.component.effectiveVersion > 1;
     final showBar = !isDesktop || _hovered || isPinned;
+
+    Widget cardBody;
+    if (_viewingLatest && liveEntity != null) {
+      cardBody = ChatComponentCard(
+        messageId: widget.messageId,
+        component: activeComp,
+        isLastMessage: widget.isLastMessage,
+        onStateChanged: (nextState) =>
+            ref.read(componentEntitiesProvider.notifier).updateState(liveEntity.id, nextState),
+      );
+    } else if (isOutdated) {
+      // Historical snapshot is read-only to prevent accidentally mutating superseded versions.
+      cardBody = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => showToast(context, '当前为历史版本 v${widget.component.effectiveVersion}，点击上方「查看最新」可交互'),
+        child: IgnorePointer(child: Opacity(opacity: 0.92, child: widget.child)),
+      );
+    } else {
+      cardBody = widget.child;
+    }
 
     return MouseRegion(
       onEnter: isDesktop ? (_) => setState(() => _hovered = true) : null,
       onExit: isDesktop ? (_) => setState(() => _hovered = false) : null,
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
-        onSecondaryTap: () => _openMenu(isPinned),
-        onLongPress: () => _openMenu(isPinned),
+        onSecondaryTap: () => _openMenu(isPinned, activeComp),
+        onLongPress: () => _openMenu(isPinned, activeComp),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            widget.child,
+            if (isOutdated)
+              ComponentVersionBannerBar(
+                anchoredVersion: widget.component.effectiveVersion,
+                latestVersion: latestVer,
+                viewingLatest: _viewingLatest,
+                loading: _loadingLatest,
+                deleted: widget.component.deleted || (liveEntity?.deleted ?? false),
+                onToggleLatest: _toggleLatest,
+                onOpenHistory: () => _openVersionHistory(activeComp),
+              )
+            else if (isUpdatedBadge)
+              ComponentUpdatedBadgeBar(
+                version: widget.component.effectiveVersion,
+                onOpenHistory: () => _openVersionHistory(activeComp),
+              ),
+            cardBody,
             AnimatedOpacity(
               opacity: showBar ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 160),
@@ -181,26 +287,33 @@ class _ChatComponentActionShellState extends ConsumerState<ChatComponentActionSh
                         label: isPinned ? '已固定' : '固定到首页',
                         accent: isPinned,
                         tooltip: isPinned ? '点击取消固定' : '固定到首页看板',
-                        onTap: () => _togglePin(isPinned),
+                        onTap: () => _togglePin(isPinned, activeComp),
                       ),
-                      if (isComponentDirectlyEditable(widget.component))
+                      if (widget.component.hasEntity)
+                        _InlineActionPill(
+                          icon: AppIcons.history,
+                          label: 'v$latestVer',
+                          tooltip: '查看卡片版本历史（最多保留最近 10 个版本）',
+                          onTap: () => _openVersionHistory(activeComp),
+                        ),
+                      if (isComponentDirectlyEditable(activeComp))
                         _InlineActionPill(
                           icon: AppIcons.edit,
                           label: '编辑',
                           tooltip: '手动修改卡片内容',
-                          onTap: _editComponent,
+                          onTap: () => _editComponent(activeComp),
                         ),
                       _InlineActionPill(
                         icon: AppIcons.repeat,
                         label: '定时更新',
                         tooltip: '为此卡片设置 AI 定时自动更新',
-                        onTap: _scheduleUpdate,
+                        onTap: () => _scheduleUpdate(activeComp),
                       ),
                       _InlineActionPill(
                         icon: AppIcons.chatBubble,
                         label: '引用提问',
                         tooltip: '基于这张卡片开启新对话',
-                        onTap: _quoteInNewChat,
+                        onTap: () => _quoteInNewChat(activeComp),
                       ),
                     ],
                   ),
@@ -216,8 +329,8 @@ class _ChatComponentActionShellState extends ConsumerState<ChatComponentActionSh
 
 /// Wrapper for a pinned component rendered on the home board.
 ///
-/// Displays source conversation metadata, bound scheduled-task badge, and quick
-/// actions (jump to source, edit content, schedule update, reorder, quote, unpin).
+/// Displays source conversation metadata, live version pill, bound scheduled-task badge,
+/// and quick actions (jump to source, version history, edit, schedule, reorder, quote, unpin).
 class HomePinnedComponentShell extends ConsumerWidget {
   const HomePinnedComponentShell({
     super.key,
@@ -237,6 +350,13 @@ class HomePinnedComponentShell extends ConsumerWidget {
     ref.read(chatProvider.notifier).open(pin.conversationId, focusMessageId: pin.messageId);
   }
 
+  void _openVersionHistory(BuildContext context) {
+    final entityId = pin.effectiveEntityId;
+    if (entityId.isEmpty) return;
+    final meta = describeComponent(pin.component);
+    showComponentVersionHistory(context, entityId: entityId, fallbackTitle: meta.title);
+  }
+
   void _quoteInNewChat(WidgetRef ref) {
     final quote = QuotedComponent.fromComponent(
       messageId: pin.messageId,
@@ -251,7 +371,13 @@ class HomePinnedComponentShell extends ConsumerWidget {
     final saved = await showComponentEditor(
       context,
       component: pin.component,
-      onSave: (nextData) => ref.read(pinnedComponentsProvider.notifier).updateComponentData(pin.messageId, pin.componentId, nextData),
+      onSave: (nextData) {
+        final entId = pin.effectiveEntityId;
+        if (entId.isNotEmpty) {
+          return ref.read(componentEntitiesProvider.notifier).updateData(entId, nextData);
+        }
+        return ref.read(pinnedComponentsProvider.notifier).updateComponentData(pin.messageId, pin.componentId, nextData);
+      },
     );
     if (saved != null && context.mounted) showToast(context, '卡片内容已更新');
   }
@@ -295,7 +421,9 @@ class HomePinnedComponentShell extends ConsumerWidget {
   }
 
   Future<void> _unpin(BuildContext context, WidgetRef ref) async {
-    final err = await ref.read(pinnedComponentsProvider.notifier).unpin(pin.messageId, pin.componentId);
+    final err = await ref
+        .read(pinnedComponentsProvider.notifier)
+        .unpin(pin.messageId, pin.componentId, entityId: pin.effectiveEntityId);
     if (context.mounted) showToast(context, err ?? '已从首页取消固定');
   }
 
@@ -303,7 +431,7 @@ class HomePinnedComponentShell extends ConsumerWidget {
     final ok = await confirm(
       context,
       title: '永久删除这张卡片？',
-      body: '卡片将从首页和原对话中同时移除，且无法恢复。',
+      body: '卡片将从首页看板中移除，且无法恢复。',
       ok: '删除',
       danger: true,
     );
@@ -313,7 +441,10 @@ class HomePinnedComponentShell extends ConsumerWidget {
   }
 
   void _openMenu(BuildContext context, WidgetRef ref, ScheduledTask? bound) {
+    final ver = pin.component.effectiveVersion;
     showActionSheet(context, actions: [
+      if (pin.effectiveEntityId.isNotEmpty)
+        SheetAction(AppIcons.history, '查看版本历史（v$ver）', () => _openVersionHistory(context)),
       if (pin.conversationId.isNotEmpty)
         SheetAction(AppIcons.arrowUpRight, '跳转到原对话', () => _openSource(ref)),
       if (isComponentDirectlyEditable(pin.component))
@@ -342,6 +473,8 @@ class HomePinnedComponentShell extends ConsumerWidget {
     final boundTask = ref.watch(
       scheduledTasksProvider.select((async) => async.value?.findByTarget(pin.messageId, pin.componentId)),
     );
+    final hasEntity = pin.effectiveEntityId.isNotEmpty;
+    final ver = pin.component.effectiveVersion;
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
@@ -382,8 +515,37 @@ class HomePinnedComponentShell extends ConsumerWidget {
                           ),
                         ),
                       ),
-                      if (boundTask != null) ...[
+                      if (hasEntity) ...[
                         const SizedBox(width: 8),
+                        Tooltip(
+                          message: '当前为最新版本 v$ver，点击查看版本历史',
+                          child: Pressable(
+                            scale: 0.96,
+                            onTap: () => _openVersionHistory(context),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6.5, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: p.surfaceAlt,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: p.line.withValues(alpha: 0.7)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  AppIcon(AppIcons.history, size: 11, color: p.muted),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    'v$ver',
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: p.muted),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (boundTask != null) ...[
+                        const SizedBox(width: 6),
                         Tooltip(
                           message: '点击查看或管理定时更新（${boundTask.scheduleLabel}）',
                           child: Pressable(
@@ -431,7 +593,7 @@ class HomePinnedComponentShell extends ConsumerWidget {
                 ),
                 _HomeIconAction(
                   icon: AppIcons.more,
-                  tooltip: '更多操作（定时更新 / 排序 / 取消固定）',
+                  tooltip: '更多操作（版本历史 / 定时更新 / 排序 / 取消固定）',
                   onTap: () => _openMenu(context, ref, boundTask),
                 ),
               ],

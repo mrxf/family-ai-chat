@@ -42,6 +42,7 @@ func (s *Server) createScheduledTask(w http.ResponseWriter, r *http.Request) {
 		RunAt             int64   `json:"run_at"`
 		Enabled           *bool   `json:"enabled"`
 		ModelID           *string `json:"model_id"`
+		TargetEntityID    string  `json:"target_entity_id"`
 		TargetMessageID   string  `json:"target_message_id"`
 		TargetComponentID string  `json:"target_component_id"`
 		RunImmediately    bool    `json:"run_immediately"`
@@ -60,13 +61,26 @@ func (s *Server) createScheduledTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	tEnt := strings.TrimSpace(in.TargetEntityID)
 	tMsg := strings.TrimSpace(in.TargetMessageID)
 	tComp := strings.TrimSpace(in.TargetComponentID)
-	if tMsg != "" && tComp != "" {
-		if _, _, err := s.Store.GetMessageComponent(r.Context(), tMsg, uid, tComp); err != nil {
+	if tEnt != "" {
+		ent, err := s.Store.GetComponentEntity(r.Context(), tEnt, uid)
+		if err != nil {
 			writeErr(w, 400, "bad_target", "绑定的目标卡片不存在")
 			return
 		}
+		if tMsg == "" {
+			tMsg = ent.OriginMessageID
+			tComp = ent.OriginComponentID
+		}
+	} else if tMsg != "" && tComp != "" {
+		ent, err := s.Store.EnsureComponentEntityForMessage(r.Context(), tMsg, uid, tComp, "")
+		if err != nil {
+			writeErr(w, 400, "bad_target", "绑定的目标卡片不存在")
+			return
+		}
+		tEnt = ent.ID
 	} else {
 		tMsg, tComp = "", ""
 	}
@@ -82,6 +96,7 @@ func (s *Server) createScheduledTask(w http.ResponseWriter, r *http.Request) {
 		RunAt:             in.RunAt,
 		Enabled:           enabled,
 		ModelID:           in.ModelID,
+		TargetEntityID:    tEnt,
 		TargetMessageID:   tMsg,
 		TargetComponentID: tComp,
 		Source:            "manual",

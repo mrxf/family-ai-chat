@@ -9,19 +9,65 @@ import (
 	"nuan/internal/store"
 )
 
-// ComponentQuoteRef identifies an existing message component referenced by a user message.
+// ComponentQuoteRef identifies an existing component referenced by a user message.
 type ComponentQuoteRef struct {
-	MessageID   string `json:"message_id"`
-	ComponentID string `json:"component_id"`
+	EntityID    string `json:"entity_id,omitempty"`
+	MessageID   string `json:"message_id,omitempty"`
+	ComponentID string `json:"component_id,omitempty"`
 }
 
-// resolveQuotedComponent loads the live component data + state from the referenced message
+// resolveQuotedComponent loads the live component data + state from the canonical entity (or referenced message)
 // and snapshots it so the new conversation remains self-contained even if the source is deleted later.
 func (s *Service) resolveQuotedComponent(ctx context.Context, userID string, targetConv *store.Conversation, ref *ComponentQuoteRef) (*store.QuotedComponent, error) {
-	if ref == nil || strings.TrimSpace(ref.MessageID) == "" || strings.TrimSpace(ref.ComponentID) == "" {
+	if ref == nil {
 		return nil, nil
 	}
-	msg, err := s.Store.GetMessageForUser(ctx, ref.MessageID, userID)
+	entID := strings.TrimSpace(ref.EntityID)
+	msgID := strings.TrimSpace(ref.MessageID)
+	compID := strings.TrimSpace(ref.ComponentID)
+	if entID == "" && (msgID == "" || compID == "") {
+		return nil, nil
+	}
+
+	if entID != "" {
+		ent, err := s.Store.GetComponentEntity(ctx, entID, userID)
+		if err != nil {
+			return nil, err
+		}
+		if ent.Private && (targetConv == nil || targetConv.ID != ent.OriginConversationID) {
+			return nil, store.ErrNotFound
+		}
+		var srcTitle string
+		if ent.OriginConversationID != "" {
+			if c, err := s.Store.GetConversation(ctx, ent.OriginConversationID, userID); err == nil {
+				srcTitle = c.Title
+			}
+		}
+		live := store.MessageComponent{
+			ID:       ent.OriginComponentID,
+			EntityID: ent.ID,
+			Kind:     ent.Kind,
+			Version:  ent.CurrentVersion,
+			Data:     ent.Data,
+			State:    ent.State,
+		}
+		title, summary := summarizeComponentForQuote(live)
+		return &store.QuotedComponent{
+			EntityID:          ent.ID,
+			Version:           ent.CurrentVersion,
+			ConversationID:    ent.OriginConversationID,
+			ConversationTitle: srcTitle,
+			MessageID:         ent.OriginMessageID,
+			ComponentID:       ent.OriginComponentID,
+			Kind:              ent.Kind,
+			Title:             title,
+			Summary:           summary,
+			Data:              append(json.RawMessage(nil), ent.Data...),
+			State:             append(json.RawMessage(nil), ent.State...),
+		}, nil
+	}
+
+	msg, err := s.Store.GetMessageForUser(ctx, msgID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -34,7 +80,7 @@ func (s *Service) resolveQuotedComponent(ctx context.Context, userID string, tar
 	}
 	var comp *store.MessageComponent
 	for i := range msg.Components {
-		if msg.Components[i].ID == ref.ComponentID {
+		if msg.Components[i].ID == compID {
 			cp := msg.Components[i]
 			comp = &cp
 			break
@@ -43,8 +89,17 @@ func (s *Service) resolveQuotedComponent(ctx context.Context, userID string, tar
 	if comp == nil {
 		return nil, store.ErrNotFound
 	}
+	if comp.EntityID != "" {
+		if ent, err := s.Store.GetComponentEntity(ctx, comp.EntityID, userID); err == nil {
+			comp.Version = ent.CurrentVersion
+			comp.Data = ent.Data
+			comp.State = ent.State
+		}
+	}
 	title, summary := summarizeComponentForQuote(*comp)
 	return &store.QuotedComponent{
+		EntityID:          comp.EntityID,
+		Version:           comp.Version,
 		ConversationID:    srcConv.ID,
 		ConversationTitle: srcConv.Title,
 		MessageID:         msg.ID,
@@ -180,8 +235,14 @@ func quotedComponentPromptNote(q *store.QuotedComponent) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("（用户引用了以下卡片发起提问，请结合卡片中的最新数据与状态直接回答，不要输出这条附注和内部ID：\n")
-	if q.MessageID != "" && q.ComponentID != "" {
+	b.WriteString("（用户引用了以下卡片发起提问，请结合卡片中的最新数据与状态直接回答；若用户要求修改、刷新、增删此卡片内容，请直接调用 update_component 原地更新，不要重新调用 show_* 新建重复卡片，也不要输出这条附注和内部ID：\n")
+	if q.EntityID != "" {
+		fmt.Fprintf(&b, "- 卡片内部引用（用于 update_component / create_scheduled_task，切勿输出给用户）：entity_id=%s, version=v%d", q.EntityID, max(1, q.Version))
+		if q.MessageID != "" && q.ComponentID != "" {
+			fmt.Fprintf(&b, ", message_id=%s, component_id=%s", q.MessageID, q.ComponentID)
+		}
+		b.WriteString("\n")
+	} else if q.MessageID != "" && q.ComponentID != "" {
 		fmt.Fprintf(&b, "- 卡片内部引用（用于 update_component / create_scheduled_task，切勿输出给用户）：message_id=%s, component_id=%s\n", q.MessageID, q.ComponentID)
 	}
 	switch q.Kind {

@@ -2,6 +2,7 @@
 library;
 
 export 'account.dart';
+export 'component_entity.dart';
 export 'memory.dart';
 export 'message.dart';
 export 'picked_image.dart';

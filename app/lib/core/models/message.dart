@@ -93,39 +93,72 @@ class WebSource {
 
 class MessageComponent {
   final String id;
-  final String kind; // 'weather' | 'todo' | 'feed' | 'chart' | 'quiz' | 'metrics' | 'ask_user'
+  final String entityId;
+  final String kind; // 'weather' | 'todo' | 'feed' | 'chart' | 'quiz' | 'metrics' | 'ask_user' | 'app_action'
   final int pos; // rune offset in Message.content
+  final int version;
+  final int latestVersion;
+  final bool deleted;
   final Map<String, dynamic> data;
   final Map<String, dynamic> state;
 
   const MessageComponent({
     required this.id,
+    this.entityId = '',
     required this.kind,
     this.pos = 0,
+    this.version = 0,
+    this.latestVersion = 0,
+    this.deleted = false,
     this.data = const {},
     this.state = const {},
   });
 
+  bool get hasEntity => entityId.isNotEmpty;
+  int get effectiveVersion => version > 0 ? version : 1;
+  int get effectiveLatestVersion => latestVersion > 0 ? latestVersion : effectiveVersion;
+  bool get isOutdated => hasEntity && effectiveLatestVersion > effectiveVersion;
+
   factory MessageComponent.fromJson(Map<String, dynamic> j) => MessageComponent(
         id: asStr(j['id']),
+        entityId: asStr(j['entity_id']),
         kind: asStr(j['kind']),
         pos: asInt(j['pos']),
+        version: asInt(j['version']),
+        latestVersion: asInt(j['latest_version']),
+        deleted: j['deleted'] == true,
         data: j['data'] is Map ? Map<String, dynamic>.from((j['data'] as Map).cast()) : const {},
         state: j['state'] is Map ? Map<String, dynamic>.from((j['state'] as Map).cast()) : const {},
       );
 
   Map<String, dynamic> toJson() => {
         'id': id,
+        if (entityId.isNotEmpty) 'entity_id': entityId,
         'kind': kind,
         'pos': pos,
+        if (version > 0) 'version': version,
+        if (latestVersion > 0) 'latest_version': latestVersion,
+        if (deleted) 'deleted': true,
         'data': data,
         if (state.isNotEmpty) 'state': state,
       };
 
-  MessageComponent copyWith({Map<String, dynamic>? data, Map<String, dynamic>? state}) => MessageComponent(
+  MessageComponent copyWith({
+    String? entityId,
+    int? version,
+    int? latestVersion,
+    bool? deleted,
+    Map<String, dynamic>? data,
+    Map<String, dynamic>? state,
+  }) =>
+      MessageComponent(
         id: id,
+        entityId: entityId ?? this.entityId,
         kind: kind,
         pos: pos,
+        version: version ?? this.version,
+        latestVersion: latestVersion ?? this.latestVersion,
+        deleted: deleted ?? this.deleted,
         data: data ?? this.data,
         state: state ?? this.state,
       );

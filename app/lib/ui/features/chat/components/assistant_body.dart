@@ -63,6 +63,7 @@ class InterleavedAssistantBody extends StatelessWidget {
           child: ChatComponentActionShell(
             messageId: messageId,
             component: comp,
+            isLastMessage: isLastMessage,
             enabled: canPin && !streaming && !messageId.startsWith('local-'),
             child: ChatComponentCard(
               messageId: messageId,

@@ -19,33 +19,41 @@ class HomeSuggestion {
 /// A message component pinned to the user's home board.
 class PinnedComponent {
   final String id;
+  final String entityId;
   final String conversationId;
   final String conversationTitle;
   final String messageId;
   final String componentId;
   final int sortOrder;
   final int pinnedAt;
+  final int updatedAt;
   final MessageComponent component;
 
   const PinnedComponent({
     required this.id,
+    this.entityId = '',
     required this.conversationId,
     this.conversationTitle = '',
     required this.messageId,
     required this.componentId,
     this.sortOrder = 0,
     this.pinnedAt = 0,
+    this.updatedAt = 0,
     required this.component,
   });
 
+  String get effectiveEntityId => entityId.isNotEmpty ? entityId : component.entityId;
+
   factory PinnedComponent.fromJson(Map<String, dynamic> j) => PinnedComponent(
         id: asStr(j['id']),
+        entityId: asStr(j['entity_id']),
         conversationId: asStr(j['conversation_id']),
         conversationTitle: asStr(j['conversation_title']),
         messageId: asStr(j['message_id']),
         componentId: asStr(j['component_id']),
         sortOrder: asInt(j['sort_order']),
         pinnedAt: asInt(j['pinned_at']),
+        updatedAt: asInt(j['updated_at']),
         component: j['component'] is Map
             ? MessageComponent.fromJson((j['component'] as Map).cast())
             : MessageComponent(id: asStr(j['component_id']), kind: ''),
@@ -53,33 +61,41 @@ class PinnedComponent {
 
   Map<String, dynamic> toJson() => {
         'id': id,
+        if (entityId.isNotEmpty) 'entity_id': entityId,
         'conversation_id': conversationId,
         'conversation_title': conversationTitle,
         'message_id': messageId,
         'component_id': componentId,
         'sort_order': sortOrder,
         'pinned_at': pinnedAt,
+        if (updatedAt > 0) 'updated_at': updatedAt,
         'component': component.toJson(),
       };
 
   PinnedComponent copyWith({
+    String? entityId,
     String? conversationTitle,
+    int? updatedAt,
     MessageComponent? component,
   }) =>
       PinnedComponent(
         id: id,
+        entityId: entityId ?? this.entityId,
         conversationId: conversationId,
         conversationTitle: conversationTitle ?? this.conversationTitle,
         messageId: messageId,
         componentId: componentId,
         sortOrder: sortOrder,
         pinnedAt: pinnedAt,
+        updatedAt: updatedAt ?? this.updatedAt,
         component: component ?? this.component,
       );
 }
 
 /// Snapshot of a component referenced when starting or continuing a conversation.
 class QuotedComponent {
+  final String entityId;
+  final int version;
   final String conversationId;
   final String conversationTitle;
   final String messageId;
@@ -91,6 +107,8 @@ class QuotedComponent {
   final Map<String, dynamic> state;
 
   const QuotedComponent({
+    this.entityId = '',
+    this.version = 0,
     this.conversationId = '',
     this.conversationTitle = '',
     this.messageId = '',
@@ -110,6 +128,8 @@ class QuotedComponent {
   }) {
     final meta = describeComponent(component);
     return QuotedComponent(
+      entityId: component.entityId,
+      version: component.version,
       conversationId: conversationId,
       conversationTitle: conversationTitle,
       messageId: messageId,
@@ -123,6 +143,8 @@ class QuotedComponent {
   }
 
   factory QuotedComponent.fromJson(Map<String, dynamic> j) => QuotedComponent(
+        entityId: asStr(j['entity_id']),
+        version: asInt(j['version']),
         conversationId: asStr(j['conversation_id']),
         conversationTitle: asStr(j['conversation_title']),
         messageId: asStr(j['message_id']),
@@ -135,6 +157,8 @@ class QuotedComponent {
       );
 
   Map<String, dynamic> toJson() => {
+        if (entityId.isNotEmpty) 'entity_id': entityId,
+        if (version > 0) 'version': version,
         if (conversationId.isNotEmpty) 'conversation_id': conversationId,
         if (conversationTitle.isNotEmpty) 'conversation_title': conversationTitle,
         if (messageId.isNotEmpty) 'message_id': messageId,
@@ -148,8 +172,9 @@ class QuotedComponent {
 
   /// Minimal payload sent to POST /api/chat so the server snapshots live state.
   Map<String, dynamic> toRequestRef() => {
-        'message_id': messageId,
-        'component_id': componentId,
+        if (entityId.isNotEmpty) 'entity_id': entityId,
+        if (messageId.isNotEmpty) 'message_id': messageId,
+        if (componentId.isNotEmpty) 'component_id': componentId,
       };
 }
 

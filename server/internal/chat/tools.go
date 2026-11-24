@@ -261,6 +261,7 @@ type toolTurn struct {
 	quotedComponent      *ComponentQuoteRef
 	appControlCalls      int
 	automation           bool
+	automationTaskID     string
 	user                 *store.User
 	convID               string
 	assistantID          *string

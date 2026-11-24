@@ -78,7 +78,7 @@ func (s *Service) execListComponents(ctx context.Context, t *toolTurn, rawArgs s
 		return "当前没有找到匹配的卡片组件。"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "找到 %d 张卡片组件（message_id / component_id 仅供后续工具调用，不要输出给用户）：\n", len(filtered))
+	fmt.Fprintf(&b, "找到 %d 张卡片组件（entity_id / message_id / component_id 仅供后续工具调用，不要输出给用户）：\n", len(filtered))
 	for i, r := range filtered {
 		if i >= 15 {
 			fmt.Fprintf(&b, "…其余 %d 张已省略\n", len(filtered)-15)
@@ -89,7 +89,14 @@ func (s *Service) execListComponents(ctx context.Context, t *toolTurn, rawArgs s
 		if r.Pinned {
 			pinTag = "已固定在首页"
 		}
-		fmt.Fprintf(&b, "\n### #%d [%s] 《%s》（%s）\n", i+1, r.Component.Kind, title, pinTag)
+		ver := r.Version
+		if ver <= 0 {
+			ver = 1
+		}
+		fmt.Fprintf(&b, "\n### #%d [%s] 《%s》（%s · v%d）\n", i+1, r.Component.Kind, title, pinTag, ver)
+		if r.EntityID != "" {
+			fmt.Fprintf(&b, "- entity_id: %s\n", r.EntityID)
+		}
 		fmt.Fprintf(&b, "- message_id: %s\n- component_id: %s\n", r.MessageID, r.ComponentID)
 		if summary != "" {
 			fmt.Fprintf(&b, "- 摘要：%s\n", summary)
@@ -107,8 +114,10 @@ func (s *Service) execUpdateComponent(ctx context.Context, t *toolTurn, rawArgs 
 		return msg
 	}
 	var args struct {
+		EntityID      string         `json:"entity_id"`
 		MessageID     string         `json:"message_id"`
 		ComponentID   string         `json:"component_id"`
+		ChangeSummary string         `json:"change_summary"`
 		Data          map[string]any `json:"data"`
 		PrependItems  []any          `json:"prepend_items"`
 		AppendItems   []any          `json:"append_items"`
@@ -118,40 +127,61 @@ func (s *Service) execUpdateComponent(ctx context.Context, t *toolTurn, rawArgs 
 		PreviousTag   string         `json:"previous_tag"`
 	}
 	if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {
-		return "参数解析失败：需要合法的 JSON 对象（包含 message_id 与 component_id）。"
+		return "参数解析失败：需要合法的 JSON 对象（包含 entity_id 或 message_id + component_id）。"
 	}
+	entityID := strings.TrimSpace(args.EntityID)
 	msgID := strings.TrimSpace(args.MessageID)
 	compID := strings.TrimSpace(args.ComponentID)
-	if msgID == "" || compID == "" {
-		return "参数错误：update_component 需要提供真实的 message_id 和 component_id（可先调 list_components 查询）。"
+	if entityID == "" && (msgID == "" || compID == "") {
+		return "参数错误：update_component 需要提供真实的 entity_id，或提供 message_id 和 component_id（可先调 list_components 查询）。"
 	}
 
-	_, cur, err := s.Store.GetMessageComponent(ctx, msgID, t.user.ID, compID)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return fmt.Sprintf("未找到指定组件（message_id=%q component_id=%q），请先调用 list_components 核对真实 ID。", msgID, compID)
+	var ent *store.ComponentEntity
+	var err error
+	if entityID != "" {
+		ent, err = s.Store.GetComponentEntity(ctx, entityID, t.user.ID)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return fmt.Sprintf("未找到指定组件（entity_id=%q），请先调用 list_components 核对真实 ID。", entityID)
+			}
+			return "读取原组件失败：" + err.Error()
 		}
-		return "读取原组件失败：" + err.Error()
-	}
-	if cur.Kind == "ask_user" {
-		return "ask_user 询问卡片不支持原地修改内容。"
+		if ent.Private && ent.OriginConversationID != t.convID {
+			return "无法跨对话修改隐私对话中的卡片。"
+		}
+	} else {
+		_, cur, gErr := s.Store.GetMessageComponent(ctx, msgID, t.user.ID, compID)
+		if gErr != nil {
+			if errors.Is(gErr, store.ErrNotFound) {
+				return fmt.Sprintf("未找到指定组件（message_id=%q component_id=%q），请先调用 list_components 核对真实 ID。", msgID, compID)
+			}
+			return "读取原组件失败：" + gErr.Error()
+		}
+		if !store.IsVersionedComponentKind(cur.Kind) {
+			return cur.Kind + " 卡片不支持原地修改内容。"
+		}
+		title, _ := summarizeComponentForQuote(*cur)
+		ent, err = s.Store.EnsureComponentEntityForMessage(ctx, msgID, t.user.ID, compID, title)
+		if err != nil {
+			return "准备组件实体失败：" + err.Error()
+		}
 	}
 
 	var nextData json.RawMessage
 	var nextState *json.RawMessage
 
-	switch cur.Kind {
+	switch ent.Kind {
 	case "feed":
-		nextData, err = applyFeedUpdate(cur.Data, args.Data, args.PrependItems, args.AppendItems, args.RemoveItemIDs, args.MaxItems, args.PreviousTag)
+		nextData, err = applyFeedUpdate(ent.Data, args.Data, args.PrependItems, args.AppendItems, args.RemoveItemIDs, args.MaxItems, args.PreviousTag)
 	case "todo":
-		nextData, nextState, err = applyTodoUpdate(cur.Data, cur.State, args.Data, args.PrependItems, args.AppendItems, args.RemoveItemIDs, args.MaxItems, args.DoneIDs)
+		nextData, nextState, err = applyTodoUpdate(ent.Data, ent.State, args.Data, args.PrependItems, args.AppendItems, args.RemoveItemIDs, args.MaxItems, args.DoneIDs)
 	default:
-		merged := mergeJSONObject(cur.Data, args.Data)
+		merged := mergeJSONObject(ent.Data, args.Data)
 		rawMerged, mErr := json.Marshal(merged)
 		if mErr != nil {
 			err = mErr
 		} else {
-			nextData, err = NormalizeComponentData(cur.Kind, rawMerged)
+			nextData, err = NormalizeComponentData(ent.Kind, rawMerged)
 		}
 	}
 	if err != nil {
@@ -162,21 +192,63 @@ func (s *Service) execUpdateComponent(ctx context.Context, t *toolTurn, rawArgs 
 	t.run.setActivity("正在更新卡片内容…")
 	t.postActivity = "正在整理更新结果…"
 
-	_, updatedComp, err := s.Store.UpdateMessageComponent(ctx, msgID, t.user.ID, compID, nextData, nextState)
+	previewComp := store.MessageComponent{Kind: ent.Kind, Data: nextData}
+	if nextState != nil {
+		previewComp.State = *nextState
+	} else {
+		previewComp.State = ent.State
+	}
+	nextTitle, summary := summarizeComponentForQuote(previewComp)
+	changeSummary := strings.TrimSpace(args.ChangeSummary)
+	if changeSummary == "" {
+		if t.automation {
+			changeSummary = "定时自动更新：" + clipRunes(summary, 40)
+		} else {
+			changeSummary = "对话更新：" + clipRunes(summary, 40)
+		}
+	}
+	srcType := "chat_update"
+	if t.automation {
+		srcType = "task_update"
+	}
+
+	updatedEnt, err := s.Store.UpdateComponentEntity(ctx, ent.ID, t.user.ID, nextData, nextState, store.ComponentMutationMeta{
+		Title:                nextTitle,
+		ChangeSummary:        changeSummary,
+		SourceType:           srcType,
+		SourceConversationID: t.convID,
+		SourceMessageID:      t.asstID,
+		SourceTaskID:         t.automationTaskID,
+	})
 	if err != nil {
 		t.run.finishStep(stepIdx, "error", "更新卡片失败", err.Error())
 		return "保存更新后的组件失败：" + err.Error()
 	}
-	if liveRun := s.Hub.Get(msgID); liveRun != nil && liveRun.UserID == t.user.ID {
-		liveRun.UpdateComponent(compID, updatedComp.Data, updatedComp.State)
-	}
-	t.updatedComponents++
-	t.lastUpdatedMsgID = msgID
-	t.lastUpdatedCompID = compID
 
-	title, summary := summarizeComponentForQuote(*updatedComp)
-	t.run.finishStep(stepIdx, "done", "已更新卡片："+clipRunes(title, 20), summary)
-	return fmt.Sprintf("卡片「%s」已原地更新成功（%s；所有引用处和首页看板已实时同步最新内容）。", title, summary)
+	// Attach a live card reference anchored to the new version directly in this reply so the user
+	// sees the updated card immediately without creating a duplicate entity.
+	t.componentCalls++
+	replyCompID := fmt.Sprintf("comp_%d_%s", t.componentCalls, store.NewID()[:8])
+	replyComp := store.MessageComponent{
+		ID:            replyCompID,
+		EntityID:      updatedEnt.ID,
+		Kind:          updatedEnt.Kind,
+		Pos:           -1,
+		Version:       updatedEnt.CurrentVersion,
+		LatestVersion: updatedEnt.CurrentVersion,
+		Data:          updatedEnt.Data,
+		State:         updatedEnt.State,
+	}
+	all := t.run.addComponent(replyComp)
+	_ = s.Store.SetComponents(ctx, t.asstID, all)
+
+	t.updatedComponents++
+	t.lastUpdatedMsgID = updatedEnt.OriginMessageID
+	t.lastUpdatedCompID = updatedEnt.OriginComponentID
+
+	t.run.finishStep(stepIdx, "done", fmt.Sprintf("已更新卡片：%s (v%d)", clipRunes(nextTitle, 18), updatedEnt.CurrentVersion), summary)
+	return fmt.Sprintf("卡片「%s」已原地更新至 v%d（%s；首页看板已同步最新内容，且更新后的卡片已自动展示在本次回复中，无需再次调用 show_* 创建新卡片）。",
+		nextTitle, updatedEnt.CurrentVersion, summary)
 }
 
 func mergeJSONObject(base json.RawMessage, patch map[string]any) map[string]any {
@@ -370,14 +442,26 @@ func (s *Service) execDeleteComponent(ctx context.Context, t *toolTurn, rawArgs 
 		return msg
 	}
 	var args struct {
+		EntityID    string `json:"entity_id"`
 		MessageID   string `json:"message_id"`
 		ComponentID string `json:"component_id"`
 	}
 	_ = json.Unmarshal([]byte(rawArgs), &args)
+	entityID := strings.TrimSpace(args.EntityID)
 	msgID := strings.TrimSpace(args.MessageID)
 	compID := strings.TrimSpace(args.ComponentID)
+	if entityID != "" {
+		if err := s.Store.DeleteComponentEntity(ctx, entityID, t.user.ID); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return "未找到该卡片，可能已被删除。"
+			}
+			return "删除卡片失败：" + err.Error()
+		}
+		t.run.addDoneStep("component", "已删除卡片组件", "")
+		return "已删除该卡片，并同步从首页看板移除。"
+	}
 	if msgID == "" || compID == "" {
-		return "参数错误：需要提供 message_id 和 component_id。"
+		return "参数错误：需要提供 entity_id 或 message_id + component_id。"
 	}
 	if err := s.Store.DeleteMessageComponent(ctx, msgID, t.user.ID, compID); err != nil {
 		if errors.Is(err, store.ErrNotFound) {

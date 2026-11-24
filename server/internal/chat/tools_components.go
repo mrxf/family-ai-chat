@@ -210,13 +210,16 @@ var listComponentsTool = llm.Tool{
 
 var updateComponentTool = llm.Tool{
 	Name: "update_component",
-	Description: "Update an existing component card IN PLACE by its message_id and component_id (changes immediately reflect both in the original chat and on the Home pinned board). " +
-		"Supports partial/full field patches via `data`, AND safe atomic list operations (`prepend_items`, `append_items`, `remove_item_ids`, `max_items`, `done_ids`) for `feed` and `todo` cards — e.g. to update the top 3 news items while shifting the previous top 3 into positions 4-6 without retyping old items, pass `prepend_items` with the 3 new items and `max_items: 6`!",
+	Description: "Update an existing component card IN PLACE (creates a new version on the canonical entity, updates the Home pinned card, preserves historical snapshots in past chats, and automatically displays the updated card in this reply). " +
+		"Pass `entity_id` (preferred) OR `message_id` + `component_id`. " +
+		"Supports partial/full field patches via `data`, AND safe atomic list operations (`prepend_items`, `append_items`, `remove_item_ids`, `max_items`, `done_ids`) for `feed` and `todo` cards.",
 	Parameters: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"message_id":   map[string]any{"type": "string", "description": "Exact message_id from list_components or quoted/task context."},
-			"component_id": map[string]any{"type": "string", "description": "Exact component_id of the target card."},
+			"entity_id":      map[string]any{"type": "string", "description": "Preferred canonical entity_id from list_components or quoted/task context."},
+			"message_id":     map[string]any{"type": "string", "description": "Fallback message_id when entity_id is not available."},
+			"component_id":   map[string]any{"type": "string", "description": "Fallback component_id paired with message_id."},
+			"change_summary": map[string]any{"type": "string", "description": "Optional brief Chinese summary of what changed in this version (e.g. \"更新为本周天气\" or \"新增待办：买牛奶\")."},
 			"data": map[string]any{
 				"type":        "object",
 				"description": "Optional partial or full replacement fields matching the component's kind (e.g. title, subtitle, items, metrics, location/condition/temp, labels/series).",
@@ -250,7 +253,6 @@ var updateComponentTool = llm.Tool{
 				"description": "For `feed`: optional tag to assign to shifted existing items when prepending new items (e.g. \"往期\").",
 			},
 		},
-		"required": []string{"message_id", "component_id"},
 	},
 }
 
@@ -635,9 +637,38 @@ func (s *Service) appendAndPersistComponent(t *toolTurn, kind string, data any, 
 		Data:  rawData,
 		State: rawState,
 	}
-	all := t.run.addComponent(comp)
 	pctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	if store.IsVersionedComponentKind(kind) && t.user != nil {
+		title, _ := summarizeComponentForQuote(comp)
+		ent := &store.ComponentEntity{
+			ID:                       store.NewID(),
+			UserID:                   t.user.ID,
+			Kind:                     kind,
+			Title:                    title,
+			CurrentVersion:           1,
+			Data:                     rawData,
+			State:                    rawState,
+			Private:                  t.private,
+			OriginConversationID:     t.convID,
+			OriginMessageID:          t.asstID,
+			OriginComponentID:        compID,
+			LastSourceType:           "create",
+			LastSourceConversationID: t.convID,
+			LastSourceMessageID:      t.asstID,
+			LastSourceTaskID:         t.automationTaskID,
+		}
+		if err := s.Store.CreateComponentEntity(pctx, ent, "创建卡片"); err != nil {
+			s.Log.Error("create component entity", "message_id", t.asstID, "err", err)
+		} else {
+			comp.EntityID = ent.ID
+			comp.Version = 1
+			comp.LatestVersion = 1
+		}
+	}
+
+	all := t.run.addComponent(comp)
 	if err := s.Store.SetComponents(pctx, t.asstID, all); err != nil {
 		s.Log.Error("save message components", "message_id", t.asstID, "err", err)
 	}
