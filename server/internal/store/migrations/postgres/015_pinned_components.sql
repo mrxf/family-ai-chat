@@ -5,7 +5,7 @@ CREATE TABLE pinned_components (
   message_id      TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
   component_id    TEXT NOT NULL,
   sort_order      INTEGER NOT NULL DEFAULT 0,
-  pinned_at       INTEGER NOT NULL,
+  pinned_at       BIGINT NOT NULL,
   UNIQUE(user_id, message_id, component_id)
 );
 
