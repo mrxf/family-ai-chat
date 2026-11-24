@@ -1,0 +1,71 @@
+app/lib/core/api.dart
+  s_f930648e329b90::t_1b2e3ffb73c4f3 79-81,278
+app/lib/core/models/app_settings_steps.dart
+  s_f930648e329b90::t_51068c54bf3983 1-13
+app/lib/state/app_actions.dart
+  s_f930648e329b90::t_262b4912070f0b 1-205
+app/lib/state/chat.dart
+  s_f930648e329b90::t_72feb75f35163f 13,55,746
+app/lib/state/client_context.dart
+  s_f930648e329b90::t_fc0fae2846112f 1-18
+app/lib/state/session.dart
+  s_f930648e329b90::t_7612578b57ca44 2,12,22-32,100,159
+app/lib/ui/desktop/desktop_settings_panes.dart
+  s_f930648e329b90::t_9205fc155449cf 6,24,26
+app/lib/ui/features/chat/app_action_card.dart
+  s_f930648e329b90::t_3c8f4a43ff4b4a 1-60
+app/lib/ui/features/chat/components/component_card.dart
+  s_f930648e329b90::t_ab21197ce72532 4,31
+app/lib/ui/features/settings/settings_page.dart
+  s_f930648e329b90::t_564991bef807a7 6,286,288
+app/test/app_action_card_test.dart
+  s_f930648e329b90::t_ef1499e89b480e 1-72
+app/test/app_actions_test.dart
+  s_f930648e329b90::t_aaf634c2222cab 1-138
+docs/api.md
+  s_f930648e329b90::t_bfda634d8a4955 1304-1327
+server/internal/api/chat.go
+  s_f930648e329b90::t_75efd08fce0790 482,500
+server/internal/chat/automation_worker.go
+  s_f930648e329b90::t_2ee54235675e84 276,280-285
+server/internal/chat/service.go
+  s_f930648e329b90::t_a70548db1a2402 108,123,259,374,392-396
+server/internal/chat/skills_runtime.go
+  s_f930648e329b90::t_0d35f3352803f2 178,213-219
+server/internal/chat/tools.go
+  s_f930648e329b90::t_e1b50f998d93b0 260-263
+server/internal/chat/tools_app_control.go
+  s_f930648e329b90::t_9e2129fa156656 1-240
+server/internal/chat/tools_app_control_test.go
+  s_f930648e329b90::t_ef713778fa7db3 1-194
+server/internal/chat/tools_components.go
+  s_f930648e329b90::t_1dfc8c7b8978e1 260,272,276,644
+server/internal/chat/tools_components_note.go
+  s_f930648e329b90::t_e67a3be951ec43 33-43
+server/internal/chat/tools_dispatch.go
+  s_f930648e329b90::t_5048ea56cc79b7 1-313
+server/internal/chat/tools_home_cards.go
+  s_f930648e329b90::t_6970a92f895dca 1-243
+server/internal/skills/skills.go
+  s_f930648e329b90::t_37e95da32d6d77 43,88,96,102,121-126,128,133,169,171-178,180
+server/internal/skills/skills_test.go
+  s_f930648e329b90::t_39c8c2ebfb2ece 69-88
+server/internal/store/pinned_components.go
+  s_f930648e329b90::t_fb0f14ff9011ce 117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "3b35a005ce45436114ef330ae8e035e271eef477",
+  "prompts": {},
+  "sessions": {
+    "s_f930648e329b90": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a20d16-d67b-7f03-8912-92cd5b3484f5",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
