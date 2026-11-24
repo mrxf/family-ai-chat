@@ -1,0 +1,26 @@
+app/lib/ui/desktop/desktop_settings_sidebar.dart
+  h_8f297825d1fe21 99
+app/lib/ui/features/automations/scheduled_tasks_page.dart
+  h_8f297825d1fe21 206,229
+app/lib/ui/features/chat/components/component_card_shell.dart
+  h_8f297825d1fe21 201,309,473,594
+app/lib/ui/features/chat/messages/activity_panels.dart
+  h_8f297825d1fe21 154
+app/lib/ui/features/chat/welcome.dart
+  h_8f297825d1fe21 103
+app/lib/ui/features/settings/settings_page.dart
+  h_8f297825d1fe21 134
+app/lib/ui/theme/icons.dart
+  h_8f297825d1fe21 118,267
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "3d6aecf07e06fb6bcf18b1dfe568735f225e0ac8",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
