@@ -1,0 +1,104 @@
+app/lib/core/api.dart
+  h_8f297825d1fe21 248-249,263-330,579-609
+app/lib/core/models/message.dart
+  h_8f297825d1fe21 3,7-10,18-23,36-41,53-58,68-80,84-89,220,233-235,257-259,278-280,297-299,314-316
+app/lib/core/models/models.dart
+  h_8f297825d1fe21 12
+app/lib/core/models/sharing.dart
+  h_8f297825d1fe21 1-102
+app/lib/core/share_code.dart
+  h_8f297825d1fe21 1-90
+app/lib/state/chat.dart
+  h_8f297825d1fe21 189,230,234-236,239,281-313,679-680,683-684,687-690,692
+app/lib/state/chat_state.dart
+  h_8f297825d1fe21 122,131-133,151,158-160,176,183-185,197,204-206
+app/lib/state/conversations.dart
+  h_8f297825d1fe21 102-109,154,158
+app/lib/state/sharing.dart
+  h_8f297825d1fe21 1-92
+app/lib/ui/features/chat/chat_app_bar.dart
+  h_8f297825d1fe21 8,32-33,48-76
+app/lib/ui/features/chat/chat_pane.dart
+  h_8f297825d1fe21 5-6,25-29,33,95-127
+app/lib/ui/features/chat/messages/user_message.dart
+  h_8f297825d1fe21 6,24-27,33,35,37-51,69,94-100,103-109
+app/lib/ui/features/conversations/conversation_panel.dart
+  h_8f297825d1fe21 19,144-190,339-348,357-361
+app/lib/ui/features/conversations/search_page.dart
+  h_8f297825d1fe21 14,60-74,80
+app/lib/ui/features/home/home_page.dart
+  h_8f297825d1fe21 25,63-65,139
+app/lib/ui/features/settings/settings_page.dart
+  h_8f297825d1fe21 27,139-145
+app/lib/ui/features/share/family_share_sheet.dart
+  h_8f297825d1fe21 1-346
+app/lib/ui/features/share/share_code_sheet.dart
+  h_8f297825d1fe21 1-326
+app/lib/ui/features/share/share_flow.dart
+  h_8f297825d1fe21 4,9,11,13-15,40,44-47,54-55,61-114,120-122,126-142
+app/lib/ui/features/share/share_management_page.dart
+  h_8f297825d1fe21 1-284
+app/lib/ui/features/share/share_page.dart
+  h_8f297825d1fe21 1-2,4,6-7
+app/lib/ui/features/share/share_select_page.dart
+  h_8f297825d1fe21 22-24,31-33,45-47,108-111,226,248,251
+app/lib/ui/widgets/sheets.dart
+  h_8f297825d1fe21 5,9,117-153,157-158,165,170-171,195-196
+app/test/share_chat_test.dart
+  h_8f297825d1fe21 159-165
+app/test/share_code_test.dart
+  h_8f297825d1fe21 1-49
+server/internal/api/chat.go
+  h_8f297825d1fe21 386-387,390-391,393-400,575
+server/internal/api/server.go
+  h_8f297825d1fe21 122-134,256-263
+server/internal/api/shared_conversations.go
+  h_8f297825d1fe21 1-162
+server/internal/api/shares.go
+  h_8f297825d1fe21 1-73
+server/internal/api/sharing_test.go
+  h_8f297825d1fe21 1-232
+server/internal/chat/hub.go
+  h_8f297825d1fe21 35
+server/internal/chat/service.go
+  h_8f297825d1fe21 249-258,268-274,393,405,519,526
+server/internal/chat/service_prompt.go
+  h_8f297825d1fe21 58-60,238-240
+server/internal/chat/tools.go
+  h_8f297825d1fe21 273
+server/internal/chat/tools_dispatch.go
+  h_8f297825d1fe21 68-76,99-107
+server/internal/store/component_entities.go
+  h_8f297825d1fe21 141-146,149-150,160-161,170-172,176,210-211,239,242,263-264,268-270,306,308-310,314-316,318,339-340,352,382
+server/internal/store/components.go
+  h_8f297825d1fe21 97-100,147-150,232-235
+server/internal/store/conversations.go
+  h_8f297825d1fe21 12-28,58,60-68,93-94,129-133,230-232,266,268,271-278
+server/internal/store/copy.go
+  h_8f297825d1fe21 13
+server/internal/store/files_usage.go
+  h_8f297825d1fe21 32-36
+server/internal/store/messages.go
+  h_8f297825d1fe21 59-61,81,86,137-138,206,209-212,217,273
+server/internal/store/migrations/postgres/019_sharing.sql
+  h_8f297825d1fe21 1-41
+server/internal/store/migrations/sqlite/019_sharing.sql
+  h_8f297825d1fe21 1-41
+server/internal/store/shared_conversations.go
+  h_8f297825d1fe21 1-618
+server/internal/store/shares.go
+  h_8f297825d1fe21 1-333
+server/internal/store/store_test.go
+  h_8f297825d1fe21 83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "635911aa0437338e48cede471af7d22510c3e48e",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
