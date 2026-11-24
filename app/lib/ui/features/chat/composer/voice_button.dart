@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,10 +16,11 @@ import '../../../../state/session.dart';
 import '../../../theme/icons.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/base_widgets.dart';
+import 'voice_overlay.dart';
 
-/// Hold-to-talk microphone button (like WeChat): hold to record, release to
-/// send immediately, slide up to cancel. Supports both real-time WebSocket
-/// streaming ("边说边出字") and batch upload transcription.
+/// Hold-to-talk microphone button (like WeChat): press down for instant tactile
+/// feedback, hold to record, release to send immediately, slide up to cancel.
+/// Supports both real-time WebSocket streaming ("边说边出字") and batch upload.
 class VoiceButton extends ConsumerStatefulWidget {
   const VoiceButton({super.key, required this.onText});
   final ValueChanged<String> onText;
@@ -27,14 +29,13 @@ class VoiceButton extends ConsumerStatefulWidget {
   ConsumerState<VoiceButton> createState() => _VoiceButtonState();
 }
 
-enum _Phase { idle, recording, cancelling, recognizing }
-
 class _VoiceButtonState extends ConsumerState<VoiceButton> {
   final _rec = AudioRecorder();
-  final _phase = ValueNotifier(_Phase.idle);
+  final _phase = ValueNotifier(VoicePhase.idle);
   final _level = ValueNotifier(0.0);
   final _seconds = ValueNotifier(0);
   final _liveText = ValueNotifier('');
+  final _cancelProgress = ValueNotifier(0.0);
 
   OverlayEntry? _overlay;
   StreamSubscription<Amplitude>? _ampSub;
@@ -50,10 +51,15 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
   String? _path;
   bool _starting = false;
   bool _finishing = false;
+  bool _releasedDuringStart = false;
+  bool _hovered = false;
   bool _streamMode = false;
   int _sessionGen = 0;
 
   static const _maxSeconds = 60;
+  static const _cancelDragDistance = 76.0;
+  // Shorter than Flutter's default 500ms long-press so recording starts crisply.
+  static const _holdDelay = Duration(milliseconds: 160);
   // 200ms of 16kHz 16-bit mono PCM = 6400 bytes.
   static const _pcmPacketBytes = 6400;
 
@@ -65,6 +71,7 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
     _level.dispose();
     _seconds.dispose();
     _liveText.dispose();
+    _cancelProgress.dispose();
     super.dispose();
   }
 
@@ -84,6 +91,7 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
     _timer = null;
     _overlay?.remove();
     _overlay = null;
+    _cancelProgress.value = 0;
   }
 
   double _pcmLevel(Uint8List bytes) {
@@ -130,7 +138,7 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
     final api = ref.read(apiProvider);
     try {
       final ws = await WebSocket.connect(api.asrStreamUrl(), headers: api.authHeaders).timeout(const Duration(seconds: 10));
-      if (!mounted || gen != _sessionGen || _phase.value == _Phase.idle) {
+      if (!mounted || gen != _sessionGen || _phase.value == VoicePhase.idle) {
         await ws.close();
         return;
       }
@@ -171,20 +179,47 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
     }
   }
 
+  void _onPressDown() {
+    if (_starting || _finishing || _phase.value != VoicePhase.idle) return;
+    _releasedDuringStart = false;
+    // Instant tactile & visual response at 0ms so the button never feels inert.
+    HapticFeedback.lightImpact();
+    _phase.value = VoicePhase.pressing;
+  }
+
+  void _onPressCancelBeforeRecord() {
+    if (_starting) {
+      _releasedDuringStart = true;
+      return;
+    }
+    if (_phase.value == VoicePhase.pressing) {
+      _phase.value = VoicePhase.idle;
+      showToast(context, '按住麦克风说话，松开就发送');
+    }
+  }
+
   Future<void> _start() async {
-    if (_starting || _finishing || _phase.value != _Phase.idle) return;
+    if (_starting || _finishing || (_phase.value != VoicePhase.idle && _phase.value != VoicePhase.pressing)) return;
     _starting = true;
+    _releasedDuringStart = false;
     final gen = ++_sessionGen;
     try {
       if (!await _rec.hasPermission()) {
         if (mounted) showToast(context, '需要麦克风权限才能说话，请在系统设置里允许');
+        _phase.value = VoicePhase.idle;
         return;
       }
+      if (!mounted || _releasedDuringStart) {
+        _phase.value = VoicePhase.idle;
+        return;
+      }
+
       final mode = ref.read(sessionProvider).boot?.voiceMode ?? 'upload';
       _streamMode = mode == 'stream';
       _liveText.value = '';
       _level.value = 0;
       _seconds.value = 0;
+      _cancelProgress.value = 0;
       _streamErr = null;
       _pcmOutBuf.clear();
 
@@ -195,9 +230,14 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
           sampleRate: 16000,
           numChannels: 1,
         ));
+        if (!mounted || _releasedDuringStart) {
+          await _rec.cancel();
+          _phase.value = VoicePhase.idle;
+          return;
+        }
         HapticFeedback.mediumImpact();
         _started = DateTime.now();
-        _phase.value = _Phase.recording;
+        _phase.value = VoicePhase.recording;
         _pcmSub = stream.listen((chunk) {
           if (gen != _sessionGen || chunk.isEmpty) return;
           _level.value = _level.value * 0.35 + _pcmLevel(chunk) * 0.65;
@@ -214,9 +254,14 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
           const RecordConfig(encoder: AudioEncoder.aacLc, sampleRate: 16000, numChannels: 1, bitRate: 48000),
           path: _path!,
         );
+        if (!mounted || _releasedDuringStart) {
+          await _rec.cancel();
+          _phase.value = VoicePhase.idle;
+          return;
+        }
         HapticFeedback.mediumImpact();
         _started = DateTime.now();
-        _phase.value = _Phase.recording;
+        _phase.value = VoicePhase.recording;
         _ampSub = _rec.onAmplitudeChanged(const Duration(milliseconds: 90)).listen((a) {
           _level.value = ((a.current + 50) / 50).clamp(0.0, 1.0);
         });
@@ -230,15 +275,39 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
     } catch (_) {
       _cleanup();
       if (mounted) showToast(context, '录音没能启动，请再试一次');
-      _phase.value = _Phase.idle;
+      _phase.value = VoicePhase.idle;
     } finally {
       _starting = false;
     }
   }
 
+  void _onMoveUpdate(LongPressMoveUpdateDetails details) {
+    final ph = _phase.value;
+    if (ph != VoicePhase.recording && ph != VoicePhase.cancelling) return;
+    final dy = -details.localOffsetFromOrigin.dy;
+    _cancelProgress.value = (dy / _cancelDragDistance).clamp(0.0, 1.0);
+    final next = dy >= _cancelDragDistance ? VoicePhase.cancelling : VoicePhase.recording;
+    if (next != ph) {
+      if (next == VoicePhase.cancelling) {
+        HapticFeedback.heavyImpact();
+      } else {
+        HapticFeedback.selectionClick();
+      }
+      _phase.value = next;
+    }
+  }
+
   Future<void> _finish() async {
+    if (_starting) {
+      _releasedDuringStart = true;
+      return;
+    }
     final phase = _phase.value;
-    if (_finishing || (phase != _Phase.recording && phase != _Phase.cancelling)) return;
+    if (phase == VoicePhase.pressing) {
+      _phase.value = VoicePhase.idle;
+      return;
+    }
+    if (_finishing || (phase != VoicePhase.recording && phase != VoicePhase.cancelling)) return;
     _finishing = true;
     _ampSub?.cancel();
     _pcmSub?.cancel();
@@ -246,19 +315,22 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
 
     try {
       final elapsed = DateTime.now().difference(_started ?? DateTime.now());
-      final tooShort = elapsed < const Duration(milliseconds: 650) && _liveText.value.trim().isEmpty;
-      if (phase == _Phase.cancelling || tooShort) {
+      final tooShort = elapsed < const Duration(milliseconds: 550) && _liveText.value.trim().isEmpty;
+      if (phase == VoicePhase.cancelling || tooShort) {
+        HapticFeedback.selectionClick();
         _sessionGen++;
         await _rec.cancel();
         _cleanup();
-        _phase.value = _Phase.idle;
-        if (phase == _Phase.recording && mounted) showToast(context, '说话时间太短了，请按住麦克风再说');
+        _phase.value = VoicePhase.idle;
+        if (phase == VoicePhase.recording && mounted) showToast(context, '说话时间太短了，请按住麦克风再说');
         return;
       }
 
+      HapticFeedback.lightImpact();
+
       if (_streamMode) {
         await _rec.stop();
-        _phase.value = _Phase.recognizing;
+        _phase.value = VoicePhase.recognizing;
 
         // If user spoke very briefly while WS was still connecting, give handshake a brief moment.
         final deadline = DateTime.now().add(const Duration(seconds: 2));
@@ -279,7 +351,7 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
         final err = _streamErr;
         _sessionGen++;
         _cleanup();
-        _phase.value = _Phase.idle;
+        _phase.value = VoicePhase.idle;
 
         if (text.isNotEmpty) {
           widget.onText(text);
@@ -293,11 +365,11 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
 
       // Upload mode (OpenAI-compatible /audio/transcriptions).
       final path = await _rec.stop();
-      _phase.value = _Phase.recognizing;
+      _phase.value = VoicePhase.recognizing;
       try {
         final text = await ref.read(apiProvider).transcribe(path ?? _path!);
         _cleanup();
-        _phase.value = _Phase.idle;
+        _phase.value = VoicePhase.idle;
         if (text.trim().isEmpty) {
           if (mounted) showToast(context, '没听清，请再说一次');
         } else {
@@ -305,7 +377,7 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
         }
       } on ApiError catch (e) {
         _cleanup();
-        _phase.value = _Phase.idle;
+        _phase.value = VoicePhase.idle;
         if (mounted) showToast(context, e.message);
       } finally {
         if (path != null) File(path).delete().ignore();
@@ -316,14 +388,16 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
   }
 
   void _showOverlay() {
+    _overlay?.remove();
     _overlay = OverlayEntry(
-      builder: (_) => _VoiceOverlay(
+      builder: (_) => VoiceOverlay(
         phase: _phase,
         level: _level,
         seconds: _seconds,
         liveText: _liveText,
+        cancelProgress: _cancelProgress,
         streamMode: _streamMode,
-        max: _maxSeconds,
+        maxSeconds: _maxSeconds,
       ),
     );
     Overlay.of(context).insert(_overlay!);
@@ -332,144 +406,129 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
+
     return Tooltip(
-      message: '按住说话',
-      child: GestureDetector(
-        onTap: () => showToast(context, '按住麦克风说话，松开就发送'),
-        onLongPressStart: (_) => _start(),
-        onLongPressMoveUpdate: (d) {
-          if (_phase.value == _Phase.recording || _phase.value == _Phase.cancelling) {
-            final cancel = d.localOffsetFromOrigin.dy < -80;
-            final next = cancel ? _Phase.cancelling : _Phase.recording;
-            if (next != _phase.value) {
-              HapticFeedback.selectionClick();
-              _phase.value = next;
-            }
-          }
-        },
-        onLongPressEnd: (_) => _finish(),
-        onLongPressCancel: () => _finish(),
-        child: ValueListenableBuilder(
-          valueListenable: _phase,
-          builder: (_, phase, _) => AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              gradient: phase == _Phase.idle ? null : Palette.brandGradient,
-              color: phase == _Phase.idle ? p.accentSoft : null,
-              shape: BoxShape.circle,
+      message: '按住说话，上滑取消',
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: RawGestureDetector(
+          behavior: HitTestBehavior.opaque,
+          gestures: {
+            LongPressGestureRecognizer: GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+              () => LongPressGestureRecognizer(duration: _holdDelay),
+              (instance) {
+                instance.onLongPressDown = (_) => _onPressDown();
+                instance.onLongPressCancel = _onPressCancelBeforeRecord;
+                instance.onLongPressStart = (_) => _start();
+                instance.onLongPressMoveUpdate = _onMoveUpdate;
+                instance.onLongPressEnd = (_) => _finish();
+              },
             ),
-            child: AppIcon(AppIcons.mic, size: 23, color: phase == _Phase.idle ? p.accent : Colors.white),
-          ),
-        ),
-      ),
-    );
-  }
-}
+          },
+          child: AnimatedBuilder(
+            animation: Listenable.merge([_phase, _level]),
+            builder: (_, _) {
+              final phase = _phase.value;
+              final active = phase != VoicePhase.idle;
+              final pressing = phase == VoicePhase.pressing;
+              final cancelling = phase == VoicePhase.cancelling;
+              final recognizing = phase == VoicePhase.recognizing;
 
-class _VoiceOverlay extends StatelessWidget {
-  const _VoiceOverlay({
-    required this.phase,
-    required this.level,
-    required this.seconds,
-    required this.liveText,
-    required this.streamMode,
-    required this.max,
-  });
+              final scale = switch (phase) {
+                VoicePhase.pressing => 0.88,
+                VoicePhase.recording => 1.08 + 0.04 * _level.value,
+                VoicePhase.cancelling => 0.96,
+                VoicePhase.recognizing => 1.0,
+                VoicePhase.idle => _hovered ? 1.05 : 1.0,
+              };
 
-  final ValueNotifier<_Phase> phase;
-  final ValueNotifier<double> level;
-  final ValueNotifier<int> seconds;
-  final ValueNotifier<String> liveText;
-  final bool streamMode;
-  final int max;
+              final haloColor = cancelling ? p.bad : p.accent;
+              final haloAlpha = switch (phase) {
+                VoicePhase.recording => 0.20 + 0.16 * _level.value,
+                VoicePhase.pressing => 0.16,
+                VoicePhase.cancelling => 0.22,
+                _ => 0.0,
+              };
+              final haloSize = switch (phase) {
+                VoicePhase.recording => 54.0 + 12.0 * _level.value,
+                VoicePhase.pressing => 52.0,
+                VoicePhase.cancelling => 54.0,
+                _ => 46.0,
+              };
 
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    return IgnorePointer(
-      child: Material(
-        color: Colors.black.withValues(alpha: 0.45),
-        child: Center(
-          child: ValueListenableBuilder(
-            valueListenable: phase,
-            builder: (_, ph, _) {
-              final cancelling = ph == _Phase.cancelling;
-              final recognizing = ph == _Phase.recognizing;
-              return Container(
-                width: streamMode ? 300 : 260,
-                padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
-                decoration: BoxDecoration(color: p.surface, borderRadius: BorderRadius.circular(32)),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  SizedBox(
-                    width: 124,
-                    height: 124,
-                    child: recognizing
-                        ? Center(child: SizedBox(width: 44, height: 44, child: CircularProgressIndicator(strokeWidth: 3.5, color: p.accent)))
-                        : ValueListenableBuilder(
-                            valueListenable: level,
-                            builder: (_, l, _) => Stack(alignment: Alignment.center, children: [
-                              AnimatedContainer(
-                                duration: const Duration(milliseconds: 100),
-                                width: 82 + 42 * l,
-                                height: 82 + 42 * l,
-                                decoration: BoxDecoration(shape: BoxShape.circle, color: (cancelling ? p.bad : p.accent).withValues(alpha: 0.18)),
-                              ),
-                              Container(
-                                width: 82,
-                                height: 82,
-                                decoration: BoxDecoration(shape: BoxShape.circle, gradient: cancelling ? null : Palette.brandGradient, color: cancelling ? p.bad : null),
-                                child: AppIcon(cancelling ? AppIcons.close : AppIcons.mic, color: Colors.white, size: 36),
-                              ),
-                            ]),
-                          ),
-                  ),
-                  if (streamMode)
-                    ValueListenableBuilder(
-                      valueListenable: liveText,
-                      builder: (_, txt, _) {
-                        if (txt.isEmpty) return const SizedBox(height: 14);
-                        return Container(
-                          width: double.infinity,
-                          margin: const EdgeInsets.only(top: 12, bottom: 14),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: p.surfaceAlt,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Text(
-                            txt,
-                            maxLines: 4,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 16.5,
-                              height: 1.45,
-                              fontWeight: FontWeight.w500,
-                              color: cancelling ? p.muted : p.text,
-                              decoration: cancelling ? TextDecoration.lineThrough : null,
-                            ),
-                          ),
-                        );
-                      },
-                    )
-                  else
-                    const SizedBox(height: 18),
-                  Text(
-                    recognizing ? '正在发送…' : (cancelling ? '松开手指，取消发送' : '正在听，松开就发送'),
-                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: cancelling ? p.bad : p.text),
-                  ),
-                  const SizedBox(height: 8),
-                  if (!recognizing)
-                    ValueListenableBuilder(
-                      valueListenable: seconds,
-                      builder: (_, s, _) => Text(
-                        s >= max - 10 ? '还能说 ${max - s} 秒' : '手指上滑可以取消',
-                        style: TextStyle(fontSize: 15, color: p.muted),
+              return SizedBox(
+                width: 46,
+                height: 46,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center,
+                  children: [
+                    IgnorePointer(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 110),
+                        curve: Curves.easeOutCubic,
+                        width: haloSize,
+                        height: haloSize,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: haloColor.withValues(alpha: haloAlpha),
+                        ),
                       ),
                     ),
-                ]),
+                    AnimatedScale(
+                      scale: scale,
+                      duration: Duration(milliseconds: pressing ? 90 : 150),
+                      curve: Curves.easeOutCubic,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        curve: Curves.easeOutCubic,
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          gradient: active && !cancelling ? Palette.brandGradient : null,
+                          color: cancelling
+                              ? p.bad
+                              : (active
+                                  ? null
+                                  : (_hovered ? p.accent.withValues(alpha: 0.18) : p.accentSoft)),
+                          shape: BoxShape.circle,
+                          border: active
+                              ? null
+                              : Border.all(
+                                  color: p.accent.withValues(alpha: _hovered ? 0.38 : 0.20),
+                                ),
+                          boxShadow: active
+                              ? [
+                                  BoxShadow(
+                                    color: haloColor.withValues(alpha: 0.38),
+                                    blurRadius: 14,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: Center(
+                          child: recognizing
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : AppIcon(
+                                  cancelling ? AppIcons.close : AppIcons.mic,
+                                  size: 23,
+                                  color: active ? Colors.white : p.accent,
+                                ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               );
             },
           ),
