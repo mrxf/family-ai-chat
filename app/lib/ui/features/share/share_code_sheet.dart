@@ -17,6 +17,7 @@ import '../../theme/theme.dart';
 import '../../widgets/base_widgets.dart';
 
 bool _sharePreviewOpen = false;
+bool _inspectingClipboard = false;
 
 /// Shows the generated Douyin-style share text and copies it to the clipboard.
 Future<void> showShareCodeResultSheet(BuildContext context, WidgetRef ref, ConversationShare share) async {
@@ -101,83 +102,30 @@ Future<void> showShareCodeResultSheet(BuildContext context, WidgetRef ref, Conve
   );
 }
 
-/// Manual entry modal for pasting a `#xns...xns#` share snippet (handy on desktop or iOS).
-Future<void> showPasteShareCodeSheet(BuildContext context, WidgetRef ref) async {
-  final ctrl = TextEditingController();
-  try {
-    final clip = await Clipboard.getData(Clipboard.kTextPlain);
-    if (XnShareCodec.inspectText(clip?.text, allowBareCode: true).hasShare) {
-      ctrl.text = clip!.text!.trim();
-    }
-  } catch (_) {}
-  if (!context.mounted) return;
-
-  final submitted = await showAdaptiveModal<String>(
-    context: context,
-    maxWidth: 460,
-    builder: (ctx) {
-      final p = ctx.pal;
-      return Padding(
-        padding: EdgeInsets.fromLTRB(20, 4, 20, MediaQuery.viewInsetsOf(ctx).bottom + 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text('打开分享口令', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            Text('粘贴包含 #xns...xns# 的分享文字，即可预览并导入对话继续聊', style: TextStyle(fontSize: 13.5, color: p.muted)),
-            const SizedBox(height: 14),
-            TextField(
-              controller: ctrl,
-              autofocus: true,
-              minLines: 2,
-              maxLines: 5,
-              style: const TextStyle(fontSize: 15, height: 1.5),
-              decoration: InputDecoration(
-                hintText: '粘贴分享文字或口令…',
-                fillColor: p.surfaceAlt,
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-              ),
-            ),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-              child: const Text('解析并预览'),
-            ),
-          ],
-        ),
-      );
-    },
-  );
-  ctrl.dispose();
-  if (submitted == null || submitted.isEmpty || !context.mounted) return;
-  final ins = XnShareCodec.inspectText(submitted, allowBareCode: true);
-  if (!ins.hasShare) {
-    showToast(context, '没有识别到有效的分享口令（#xns...xns#）');
-    return;
-  }
-  await openShareCodePreview(context, ref, ins.code!, silent: false);
-}
-
-/// Silently inspects the clipboard when the signed-in app resumes.
+/// Silently inspects the clipboard when the signed-in app opens or resumes.
 Future<void> inspectClipboardForShareCode(BuildContext context, WidgetRef ref) async {
-  if (_sharePreviewOpen) return;
+  if (_sharePreviewOpen || _inspectingClipboard) return;
   if (ref.read(sessionProvider).api == null) return;
-  String? raw;
+  _inspectingClipboard = true;
   try {
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    raw = data?.text;
-  } catch (_) {
-    return;
+    String? raw;
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      raw = data?.text;
+    } catch (_) {
+      return;
+    }
+    final ins = XnShareCodec.inspectText(raw);
+    if (!ins.hasShare) return;
+    final code = ins.code!;
+    if (ShareCodeGuard.wasGeneratedLocally(code)) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (ShareCodeGuard.wasConsumed(prefs, code)) return;
+    if (!context.mounted) return;
+    await openShareCodePreview(context, ref, code, silent: true, prefs: prefs);
+  } finally {
+    _inspectingClipboard = false;
   }
-  final ins = XnShareCodec.inspectText(raw);
-  if (!ins.hasShare) return;
-  final code = ins.code!;
-  if (ShareCodeGuard.wasGeneratedLocally(code)) return;
-  final prefs = await SharedPreferences.getInstance();
-  if (ShareCodeGuard.wasConsumed(prefs, code)) return;
-  if (!context.mounted) return;
-  await openShareCodePreview(context, ref, code, silent: true, prefs: prefs);
 }
 
 /// Fetches preview metadata for [code] and prompts the user to import and continue chatting.
