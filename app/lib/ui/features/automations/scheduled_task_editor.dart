@@ -218,6 +218,8 @@ class _ScheduledTaskEditorSheetState extends ConsumerState<_ScheduledTaskEditorS
     }
   }
 
+  static const _unpinnedTargetKey = '__current_bound__';
+
   String _pinKey(PinnedComponent pin) =>
       pin.effectiveEntityId.isNotEmpty ? 'ent:${pin.effectiveEntityId}' : '${pin.messageId}|${pin.componentId}';
 
@@ -232,8 +234,11 @@ class _ScheduledTaskEditorSheetState extends ConsumerState<_ScheduledTaskEditorS
           pin.messageId == _targetMessageId &&
           pin.componentId == _targetComponentId;
     }).firstOrNull;
-    final currentTargetKey = matchedPin != null ? _pinKey(matchedPin) : '';
     final hasAnyTarget = _targetEntityId.isNotEmpty || (_targetMessageId.isNotEmpty && _targetComponentId.isNotEmpty);
+    final hasUnpinnedTarget = matchedPin == null && hasAnyTarget;
+    final currentTargetKey = matchedPin != null
+        ? _pinKey(matchedPin)
+        : (hasUnpinnedTarget ? _unpinnedTargetKey : '');
 
     return PopScope(
       canPop: !_saving,
@@ -401,11 +406,21 @@ class _ScheduledTaskEditorSheetState extends ConsumerState<_ScheduledTaskEditorS
                   Text('绑定要原地更新的首页卡片（选填）', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: p.muted)),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
+                    key: ValueKey(currentTargetKey),
                     initialValue: currentTargetKey,
                     isExpanded: true,
                     decoration: const InputDecoration(isDense: true),
                     items: [
                       const DropdownMenuItem(value: '', child: Text('不绑定（自动分析或首次运行时创建）')),
+                      if (hasUnpinnedTarget)
+                        const DropdownMenuItem(
+                          value: _unpinnedTargetKey,
+                          child: Text(
+                            '当前已绑定的卡片（未固定到首页）',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       for (final pin in pins)
                         DropdownMenuItem(
                           value: _pinKey(pin),
@@ -419,6 +434,7 @@ class _ScheduledTaskEditorSheetState extends ConsumerState<_ScheduledTaskEditorS
                     onChanged: _saving
                         ? null
                         : (v) => setState(() {
+                              if (v == _unpinnedTargetKey) return;
                               if (v == null || v.isEmpty) {
                                 _targetEntityId = '';
                                 _targetMessageId = '';

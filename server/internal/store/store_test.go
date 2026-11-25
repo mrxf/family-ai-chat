@@ -80,7 +80,7 @@ func TestMigrationsRepeatableAndPersistData(t *testing.T) {
 		}
 	}
 	var n int
-	if err := s.queryRow(t.Context(), "SELECT count(*) FROM schema_migrations").Scan(&n); err != nil || n != 19 {
+	if err := s.queryRow(t.Context(), "SELECT count(*) FROM schema_migrations").Scan(&n); err != nil || n != 20 {
 		t.Errorf("migration count=%d err=%v", n, err)
 	}
 	if err := s.Close(); err != nil {

@@ -67,7 +67,11 @@ func (s *Server) createScheduledTask(w http.ResponseWriter, r *http.Request) {
 	if tEnt != "" {
 		ent, err := s.Store.GetComponentEntity(r.Context(), tEnt, uid)
 		if err != nil {
-			writeErr(w, 400, "bad_target", "绑定的目标卡片不存在")
+			if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrComponentNotPinnable) {
+				writeErr(w, 400, "bad_target", "绑定的目标卡片不存在")
+			} else {
+				s.writeStoreErr(w, r, err)
+			}
 			return
 		}
 		if tMsg == "" {
@@ -77,7 +81,11 @@ func (s *Server) createScheduledTask(w http.ResponseWriter, r *http.Request) {
 	} else if tMsg != "" && tComp != "" {
 		ent, err := s.Store.EnsureComponentEntityForMessage(r.Context(), tMsg, uid, tComp, "")
 		if err != nil {
-			writeErr(w, 400, "bad_target", "绑定的目标卡片不存在")
+			if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrComponentNotPinnable) {
+				writeErr(w, 400, "bad_target", "绑定的目标卡片不存在")
+			} else {
+				s.writeStoreErr(w, r, err)
+			}
 			return
 		}
 		tEnt = ent.ID
@@ -145,7 +153,11 @@ func (s *Server) updateScheduledTask(w http.ResponseWriter, r *http.Request) {
 		eid := strings.TrimSpace(*tEnt)
 		ent, err := s.Store.GetComponentEntity(r.Context(), eid, uid)
 		if err != nil {
-			writeErr(w, 400, "bad_target", "绑定的目标卡片不存在")
+			if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrComponentNotPinnable) {
+				writeErr(w, 400, "bad_target", "绑定的目标卡片不存在")
+			} else {
+				s.writeStoreErr(w, r, err)
+			}
 			return
 		}
 		tEnt = &eid
@@ -157,7 +169,11 @@ func (s *Server) updateScheduledTask(w http.ResponseWriter, r *http.Request) {
 		strings.TrimSpace(*tMsg) != "" && strings.TrimSpace(*tComp) != "" {
 		ent, err := s.Store.EnsureComponentEntityForMessage(r.Context(), strings.TrimSpace(*tMsg), uid, strings.TrimSpace(*tComp), "")
 		if err != nil {
-			writeErr(w, 400, "bad_target", "绑定的目标卡片不存在")
+			if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrComponentNotPinnable) {
+				writeErr(w, 400, "bad_target", "绑定的目标卡片不存在")
+			} else {
+				s.writeStoreErr(w, r, err)
+			}
 			return
 		}
 		eid := ent.ID

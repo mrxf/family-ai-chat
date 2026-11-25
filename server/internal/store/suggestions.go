@@ -88,7 +88,7 @@ func (s *Store) CountNewUserActivitySince(ctx context.Context, userID string, si
 		`SELECT COUNT(DISTINCT m.conversation_id), COUNT(*), COALESCE(MAX(m.created_at), 0)
 		 FROM messages m
 		 JOIN conversations c ON c.id = m.conversation_id
-		 WHERE c.user_id = ? AND c.private = FALSE AND m.role = 'user' AND m.created_at > ?`,
+		 WHERE c.user_id = ? AND c.private = 0 AND m.role = 'user' AND m.created_at > ?`,
 		userID, sinceMS,
 	).Scan(&newConvs, &newMsgs, &latestMsgAt)
 	return
@@ -103,7 +103,7 @@ func (s *Store) ListRecentConversationDigests(ctx context.Context, userID string
 	rows, err := s.query(ctx,
 		`SELECT id, title, updated_at
 		 FROM conversations
-		 WHERE user_id = ? AND private = FALSE AND updated_at >= ?
+		 WHERE user_id = ? AND private = 0 AND updated_at >= ?
 		 ORDER BY updated_at DESC
 		 LIMIT ?`,
 		userID, sinceMS, limit,

@@ -278,44 +278,20 @@ class _ChatComponentActionShellState extends ConsumerState<ChatComponentActionSh
               child: IgnorePointer(
                 ignoring: !showBar,
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 5, left: 4, right: 4),
-                  child: Wrap(
-                    alignment: WrapAlignment.end,
-                    spacing: 6,
-                    runSpacing: 4,
+                  padding: const EdgeInsets.only(top: 2, right: 2),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      _InlineActionPill(
+                      _HomeIconAction(
                         icon: AppIcons.pin,
-                        label: isPinned ? '已固定' : '固定到首页',
-                        accent: isPinned,
-                        tooltip: isPinned ? '点击取消固定' : '固定到首页看板',
+                        color: isPinned ? context.pal.accent : null,
+                        tooltip: isPinned ? '已固定到首页（点击取消）' : '固定到首页',
                         onTap: () => _togglePin(isPinned, activeComp),
                       ),
-                      if (widget.component.hasEntity)
-                        _InlineActionPill(
-                          icon: AppIcons.history,
-                          label: 'v$latestVer',
-                          tooltip: '查看卡片版本历史（最多保留最近 10 个版本）',
-                          onTap: () => _openVersionHistory(activeComp),
-                        ),
-                      if (isComponentDirectlyEditable(activeComp))
-                        _InlineActionPill(
-                          icon: AppIcons.edit,
-                          label: '编辑',
-                          tooltip: '手动修改卡片内容',
-                          onTap: () => _editComponent(activeComp),
-                        ),
-                      _InlineActionPill(
-                        icon: AppIcons.timer,
-                        label: '定时更新',
-                        tooltip: '为此卡片设置 AI 定时自动更新',
-                        onTap: () => _scheduleUpdate(activeComp),
-                      ),
-                      _InlineActionPill(
-                        icon: AppIcons.chatBubble,
-                        label: '引用提问',
-                        tooltip: '基于这张卡片开启新对话',
-                        onTap: () => _quoteInNewChat(activeComp),
+                      _HomeIconAction(
+                        icon: AppIcons.more,
+                        tooltip: '更多操作（版本历史 / 编辑 / 定时更新 / 引用提问 / 删除）',
+                        onTap: () => _openMenu(isPinned, activeComp),
                       ),
                     ],
                   ),
@@ -654,64 +630,12 @@ class HomePinnedComponentShell extends ConsumerWidget {
   }
 }
 
-class _InlineActionPill extends StatelessWidget {
-  const _InlineActionPill({
-    required this.icon,
-    required this.label,
-    required this.tooltip,
-    required this.onTap,
-    this.accent = false,
-  });
-
-  final IconData icon;
-  final String label;
-  final String tooltip;
-  final VoidCallback onTap;
-  final bool accent;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    return Tooltip(
-      message: tooltip,
-      child: Pressable(
-        scale: 0.96,
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-          decoration: BoxDecoration(
-            color: accent ? p.accentSoft : p.surfaceAlt.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: accent ? p.accent.withValues(alpha: 0.28) : p.line.withValues(alpha: 0.65),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AppIcon(icon, size: 13.5, color: accent ? p.accent : p.muted),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: accent ? FontWeight.w600 : FontWeight.w500,
-                  color: accent ? p.accent : p.muted,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _HomeIconAction extends StatelessWidget {
-  const _HomeIconAction({required this.icon, required this.tooltip, required this.onTap});
+  const _HomeIconAction({required this.icon, required this.tooltip, required this.onTap, this.color});
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -723,7 +647,7 @@ class _HomeIconAction extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(6),
-          child: AppIcon(icon, size: 16, color: p.muted),
+          child: AppIcon(icon, size: 16, color: color ?? p.muted),
         ),
       ),
     );

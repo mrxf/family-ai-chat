@@ -6,7 +6,7 @@ CREATE TABLE components (
   current_version             INTEGER NOT NULL DEFAULT 1,
   data                        TEXT NOT NULL,
   state                       TEXT NOT NULL DEFAULT '',
-  private                     BOOLEAN NOT NULL DEFAULT FALSE,
+  private                     INTEGER NOT NULL DEFAULT 0,
   origin_conversation_id      TEXT NOT NULL DEFAULT '',
   origin_message_id           TEXT NOT NULL DEFAULT '',
   origin_component_id         TEXT NOT NULL DEFAULT '',

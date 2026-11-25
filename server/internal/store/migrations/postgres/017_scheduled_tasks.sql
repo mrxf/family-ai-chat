@@ -9,7 +9,7 @@ CREATE TABLE scheduled_tasks (
  day_of_month INTEGER NOT NULL DEFAULT 1,
  interval_minutes INTEGER NOT NULL DEFAULT 0,
  run_at BIGINT NOT NULL DEFAULT 0,
- enabled BOOLEAN NOT NULL DEFAULT TRUE,
+ enabled INTEGER NOT NULL DEFAULT 1,
  model_id TEXT,
  target_message_id TEXT NOT NULL DEFAULT '',
  target_component_id TEXT NOT NULL DEFAULT '',
