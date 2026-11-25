@@ -273,21 +273,27 @@ class _FeedRow extends StatelessWidget {
                     const SizedBox(height: 5),
                     Row(
                       children: [
-                        if (source.isNotEmpty)
-                          Flexible(
-                            child: Text(
-                              source,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontSize: 11.5, color: p.faint),
-                            ),
+                        Expanded(
+                          child: Row(
+                            children: [
+                              if (source.isNotEmpty)
+                                Flexible(
+                                  child: Text(
+                                    source,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(fontSize: 11.5, color: p.faint),
+                                  ),
+                                ),
+                              if (source.isNotEmpty && pub.isNotEmpty)
+                                Text(' · ', style: TextStyle(fontSize: 11.5, color: p.faint)),
+                              if (pub.isNotEmpty)
+                                Text(pub, style: TextStyle(fontSize: 11.5, color: p.faint)),
+                            ],
                           ),
-                        if (source.isNotEmpty && pub.isNotEmpty)
-                          Text(' · ', style: TextStyle(fontSize: 11.5, color: p.faint)),
-                        if (pub.isNotEmpty)
-                          Text(pub, style: TextStyle(fontSize: 11.5, color: p.faint)),
-                        const Spacer(),
-                        if (onOpenUrl != null)
+                        ),
+                        if (onOpenUrl != null) ...[
+                          const SizedBox(width: 8),
                           Tooltip(
                             message: '打开原链接',
                             child: Pressable(
@@ -303,6 +309,7 @@ class _FeedRow extends StatelessWidget {
                               ),
                             ),
                           ),
+                        ],
                       ],
                     ),
                   ],

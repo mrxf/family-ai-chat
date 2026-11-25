@@ -342,8 +342,8 @@ const componentsSkillSOP = `## 对话可视化卡片组件与管理规范
 
 你拥有 6 个可视化卡片渲染工具与 5 个卡片管理工具。卡片既可穿插在回复中展示，也可固定到用户首页看板，并支持后续**原地修改更新**。
 
-### 1. 六大卡片组件适用场景
-1. **天气卡片 (` + "`show_weather`" + `)**：纯展示组件，实时/未来天气须先调 ` + "`web_search`" + ` 查证；日常简单查询优先设 ` + "`compact: true`" + `。
+### 1. 六大卡片组件适用场景（天然契合时主动使用，普通聊天不要硬凑）
+1. **天气卡片 (` + "`show_weather`" + `)**：纯展示组件，实时/未来天气须先调 ` + "`web_search`" + ` 查证（可与 ` + "`read_skill`" + ` 同轮并发）。查单日简单天气优先设 ` + "`compact: true`" + `；查未来 2～7 天天气设 ` + "`compact: false`" + ` 并填入 ` + "`forecast`" + `，**不要用 Markdown 表格重复画天气预报**。
 2. **互动清单 (` + "`show_todo`" + `)**：待办事项、采购单、打包清单、执行步骤，用户可勾选并持久化。
 3. **动态资讯/列表卡片 (` + "`show_feed`" + `)**：每日新闻简报、大模型动态、关注列表、滚动资讯汇总（支持序号展示、标签、来源、可点击原链接与更新时间，最适合固定到首页并由定时任务持续更新）。
 4. **数据图表 (` + "`show_chart`" + `)**：折线图 ` + "`line`" + `、柱状图 ` + "`bar`" + `、环形图 ` + "`pie`" + `。
@@ -387,7 +387,7 @@ func (s *Service) buildComponentsSkill() skills.Definition {
 		Key:          skillKeyComponents,
 		Title:        "对话可视化卡片组件",
 		Description:  "创建与原地管理可视化卡片：天气卡、互动待办清单、动态资讯/新闻列表卡、折线/柱状/环形图表、互动答题卡与指标看板，支持查询、原地更新内容、滚动更新前几条、固定到首页及取消固定/删除。",
-		WhenToUse:    "当需要展示天气、待办清单(Todo)、新闻/资讯/动态列表(Feed)、图表(Chart)、测验(Quiz)、指标(Metrics)卡片，或者需要查看、原地修改/更新、固定/取消固定/删除已有组件卡片时",
+		WhenToUse:    "无需等用户主动说“用组件”，遇到天然适合卡片的场景时主动优先激活（可与 web_search 同轮并发调用）：查今天或未来几天天气（用天气卡替代 Markdown 天气表）、列可勾选待办/采购/打包清单(Todo)、汇总多条新闻/资讯动态(Feed)、展示趋势或对比图表(Chart)、提炼体检/算账/热量等核心指标(Metrics)、出互动选择题(Quiz)，以及查看、原地更新、固定/取消固定/删除已有组件卡片时",
 		LeaseSummary: "「对话可视化卡片组件 (ui_components)」已解锁，支持展示卡片及调用 list_components / update_component / pin_component / unpin_component / delete_component 管理已有卡片。",
 		ToolHints: []skills.ToolHint{
 			{Name: showWeatherTool.Name, Brief: "插入天气预报卡片（需先用 web_search 查真实气象数据再填参展示）"},

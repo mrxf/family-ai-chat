@@ -211,6 +211,7 @@ func FormatCatalog(defs []Definition) string {
 	b.WriteString("\n\n# 技能与扩展工具目录\n")
 	b.WriteString("除常驻工具外，你还拥有以下按需加载的领域技能。默认状态下，技能专属工具尚未挂载到当前可用工具列表中。\n")
 	b.WriteString("- 当用户的话题涉及某项技能的场景，或你需要使用该技能下披露的专属工具时，请先调用 `read_skill`（传入对应的 `skill_key`）。\n")
+	b.WriteString("- **主动择优呈现**：若回答内容天然契合目录中的原生交互组件，无需等用户开口要求，主动优先调用对应技能用组件呈现（避免用 Markdown 表格或冗长列表硬凑），普通聊天与纯文字说明则不要硬用组件；若同时需要联网查数据，可与 `web_search` 同轮并发调用 `read_skill`。\n")
 	b.WriteString("- 成功调用 `read_skill` 后，系统会返回该技能的完整操作指南与边界规范，并在下一步自动为你解锁对应的专属工具；未激活前请勿直接盲调未解锁的工具。\n\n")
 	b.WriteString("可用技能目录：\n")
 	for _, d := range defs {
