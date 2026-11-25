@@ -1,0 +1,18 @@
+app/lib/ui/features/chat/components/feed_card.dart
+  h_8f297825d1fe21 276-292,294-296,312
+server/internal/chat/tools_components.go
+  h_8f297825d1fe21 345-346,390
+server/internal/skills/skills.go
+  h_8f297825d1fe21 214
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "a210532b972788dcc11bc7a1a8029aac8e6817a6",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
