@@ -1,0 +1,14 @@
+app/pubspec.yaml
+  h_8f297825d1fe21 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "19bedbce5c41ba64745de42725084733fd0a9ffd",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
