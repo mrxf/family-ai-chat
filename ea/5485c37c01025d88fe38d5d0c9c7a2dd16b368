@@ -1,0 +1,30 @@
+app/lib/ui/features/automations/scheduled_task_editor.dart
+  h_8f297825d1fe21 221-222,238-241,409,415-423,437
+app/lib/ui/features/chat/components/component_card_shell.dart
+  h_8f297825d1fe21 281-283,285,287-288,291-294,634,638,650
+server/internal/api/scheduled_tasks.go
+  h_8f297825d1fe21 70-74,84-88,156-160,172-176
+server/internal/store/migrations/postgres/017_scheduled_tasks.sql
+  h_8f297825d1fe21 12
+server/internal/store/migrations/postgres/018_live_components.sql
+  h_8f297825d1fe21 9
+server/internal/store/migrations/postgres/020_fix_column_types.sql
+  h_8f297825d1fe21 1-31
+server/internal/store/migrations/sqlite/020_fix_column_types.sql
+  h_8f297825d1fe21 1-2
+server/internal/store/store_test.go
+  h_8f297825d1fe21 83
+server/internal/store/suggestions.go
+  h_8f297825d1fe21 91,106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "ea5485c37c01025d88fe38d5d0c9c7a2dd16b368",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
