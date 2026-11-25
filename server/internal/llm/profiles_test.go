@@ -6,57 +6,59 @@ import (
 )
 
 func TestModelProfileHierarchyAndVersions(t *testing.T) {
-	// 1. Anthropic: Opus > Sonnet > Haiku, and Opus 5.5 > 5.0 > 4.7 > 4.6.
+	// 1. Anthropic: Fable > Opus > Sonnet > Haiku, and Opus 5.5 > 5.0 > 4.7 > 4.6, Fable 5.2 > 5.0.
+	fable50 := ProfileModel("claude-fable-5.0", "Claude Fable 5.0")
+	fable52 := ProfileModel("anthropic/claude-fable-5.2", "Claude Fable 5.2")
 	opus46 := ProfileModel("anthropic/claude-opus-4.6", "Claude Opus 4.6")
 	opus47 := ProfileModel("claude-opus-4-7", "Opus 4.7")
 	opus50 := ProfileModel("opus-5.0", "Opus 5.0")
 	opus55 := ProfileModel("claude-opus-5-5-20261001", "Claude Opus 5.5")
 	sonnet55 := ProfileModel("claude-sonnet-5.5", "Claude Sonnet 5.5")
-	haiku45 := ProfileModel("claude-haiku-4-5", "Claude Haiku 4.5")
+	haiku55 := ProfileModel("claude-haiku-5.5", "Claude Haiku 5.5")
 
+	if fable52.Vendor != "anthropic" || !(fable52.RankScore() > fable50.RankScore() && fable50.RankScore() > opus55.RankScore()) {
+		t.Fatalf("expected Anthropic Fable 5.2 > Fable 5.0 > Opus 5.5, got vendor=%s %d > %d > %d",
+			fable52.Vendor, fable52.RankScore(), fable50.RankScore(), opus55.RankScore())
+	}
 	if !(opus55.RankScore() > opus50.RankScore() && opus50.RankScore() > opus47.RankScore() && opus47.RankScore() > opus46.RankScore()) {
 		t.Fatalf("expected Opus 5.5 > 5.0 > 4.7 > 4.6, got %d > %d > %d > %d",
 			opus55.RankScore(), opus50.RankScore(), opus47.RankScore(), opus46.RankScore())
 	}
-	if !(opus46.RankScore() > sonnet55.RankScore() && sonnet55.RankScore() > haiku45.RankScore()) {
+	if !(opus46.RankScore() > sonnet55.RankScore() && sonnet55.RankScore() > haiku55.RankScore()) {
 		t.Fatalf("expected Opus > Sonnet > Haiku, got opus=%d sonnet=%d haiku=%d",
-			opus46.RankScore(), sonnet55.RankScore(), haiku45.RankScore())
+			opus46.RankScore(), sonnet55.RankScore(), haiku55.RankScore())
 	}
 	if opus55.Version.String() != "5.5" || opus46.Version.String() != "4.6" {
 		t.Fatalf("opus versions: 5.5=%q 4.6=%q", opus55.Version.String(), opus46.Version.String())
 	}
 
-	// 2. Google Gemini: Carbon > Pro > Flash > Hydrogen.
+	// 2. Google Gemini 4 (Periodic Table): Carbon > Neon > Argon > Hydrogen > Helium.
 	carbon := ProfileModel("gemini-4-carbon", "Gemini 4 Carbon")
-	pro := ProfileModel("gemini-3-pro", "Gemini 3 Pro")
-	flash := ProfileModel("gemini-3-flash", "Gemini 3 Flash")
-	hydrogen := ProfileModel("gemini-4-hydrogen", "Gemini 氢气模型")
+	neon := ProfileModel("gemini-4-neon", "Gemini 4 Neon")
+	argon := ProfileModel("gemini-4-argon", "Gemini 4 Argon")
+	hydrogen := ProfileModel("gemini-4-hydrogen", "Gemini 4 Hydrogen")
+	helium := ProfileModel("gemini-4-helium", "Gemini 4 Helium")
 
-	if !(carbon.RankScore() > pro.RankScore() && pro.RankScore() > flash.RankScore() && flash.RankScore() > hydrogen.RankScore()) {
-		t.Fatalf("expected Carbon > Pro > Flash > Hydrogen, got %d > %d > %d > %d",
-			carbon.RankScore(), pro.RankScore(), flash.RankScore(), hydrogen.RankScore())
+	if !(carbon.RankScore() > neon.RankScore() && neon.RankScore() > argon.RankScore() && argon.RankScore() > hydrogen.RankScore() && hydrogen.RankScore() > helium.RankScore()) {
+		t.Fatalf("expected Carbon > Neon > Argon > Hydrogen > Helium, got %d > %d > %d > %d > %d",
+			carbon.RankScore(), neon.RankScore(), argon.RankScore(), hydrogen.RankScore(), helium.RankScore())
 	}
 	if !carbon.HasDomain(DomainMedical) || !carbon.HasDomain(DomainResearch) {
 		t.Fatalf("carbon should cover medical & research: %+v", carbon)
 	}
-	if hydrogen.Tier != TierLite || !hydrogen.HasDomain(DomainHomework) {
-		t.Fatalf("hydrogen should be TierLite with homework/daily: %+v", hydrogen)
+	if hydrogen.Tier != TierFast || !hydrogen.HasDomain(DomainHomework) {
+		t.Fatalf("hydrogen should be TierFast with homework/daily: %+v", hydrogen)
 	}
 
-	// 3. OpenAI: Fable 5.2 > Fable 5.0, Astra / Sol > Terra > Mini > Nano.
-	fable50 := ProfileModel("fable-5.0", "Fable 5.0")
-	fable52 := ProfileModel("openai/fable-5.2", "Fable 5.2")
-	astra := ProfileModel("gpt-6-astra", "GPT-6 Astra")
-	terra := ProfileModel("gpt-6.1-terra", "GPT-6.1 Terra")
-	mini := ProfileModel("gpt-5-mini", "GPT-5 Mini")
-	nano := ProfileModel("gpt-5-nano", "GPT-5 Nano")
+	// 3. OpenAI GPT-6: Astra > Sol > Terra > Luna.
+	astra62 := ProfileModel("gpt-6.2-astra", "GPT-6.2 Astra")
+	sol62 := ProfileModel("gpt-6.2-sol", "GPT-6.2 Sol")
+	terra61 := ProfileModel("gpt-6.1-terra", "GPT-6.1 Terra")
+	luna62 := ProfileModel("gpt-6.2-luna", "GPT-6.2 Luna")
 
-	if !(fable52.RankScore() > fable50.RankScore()) {
-		t.Fatalf("expected Fable 5.2 > 5.0, got %d vs %d", fable52.RankScore(), fable50.RankScore())
-	}
-	if !(astra.RankScore() > terra.RankScore() && terra.RankScore() > mini.RankScore() && mini.RankScore() > nano.RankScore()) {
-		t.Fatalf("expected Astra > Terra > Mini > Nano, got %d > %d > %d > %d",
-			astra.RankScore(), terra.RankScore(), mini.RankScore(), nano.RankScore())
+	if !(astra62.RankScore() > sol62.RankScore() && sol62.RankScore() > terra61.RankScore() && terra61.RankScore() > luna62.RankScore()) {
+		t.Fatalf("expected Astra > Sol > Terra > Luna, got %d > %d > %d > %d",
+			astra62.RankScore(), sol62.RankScore(), terra61.RankScore(), luna62.RankScore())
 	}
 
 	// 4. Open-source & domestic flagship models: DeepSeek, Kimi, Qwen, Bailu, GLM, Llama.
@@ -91,5 +93,23 @@ func TestModelProfileHierarchyAndVersions(t *testing.T) {
 	bailu := ProfileModel("bailu-2", "Bailu 2")
 	if bailu.Vendor != "bailu" || !strings.Contains(bailu.Summary(), "Bailu") {
 		t.Fatalf("bailu profile=%+v", bailu)
+	}
+
+	// 5. Same-tier vendor preference: Google Gemini > Anthropic Claude > OpenAI GPT.
+	if !(carbon.RankScore() > fable52.RankScore() && fable52.RankScore() > opus55.RankScore() && opus55.RankScore() > astra62.RankScore()) {
+		t.Fatalf("expected flagship Gemini 4 Carbon > Claude Fable 5.2 > Claude Opus 5.5 > GPT-6.2 Astra, got %d > %d > %d > %d",
+			carbon.RankScore(), fable52.RankScore(), opus55.RankScore(), astra62.RankScore())
+	}
+	if !(neon.RankScore() > sonnet55.RankScore() && sonnet55.RankScore() > sol62.RankScore()) {
+		t.Fatalf("expected strong Gemini 4 Neon > Claude Sonnet 5.5 > GPT-6.2 Sol, got %d > %d > %d",
+			neon.RankScore(), sonnet55.RankScore(), sol62.RankScore())
+	}
+	if !(hydrogen.RankScore() > haiku55.RankScore() && haiku55.RankScore() > terra61.RankScore()) {
+		t.Fatalf("expected fast Gemini 4 Hydrogen > Claude Haiku 5.5 > GPT-6.1 Terra, got %d > %d > %d",
+			hydrogen.RankScore(), haiku55.RankScore(), terra61.RankScore())
+	}
+	if !(helium.RankScore() > luna62.RankScore()) {
+		t.Fatalf("expected lite Gemini 4 Helium > GPT-6.2 Luna, got %d > %d",
+			helium.RankScore(), luna62.RankScore())
 	}
 }

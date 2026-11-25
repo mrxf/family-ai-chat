@@ -2,7 +2,6 @@ package llm
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -11,11 +10,11 @@ import (
 // Maintained centrally on the server so admins do not have to configure every
 // model's relative strength by hand, while admin routing_note always takes precedence.
 const (
-	TierLite     = 1 // 极速轻量：Hydrogen / Flash-Lite / Nano / 7B-8B，秒回极省钱，适合寒暄、基础算术、简单翻译
-	TierFast     = 2 // 快速日常：Flash / Mini / Haiku / DeepSeek-Flash / Turbo，适合日常聊天、中小学作业、普通问答
+	TierLite     = 1 // 极速轻量：Gemini Helium/Lithium / GPT Luna·Nano / 7B-8B，秒回极省钱，适合寒暄、基础算术、简单翻译
+	TierFast     = 2 // 快速日常：Gemini Hydrogen / Claude Haiku / GPT Terra·Mini / DeepSeek-Flash / Turbo，适合日常聊天、中小学作业、普通问答
 	TierBalanced = 3 // 均衡主力：DeepSeek-V3/Chat / Bailu / Kimi-K2 / Qwen-Plus / GLM-4.6 / GPT-4o，综合性价比高
-	TierStrong   = 4 // 强力进阶：Claude Sonnet / GPT-5·6·Terra / Gemini Pro / DeepSeek-R1 / Kimi-K3 / Qwen3-Max，适合复杂分析与长文
-	TierFlagship = 5 // 顶级旗舰：Gemini Carbon / Claude Opus / OpenAI Fable·Astra·Sol·Pro / o3，适合严肃医疗、科研物理、硬核推理
+	TierStrong   = 4 // 强力进阶：Gemini Neon·Argon / Claude Sonnet / GPT Sol / DeepSeek-R1 / Kimi-K3 / Qwen3-Max，适合复杂分析与长文
+	TierFlagship = 5 // 顶级旗舰：Gemini Carbon / Claude Fable·Opus / GPT Astra / o3，适合严肃医疗、科研物理、硬核推理
 )
 
 // Domain tags describing what kinds of family questions a model excels at.
@@ -91,8 +90,23 @@ func TierLabel(tier int) string {
 	}
 }
 
+// VendorPriority defines the default preference among same-tier models:
+// Google Gemini > Anthropic Claude > OpenAI GPT > other vendors.
+func VendorPriority(vendor string) int {
+	switch strings.ToLower(strings.TrimSpace(vendor)) {
+	case "google":
+		return 3
+	case "anthropic":
+		return 2
+	case "openai":
+		return 1
+	default:
+		return 0
+	}
+}
+
 // RankScore produces a composite capability score combining tier, sub-rank and version,
-// so Opus > Sonnet > Haiku and Opus 5.5 > 5.0 > 4.7 > 4.6 hold deterministically.
+// so Opus > Sonnet > Haiku, Opus 5.5 > 5.0 > 4.7 > 4.6, and same-tier Gemini > Anthropic > OpenAI hold deterministically.
 func (p ModelProfile) RankScore() int {
 	return p.Tier*1_000_000 + p.SubRank*10_000 + min(p.Version.Score(), 9999)
 }
@@ -126,16 +140,6 @@ func (p ModelProfile) HasDomain(d string) bool {
 	return false
 }
 
-var (
-	reStripParamTokens = regexp.MustCompile(`(?i)(?:^|[-_])(?:\d+x\d+b|a\d+b|\d+(?:\.\d+)?b|\d+k|\d+m)(?:$|[-_])`)
-	reParamSize        = regexp.MustCompile(`(?i)(?:^|[-_/])(\d+)b(?:$|[-_/:])`)
-	reMoETotalParam    = regexp.MustCompile(`(?i)(?:^|[-_/])(\d+)x(\d+)b(?:$|[-_/:])`)
-	reVersionDotOrDash = regexp.MustCompile(`(?:^|[-_a-z])(\d{1,2})(?:[.\-](\d{1,2}))?(?:$|[-_a-z])`)
-	reKimiVersion      = regexp.MustCompile(`(?i)kimi[-_]?k(\d{1,2})(?:[.\-](\d{1,2}))?`)
-	reDeepSeekSeries   = regexp.MustCompile(`(?i)deepseek[-_]?([vr])(\d{1,2})(?:[.\-](\d{1,2}))?`)
-	reOSeriesVersion   = regexp.MustCompile(`(?i)^o(\d{1,2})(?:[.\-](\d{1,2}))?`)
-)
-
 // ProfileModel infers the built-in ModelProfile from an upstream model ID and optional display name.
 func ProfileModel(upstreamID, displayName string) ModelProfile {
 	norm := normalizeModelKey(upstreamID)
@@ -149,18 +153,32 @@ func ProfileModel(upstreamID, displayName string) ModelProfile {
 		params = parseParamBillions(disp)
 	}
 
-	// 1. Anthropic / Claude family (御三家之一): Opus > Sonnet > Haiku, higher version > lower version.
-	if hasWord(combined, "claude", "anthropic", "opus", "sonnet", "haiku") {
-		ver := extractFamilyVersion(norm, "claude", "opus", "sonnet", "haiku")
+	// 1. Anthropic / Claude family (御三家之一): Fable/Mythos > Opus > Sonnet > Haiku, higher version > lower version.
+	if hasWord(combined, "claude", "anthropic", "fable", "mythos", "opus", "sonnet", "haiku") {
+		ver := extractFamilyVersion(norm, "claude", "fable", "mythos", "opus", "sonnet", "haiku")
 		if !ver.Known() && disp != "" {
-			ver = extractFamilyVersion(disp, "claude", "opus", "sonnet", "haiku")
+			ver = extractFamilyVersion(disp, "claude", "fable", "mythos", "opus", "sonnet", "haiku")
 		}
 		switch {
+		case strings.Contains(combined, "fable") || strings.Contains(combined, "mythos"):
+			label := "Claude Fable"
+			fk := "claude:fable"
+			if strings.Contains(combined, "mythos") {
+				label = "Claude Mythos"
+				fk = "claude:mythos"
+			}
+			return ModelProfile{
+				Vendor: "anthropic", FamilyKey: fk, SeriesLabel: label,
+				HierarchyHint: "Anthropic 超旗舰深度推理模型，强于 Opus / Sonnet / Haiku",
+				Tier:          TierFlagship, SubRank: 95, Version: ver,
+				Strengths: "超长链路深度推理、硬核科研与物理数理推导、疑难问题拆解与医疗/法律专业分析",
+				Domains:   []string{DomainReasoning, DomainResearch, DomainMedical, DomainWriting, DomainCoding},
+			}
 		case strings.Contains(combined, "opus"):
 			return ModelProfile{
 				Vendor: "anthropic", FamilyKey: "claude:opus", SeriesLabel: "Claude Opus",
 				HierarchyHint: "强于 Sonnet 与 Haiku，同系版本越高越强",
-				Tier:          TierFlagship, SubRank: 92, Version: ver,
+				Tier:          TierFlagship, SubRank: 93, Version: ver,
 				Strengths: "复杂深度推理、疑难问题拆解、严肃长文写作与润色、医疗/法律/技术方案分析",
 				Domains:   []string{DomainReasoning, DomainWriting, DomainResearch, DomainMedical, DomainCoding},
 			}
@@ -168,7 +186,7 @@ func ProfileModel(upstreamID, displayName string) ModelProfile {
 			return ModelProfile{
 				Vendor: "anthropic", FamilyKey: "claude:haiku", SeriesLabel: "Claude Haiku",
 				HierarchyHint: "轻量高速版，成本低速度快",
-				Tier:          TierFast, SubRank: 48, Version: ver,
+				Tier:          TierFast, SubRank: 54, Version: ver,
 				Strengths: "日常简短问答、快速翻译、文字整理与简单闲聊",
 				Domains:   []string{DomainDaily, DomainHomework},
 			}
@@ -176,57 +194,88 @@ func ProfileModel(upstreamID, displayName string) ModelProfile {
 			return ModelProfile{
 				Vendor: "anthropic", FamilyKey: "claude:sonnet", SeriesLabel: "Claude Sonnet",
 				HierarchyHint: "主力均衡版，强于 Haiku，次于 Opus",
-				Tier:          TierStrong, SubRank: 78, Version: ver,
+				Tier:          TierStrong, SubRank: 82, Version: ver,
 				Strengths: "自然细腻的中文写作、日常复杂问答、文章总结、工作邮件与逻辑分析",
 				Domains:   []string{DomainWriting, DomainReasoning, DomainCoding, DomainDaily},
 			}
 		}
 	}
 
-	// 2. Google / Gemini & Gemma family (御三家之一 + 开源): Carbon/Ultra > Pro > Flash > Hydrogen/Lite.
-	if hasWord(combined, "gemini", "carbon", "hydrogen") {
-		ver := extractFamilyVersion(norm, "gemini", "carbon", "hydrogen")
+	// 2. Google / Gemini & Gemma family (御三家之一 + 开源):
+	// Gemini 4 元素周期表: Carbon > Neon > Argon > Hydrogen > Helium/Lithium (兼容旧代 Ultra > Pro > Flash > Lite).
+	if hasWord(combined, "gemini", "carbon", "neon", "argon", "hydrogen", "helium", "lithium") {
+		ver := extractFamilyVersion(norm, "gemini", "carbon", "neon", "argon", "hydrogen", "helium", "lithium")
 		if !ver.Known() && disp != "" {
-			ver = extractFamilyVersion(disp, "gemini", "carbon", "hydrogen")
+			ver = extractFamilyVersion(disp, "gemini", "carbon", "neon", "argon", "hydrogen", "helium", "lithium")
 		}
 		switch {
 		case strings.Contains(combined, "carbon"):
 			return ModelProfile{
 				Vendor: "google", FamilyKey: "gemini:carbon", SeriesLabel: "Gemini Carbon",
-				HierarchyHint: "Google 旗舰研究模型，强于 Pro / Flash / Hydrogen",
-				Tier:          TierFlagship, SubRank: 94, Version: ver,
+				HierarchyHint: "Google 顶级旗舰模型，强于 Neon / Argon / Hydrogen",
+				Tier:          TierFlagship, SubRank: 97, Version: ver,
 				Strengths: "医疗健康问题、体检报告与药品解读、深度科学研究、物理数理推导与复杂图片分析",
-				Domains:   []string{DomainMedical, DomainResearch, DomainReasoning, DomainLongContext},
-			}
-		case strings.Contains(combined, "hydrogen") || strings.Contains(combined, "氢气"):
-			return ModelProfile{
-				Vendor: "google", FamilyKey: "gemini:hydrogen", SeriesLabel: "Gemini Hydrogen",
-				HierarchyHint: "极速轻量氢气模型，响应极快成本极低",
-				Tier:          TierLite, SubRank: 32, Version: ver,
-				Strengths: "日常闲聊、中小学基础数学题与作业辅导、生活常识、简单翻译",
-				Domains:   []string{DomainDaily, DomainHomework},
+				Domains:   []string{DomainMedical, DomainResearch, DomainReasoning, DomainLongContext, DomainCoding},
 			}
 		case strings.Contains(combined, "ultra"):
 			return ModelProfile{
 				Vendor: "google", FamilyKey: "gemini:ultra", SeriesLabel: "Gemini Ultra",
-				HierarchyHint: "Google 超大旗舰模型",
-				Tier:          TierFlagship, SubRank: 90, Version: ver,
+				HierarchyHint: "Google 旗舰模型（旧代命名）",
+				Tier:          TierFlagship, SubRank: 96, Version: ver,
 				Strengths: "高难度多模态理解、科学研究与复杂推理",
 				Domains:   []string{DomainResearch, DomainReasoning, DomainMedical},
+			}
+		case strings.Contains(combined, "neon"):
+			return ModelProfile{
+				Vendor: "google", FamilyKey: "gemini:neon", SeriesLabel: "Gemini Neon",
+				HierarchyHint: "Google 强力进阶主力模型，兼顾深度推理与速度，次于 Carbon，强于 Hydrogen",
+				Tier:          TierStrong, SubRank: 86, Version: ver,
+				Strengths: "复杂知识问答、深度分析、长文档解读、多模态看图、写作润色与编程推理",
+				Domains:   []string{DomainReasoning, DomainResearch, DomainWriting, DomainLongContext, DomainMedical, DomainCoding},
+			}
+		case strings.Contains(combined, "argon"):
+			return ModelProfile{
+				Vendor: "google", FamilyKey: "gemini:argon", SeriesLabel: "Gemini Argon",
+				HierarchyHint: "Google 高效推理模型，次于 Carbon / Neon，强于 Hydrogen",
+				Tier:          TierStrong, SubRank: 84, Version: ver,
+				Strengths: "高性价比深度推理、长资料解读与复杂综合问答",
+				Domains:   []string{DomainReasoning, DomainResearch, DomainLongContext},
+			}
+		case strings.Contains(combined, "hydrogen") || strings.Contains(combined, "氢气"):
+			return ModelProfile{
+				Vendor: "google", FamilyKey: "gemini:hydrogen", SeriesLabel: "Gemini Hydrogen",
+				HierarchyHint: "Google 高速高性价比日常模型，次于 Carbon / Neon，适合高频日常使用",
+				Tier:          TierFast, SubRank: 57, Version: ver,
+				Strengths: "日常问答、拍照识图、中小学数学题与作业辅导、生活常识、菜谱与快速翻译",
+				Domains:   []string{DomainDaily, DomainHomework, DomainLongContext},
+			}
+		case strings.Contains(combined, "helium") || strings.Contains(combined, "lithium"):
+			label := "Gemini Helium"
+			fk := "gemini:helium"
+			if strings.Contains(combined, "lithium") {
+				label = "Gemini Lithium"
+				fk = "gemini:lithium"
+			}
+			return ModelProfile{
+				Vendor: "google", FamilyKey: fk, SeriesLabel: label,
+				HierarchyHint: "Google 极速超轻量元素模型，响应极快成本极低",
+				Tier:          TierLite, SubRank: 35, Version: ver,
+				Strengths: "快问快答、日常闲聊、基础翻译与简单常识",
+				Domains:   []string{DomainDaily, DomainHomework},
 			}
 		case strings.Contains(combined, "flash-lite") || strings.Contains(combined, "flash lite") ||
 			strings.Contains(combined, "-lite") || strings.Contains(combined, "-nano"):
 			return ModelProfile{
 				Vendor: "google", FamilyKey: "gemini:lite", SeriesLabel: "Gemini Lite",
-				HierarchyHint: "超轻量极速版",
-				Tier:          TierLite, SubRank: 30, Version: ver,
+				HierarchyHint: "超轻量极速版（旧代命名）",
+				Tier:          TierLite, SubRank: 32, Version: ver,
 				Strengths: "快问快答、日常闲聊、基础翻译与简单常识",
 				Domains:   []string{DomainDaily, DomainHomework},
 			}
 		case strings.Contains(combined, "flash"):
 			return ModelProfile{
 				Vendor: "google", FamilyKey: "gemini:flash", SeriesLabel: "Gemini Flash",
-				HierarchyHint: "高速高性价比多模态版，次于 Carbon / Pro",
+				HierarchyHint: "高速高性价比多模态版（旧代命名）",
 				Tier:          TierFast, SubRank: 56, Version: ver,
 				Strengths: "拍照识图、日常问答、孩子中小学作业辅导、旅游菜谱与长文档速读",
 				Domains:   []string{DomainDaily, DomainHomework, DomainLongContext},
@@ -234,8 +283,8 @@ func ProfileModel(upstreamID, displayName string) ModelProfile {
 		default: // pro or standard gemini
 			return ModelProfile{
 				Vendor: "google", FamilyKey: "gemini:pro", SeriesLabel: "Gemini Pro",
-				HierarchyHint: "Google 强力全能模型，强于 Flash / Hydrogen",
-				Tier:          TierStrong, SubRank: 80, Version: ver,
+				HierarchyHint: "Google 强力全能模型（旧代命名）",
+				Tier:          TierStrong, SubRank: 83, Version: ver,
 				Strengths: "复杂知识问答、多模态看图分析、长资料解读、数理与健康科普",
 				Domains:   []string{DomainResearch, DomainReasoning, DomainLongContext, DomainMedical},
 			}
@@ -244,9 +293,9 @@ func ProfileModel(upstreamID, displayName string) ModelProfile {
 
 	if strings.Contains(combined, "gemma") {
 		ver := extractFamilyVersion(norm, "gemma")
-		tier, sub := TierLite, 34
+		tier, sub := TierLite, 31
 		if params >= 20 {
-			tier, sub = TierFast, 50
+			tier, sub = TierFast, 55
 		}
 		return ModelProfile{
 			Vendor: "google", FamilyKey: "google:gemma", SeriesLabel: "Gemma",
@@ -257,21 +306,7 @@ func ProfileModel(upstreamID, displayName string) ModelProfile {
 		}
 	}
 
-	// 3. OpenAI / GPT / Fable / Astra / o-series family (御三家之一).
-	if strings.Contains(combined, "fable") {
-		ver := extractFamilyVersion(norm, "fable")
-		if !ver.Known() && disp != "" {
-			ver = extractFamilyVersion(disp, "fable")
-		}
-		return ModelProfile{
-			Vendor: "openai", FamilyKey: "openai:fable", SeriesLabel: "Fable",
-			HierarchyHint: "顶级数理与深度推理旗舰，同系版本越高越强",
-			Tier:          TierFlagship, SubRank: 93, Version: ver,
-			Strengths: "物理、高阶数学、硬核科学推导、严密逻辑证明与深度研究难题",
-			Domains:   []string{DomainResearch, DomainReasoning, DomainCoding},
-		}
-	}
-
+	// 3. OpenAI / GPT-6 (Astra > Sol > Terra > Luna) & legacy o-series family (御三家之一).
 	if reOSeriesVersion.MatchString(norm) {
 		m := reOSeriesVersion.FindStringSubmatch(norm)
 		maj, _ := strconv.Atoi(m[1])
@@ -286,9 +321,9 @@ func ProfileModel(upstreamID, displayName string) ModelProfile {
 				Domains:   []string{DomainReasoning, DomainHomework, DomainCoding},
 			}
 		}
-		tier, sub := TierStrong, 84
+		tier, sub := TierStrong, 79
 		if strings.Contains(combined, "pro") || maj >= 3 {
-			tier, sub = TierFlagship, 90
+			tier, sub = TierFlagship, 89
 		}
 		return ModelProfile{
 			Vendor: "openai", FamilyKey: "openai:o", SeriesLabel: "OpenAI o 系列",
@@ -300,7 +335,7 @@ func ProfileModel(upstreamID, displayName string) ModelProfile {
 	}
 
 	if strings.Contains(combined, "gpt-oss") {
-		tier, sub := TierFast, 52
+		tier, sub := TierFast, 49
 		if params >= 70 {
 			tier, sub = TierBalanced, 65
 		}
@@ -313,32 +348,57 @@ func ProfileModel(upstreamID, displayName string) ModelProfile {
 		}
 	}
 
-	if hasWord(combined, "gpt", "chatgpt", "astra") || strings.Contains(norm, "-terra") || strings.Contains(norm, "-sol") {
-		ver := extractFamilyVersion(norm, "chatgpt", "gpt", "astra", "terra", "sol")
+	if hasWord(combined, "gpt", "chatgpt", "astra") ||
+		strings.Contains(norm, "-sol") || strings.Contains(norm, "-terra") || strings.Contains(norm, "-luna") {
+		ver := extractFamilyVersion(norm, "chatgpt", "gpt", "astra", "sol", "terra", "luna")
 		if !ver.Known() && disp != "" {
-			ver = extractFamilyVersion(disp, "chatgpt", "gpt", "astra", "terra", "sol")
+			ver = extractFamilyVersion(disp, "chatgpt", "gpt", "astra", "sol", "terra", "luna")
 		}
 		switch {
 		case strings.Contains(combined, "astra"):
 			return ModelProfile{
 				Vendor: "openai", FamilyKey: "openai:astra", SeriesLabel: "GPT Astra",
-				HierarchyHint: "OpenAI 新一代全能旗舰，综合能力顶级",
-				Tier:          TierFlagship, SubRank: 93, Version: ver,
+				HierarchyHint: "OpenAI 顶级全能旗舰，强于 Sol / Terra / Luna",
+				Tier:          TierFlagship, SubRank: 91, Version: ver,
 				Strengths: "高难度综合推理、跨学科疑难解答、深度研究分析与高质量创作",
 				Domains:   []string{DomainReasoning, DomainResearch, DomainWriting, DomainMedical, DomainCoding},
 			}
-		case strings.Contains(combined, "-sol") || strings.HasSuffix(combined, " sol") || strings.Contains(combined, "-pro"):
+		case strings.Contains(combined, "-pro") || strings.HasSuffix(combined, " pro"):
 			return ModelProfile{
-				Vendor: "openai", FamilyKey: "openai:pro", SeriesLabel: "GPT Pro / Sol",
-				HierarchyHint: "OpenAI 深度思考旗舰，强于 Terra / Mini",
-				Tier:          TierFlagship, SubRank: 91, Version: ver,
+				Vendor: "openai", FamilyKey: "openai:pro", SeriesLabel: "GPT Pro",
+				HierarchyHint: "OpenAI 深度思考旗舰",
+				Tier:          TierFlagship, SubRank: 90, Version: ver,
 				Strengths: "复杂推理、专业难题、严谨方案规划与深度研究（稍慢但最准）",
 				Domains:   []string{DomainReasoning, DomainResearch, DomainMedical, DomainCoding},
+			}
+		case strings.Contains(combined, "-sol") || strings.HasSuffix(combined, " sol") || strings.Contains(combined, " sol "):
+			return ModelProfile{
+				Vendor: "openai", FamilyKey: "openai:sol", SeriesLabel: "GPT Sol",
+				HierarchyHint: "OpenAI 强力主力模型，次于 Astra，强于 Terra / Luna",
+				Tier:          TierStrong, SubRank: 80, Version: ver,
+				Strengths: "复杂文档分析、专业问答、日常编程与高质量写作（性价比高）",
+				Domains:   []string{DomainReasoning, DomainWriting, DomainResearch, DomainCoding, DomainDaily},
+			}
+		case strings.Contains(combined, "terra"):
+			return ModelProfile{
+				Vendor: "openai", FamilyKey: "openai:terra", SeriesLabel: "GPT Terra",
+				HierarchyHint: "OpenAI 高速视觉与日常实用版，次于 Sol，强于 Luna",
+				Tier:          TierFast, SubRank: 52, Version: ver,
+				Strengths: "日常快速问答、看图识物、作业辅导、生活建议与高频操作任务",
+				Domains:   []string{DomainDaily, DomainHomework, DomainWriting},
+			}
+		case strings.Contains(combined, "luna"):
+			return ModelProfile{
+				Vendor: "openai", FamilyKey: "openai:luna", SeriesLabel: "GPT Luna",
+				HierarchyHint: "OpenAI 极速超轻量经济版，速度最快成本最低",
+				Tier:          TierLite, SubRank: 30, Version: ver,
+				Strengths: "简单闲聊、基础常识、快问快答与轻量文本整理",
+				Domains:   []string{DomainDaily},
 			}
 		case strings.Contains(combined, "nano"):
 			return ModelProfile{
 				Vendor: "openai", FamilyKey: "openai:nano", SeriesLabel: "GPT Nano",
-				HierarchyHint: "超轻量极速版，强调用速度与低成本",
+				HierarchyHint: "超轻量极速版（旧代命名）",
 				Tier:          TierLite, SubRank: 29, Version: ver,
 				Strengths: "简单闲聊、基础常识、简短翻译与快问快答",
 				Domains:   []string{DomainDaily},
@@ -346,18 +406,10 @@ func ProfileModel(upstreamID, displayName string) ModelProfile {
 		case strings.Contains(combined, "mini"):
 			return ModelProfile{
 				Vendor: "openai", FamilyKey: "openai:mini", SeriesLabel: "GPT Mini",
-				HierarchyHint: "轻量高性价比版，次于标准版与旗舰版",
-				Tier:          TierFast, SubRank: 53, Version: ver,
+				HierarchyHint: "轻量高性价比版（旧代命名）",
+				Tier:          TierFast, SubRank: 50, Version: ver,
 				Strengths: "日常问答、中小学题目辅导、菜谱生活建议与翻译",
 				Domains:   []string{DomainDaily, DomainHomework},
-			}
-		case strings.Contains(combined, "terra"):
-			return ModelProfile{
-				Vendor: "openai", FamilyKey: "openai:terra", SeriesLabel: "GPT Terra",
-				HierarchyHint: "主力均衡旗舰，兼顾聪明与首字速度",
-				Tier:          TierStrong, SubRank: 79, Version: ver,
-				Strengths: "日常进阶问答、看图识物、写作润色、学习辅导与综合建议",
-				Domains:   []string{DomainDaily, DomainWriting, DomainReasoning, DomainHomework},
 			}
 		default:
 			tier, sub := TierBalanced, 66
@@ -684,129 +736,4 @@ func ProfileModel(upstreamID, displayName string) ModelProfile {
 			Domains:   []string{DomainDaily, DomainWriting},
 		}
 	}
-}
-
-func normalizeModelKey(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-	if i := strings.LastIndex(s, "/"); i >= 0 {
-		s = s[i+1:]
-	}
-	s, _, _ = strings.Cut(s, ":")
-	if loc := reDated.FindStringIndex(s); loc != nil {
-		s = s[:loc[0]]
-	}
-	for _, suf := range []string{"-low", "-medium", "-high", "-xhigh", "-latest", "-preview"} {
-		s = strings.TrimSuffix(s, suf)
-	}
-	return s
-}
-
-func hasWord(s string, subs ...string) bool {
-	for _, sub := range subs {
-		if strings.Contains(s, sub) {
-			return true
-		}
-	}
-	return false
-}
-
-func parseParamBillions(norm string) int {
-	if m := reMoETotalParam.FindStringSubmatch(norm); m != nil {
-		a, _ := strconv.Atoi(m[1])
-		b, _ := strconv.Atoi(m[2])
-		return a * b
-	}
-	if m := reParamSize.FindStringSubmatch(norm); m != nil {
-		n, _ := strconv.Atoi(m[1])
-		return n
-	}
-	return 0
-}
-
-// cleanForVersion strips parameter counts (70b, 235b, a22b, 8x7b) and context tokens (128k)
-// so numbers like 235B or 128K are never misread as model release versions.
-func cleanForVersion(norm string) string {
-	cleaned := norm
-	for i := 0; i < 3; i++ {
-		next := reStripParamTokens.ReplaceAllString(cleaned, "-")
-		if next == cleaned {
-			break
-		}
-		cleaned = next
-	}
-	return strings.Trim(cleaned, "-_")
-}
-
-// extractFamilyVersion extracts Major[.Minor] near known family keywords.
-// Handles both "claude-opus-5-5", "claude-opus-4.6", "claude-3-5-sonnet", "fable-5.2", "gpt-6.1-terra".
-func extractFamilyVersion(norm string, anchors ...string) ModelVersion {
-	cleaned := cleanForVersion(norm)
-	for _, anchor := range anchors {
-		idx := strings.Index(cleaned, anchor)
-		if idx < 0 {
-			continue
-		}
-		after := strings.TrimLeft(cleaned[idx+len(anchor):], "-_. ")
-		if v := leadingVersion(after); v.Known() {
-			return v
-		}
-		// Also check right before the anchor (e.g. "claude-3-5-sonnet" when anchor="sonnet", or "5.5-opus").
-		before := strings.TrimRight(cleaned[:idx], "-_. ")
-		if v := trailingVersion(before); v.Known() {
-			return v
-		}
-	}
-	return extractGenericVersion(cleaned)
-}
-
-var (
-	reLeadVer  = regexp.MustCompile(`^v?(\d{1,2})(?:[.\-](\d{1,2}))?(?:$|[^0-9])`)
-	reTrailVer = regexp.MustCompile(`(?:^|[^0-9])v?(\d{1,2})(?:[.\-](\d{1,2}))?$`)
-)
-
-func leadingVersion(s string) ModelVersion {
-	m := reLeadVer.FindStringSubmatch(s)
-	if m == nil {
-		return ModelVersion{}
-	}
-	maj, _ := strconv.Atoi(m[1])
-	if maj == 0 || maj > 20 {
-		return ModelVersion{}
-	}
-	minV, _ := strconv.Atoi(m[2])
-	return ModelVersion{Major: maj, Minor: minV, HasMinor: m[2] != ""}
-}
-
-func trailingVersion(s string) ModelVersion {
-	m := reTrailVer.FindStringSubmatch(s)
-	if m == nil {
-		return ModelVersion{}
-	}
-	maj, _ := strconv.Atoi(m[1])
-	if maj == 0 || maj > 20 {
-		return ModelVersion{}
-	}
-	minV, _ := strconv.Atoi(m[2])
-	return ModelVersion{Major: maj, Minor: minV, HasMinor: m[2] != ""}
-}
-
-func extractGenericVersion(cleaned string) ModelVersion {
-	m := reVersionDotOrDash.FindStringSubmatch(cleaned)
-	if m == nil {
-		return ModelVersion{}
-	}
-	maj, _ := strconv.Atoi(m[1])
-	if maj == 0 || maj > 20 {
-		return ModelVersion{}
-	}
-	minV, _ := strconv.Atoi(m[2])
-	return ModelVersion{Major: maj, Minor: minV, HasMinor: m[2] != ""}
-}
-
-func baseFamilyPrefix(norm string) string {
-	parts := strings.FieldsFunc(norm, func(r rune) bool { return r == '-' || r == '_' || r == ' ' })
-	if len(parts) == 0 {
-		return "unknown"
-	}
-	return parts[0]
 }

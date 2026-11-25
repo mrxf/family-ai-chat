@@ -60,13 +60,24 @@ class _DesktopHomeLayoutState extends ConsumerState<DesktopHomeLayout> {
 
   void _handleEscape() {
     final nav = ref.read(desktopNavProvider);
-    if (nav.section == DesktopSection.chat) return;
-    final nested = _paneNavKey.currentState;
-    if (nested != null && nested.canPop()) {
-      nested.pop();
+    if (nav.section != DesktopSection.chat) {
+      final nested = _paneNavKey.currentState;
+      if (nested != null && nested.canPop()) {
+        nested.pop();
+        return;
+      }
+      ref.read(desktopNavProvider.notifier).showChat();
       return;
     }
-    ref.read(desktopNavProvider.notifier).showChat();
+    final chat = ref.read(chatProvider);
+    if (chat.isAtHome) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (chat.isPrivate) {
+      widget.composerKey.currentState?.clearDraft();
+      ref.read(chatProvider.notifier).exitPrivateChat();
+    } else {
+      ref.read(chatProvider.notifier).newChat();
+    }
   }
 
   Widget _buildSecondaryRoot(DesktopNavState nav, bool isAdmin) {
@@ -96,6 +107,8 @@ class _DesktopHomeLayoutState extends ConsumerState<DesktopHomeLayout> {
     final p = context.pal;
     final cmd = ref.watch(platformCapabilitiesProvider).usesCommandKey;
     final nav = ref.watch(desktopNavProvider);
+    final isAtHome = ref.watch(chatProvider.select((s) => s.isAtHome));
+    final canPopToSystem = nav.section == DesktopSection.chat && isAtHome;
     final isAdmin = ref.watch(sessionProvider.select((s) => s.user?.isAdmin == true));
     final inSettings = nav.section == DesktopSection.settings;
     final routeKey = '${nav.section}-${nav.settingsTab}-${nav.paneEpoch}';
@@ -113,7 +126,13 @@ class _DesktopHomeLayoutState extends ConsumerState<DesktopHomeLayout> {
     });
 
     SingleActivator key(LogicalKeyboardKey k) => SingleActivator(k, meta: cmd, control: !cmd);
-    return CallbackShortcuts(
+    return PopScope(
+      canPop: canPopToSystem,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _handleEscape();
+      },
+      child: CallbackShortcuts(
       bindings: {
         key(LogicalKeyboardKey.keyN): () {
           ref.read(desktopNavProvider.notifier).showChat();
@@ -188,6 +207,7 @@ class _DesktopHomeLayoutState extends ConsumerState<DesktopHomeLayout> {
           ),
         ),
       ),
+    ),
     );
   }
 }

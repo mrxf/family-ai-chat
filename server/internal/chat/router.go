@@ -394,10 +394,11 @@ const judgeInitialSystem = `你是家用 AI 助手「小暖」的服务端模型
 选模核心原则：
 1. 【最优先看管理员说明】：如果某个候选模型有「管理员场景说明」，且用户问题符合该说明（如管理员标了日常聊天、医疗研究等），优先选它。
 2. 【按需配模，兼顾质量与速度】：
-   - 严肃复杂问题（疾病症状、体检报告、用药解读、物理/高阶数学/科研硬核推导、防诈骗研判、复杂长文方案，或用户开启了深度思考）：选匹配的顶级旗舰(T5)或强力进阶(T4)模型（例如医疗与深度研究优先 Carbon，硬核物理数理优先 Fable，深度剖析与严肃写作优先 Opus / Astra 等）。
-   - 日常轻松问题（问候闲聊、家常菜谱、生活常识、简单翻译、给孩子辅导中小学数学应用题/基础作业）：选快速日常(T2)、极速轻量(T1)或高性价比均衡主力(T3)模型（如 DeepSeek、DeepSeek Flash、Gemini Hydrogen 氢气模型 / Flash、Bailu、GPT Mini 等），秒回且省钱。
-   - 长文章阅读总结或地道中文写作：选擅长中文或长文本的均衡/强力模型（如 Kimi、Sonnet、DeepSeek、Qwen 等）。
-3. 【同系选新、高阶优先】：同一系列有多个版本时优先选最新版（如 Opus 5.5 > 5.0 > 4.7 > 4.6，Fable 5.2 > 5.0，Kimi K3 > K2）；需要强能力时遵循 Opus > Sonnet > Haiku，Carbon > Pro > Flash > Hydrogen。
+   - 严肃复杂问题（疾病症状、体检报告、用药解读、物理/高阶数学/科研硬核推导、防诈骗研判、复杂长文方案，或用户开启了深度思考）：选匹配的顶级旗舰(T5)或强力进阶(T4)模型（例如 Gemini 4 Carbon / Neon、Claude Fable / Opus / Sonnet、GPT-6 Astra / Sol 等）。
+   - 日常轻松问题（问候闲聊、家常菜谱、生活常识、简单翻译、给孩子辅导中小学数学应用题/基础作业）：选快速日常(T2)、极速轻量(T1)或高性价比均衡主力(T3)模型（如 Gemini 4 Hydrogen、Claude Haiku、GPT-6 Terra / Luna、DeepSeek、DeepSeek Flash、Bailu 等），秒回且省钱。
+   - 长文章阅读总结或地道中文写作：选擅长中文或长文本的均衡/强力模型（如 Gemini Neon、Claude Sonnet、Kimi、DeepSeek、Qwen 等）。
+3. 【同系选新、高阶优先】：同一系列有多个版本时优先选最新版（如 Opus 5.5 > 5.0 > 4.7 > 4.6，Fable 5.2 > 5.0，Kimi K3 > K2）；同厂商内部遵循 Gemini Carbon > Neon > Argon > Hydrogen > Helium/Lithium，Claude Fable > Opus > Sonnet > Haiku，GPT Astra > Sol > Terra > Luna。
+4. 【同档位厂商优先级】：在满足管理员说明与任务场景的前提下，同档位候选模型优先按 Google Gemini > Anthropic Claude > OpenAI GPT 选择（例如 T5 旗舰：Gemini 4 Carbon > Claude Fable / Opus 5.5 > GPT-6.2 Astra；T4 强力进阶：Gemini 4 Neon > Claude Sonnet 5.5 > GPT-6.2 Sol；T2 快速日常：Gemini 4 Hydrogen > Claude Haiku 5.5 > GPT-6.1 Terra；T1 极速轻量：Gemini Helium/Lithium > GPT-6.2 Luna）。
 
 只输出一行紧凑 JSON，不要代码块或任何解释：
 {"pick": 候选序号数字, "reason": "10字以内简短原因"}`
@@ -407,8 +408,8 @@ const judgeDynamicSystem = `你是家用 AI 助手「小暖」的服务端动态
 判断原则：
 1. 【默认保持不变（keep）】：只要仍在延续同一类话题、追问细节、或新问题难度档位与之前相近，必须保持当前模型，保护缓存命中！
 2. 【仅在话题或难度发生明显跨档变化时切换（switch）】：
-   - 明显降级：之前在聊高深物理、硬核科研、复杂医疗研究（当前用 Fable、Carbon、Opus、Astra 等 T5/T4 重型模型），现在话题已明显转变为日常闲聊、家常琐事、或辅导孩子的中小学数学题/基础作业 → 切换到更轻快省钱的日常/轻量模型（如 DeepSeek、DeepSeek Flash、Gemini Hydrogen 氢气模型 / Flash 等），优先参考管理员场景说明。
-   - 明显升级：之前在闲聊或问简单日常问题（当前用 T1/T2/T3 轻量模型），现在突然开始问严肃医疗报告/用药、硬核数理推导或高难度深度分析 → 升级到匹配的 T5/T4 旗舰模型（遵循管理员说明、Opus > Sonnet、新版优于旧版）。
+   - 明显降级：之前在聊高深物理、硬核科研、复杂医疗研究（当前用 Carbon、Fable、Opus、Astra 等 T5/T4 重型模型），现在话题已明显转变为日常闲聊、家常琐事、或辅导孩子的中小学数学题/基础作业 → 切换到更轻快省钱的日常/轻量模型（如 Gemini Hydrogen、Claude Haiku、GPT Terra/Luna、DeepSeek / DeepSeek Flash 等），优先参考管理员场景说明。
+   - 明显升级：之前在闲聊或问简单日常问题（当前用 T1/T2/T3 轻量模型），现在突然开始问严肃医疗报告/用药、硬核数理推导或高难度深度分析 → 升级到匹配的 T5/T4 旗舰模型（遵循管理员说明、同档位 Google Gemini > Anthropic Claude > OpenAI GPT、Carbon > Neon > Hydrogen、Fable > Opus > Sonnet、Astra > Sol、新版优于旧版）。
 
 只输出一行紧凑 JSON，不要代码块或任何解释：
 保持不变：{"action": "keep", "pick": 当前序号数字, "reason": "简短原因"}
@@ -589,12 +590,14 @@ func HeuristicRoute(req RouteRequest) *RouteDecision {
 				sc += 6500
 			}
 		}
-		// 4. Prefer newer versions within a series and stronger sub-rank within the target tier.
+		// 4. Prefer newer versions within a series, vendor priority (Gemini > Anthropic > OpenAI),
+		// and stronger sub-rank within the target tier.
 		if c.IsLatestInSeries {
 			sc += 900
 		} else if c.NewerVersion != "" {
 			sc -= 900
 		}
+		sc += llm.VendorPriority(c.Profile.Vendor) * 300
 		sc += c.Profile.SubRank*20 + min(c.Profile.Version.Score(), 9999)/5
 		if req.DeepThink && c.Model.ThinkEffort != "" {
 			sc += 1500

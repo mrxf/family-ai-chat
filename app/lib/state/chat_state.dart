@@ -166,6 +166,16 @@ class ChatState {
   bool get isEmpty => messages.isEmpty && !loading;
   bool get busy => activeId != null;
 
+  /// True when on the plain home welcome screen (not inside a conversation,
+  /// assistant view, private chat, or quoted-card draft).
+  bool get isAtHome =>
+      conversationId == null &&
+      messages.isEmpty &&
+      !loading &&
+      assistantId == null &&
+      !isPrivate &&
+      pendingQuote == null;
+
   ChatState copyWith({
     String? conversationId,
     String? assistantId,
