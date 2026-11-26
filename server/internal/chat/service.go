@@ -106,6 +106,7 @@ func NewService(st *store.Store, dataDir string, log *slog.Logger) *Service {
 		svc.buildComponentsSkill(),
 		svc.buildAskUserSkill(),
 		svc.buildAppControlSkill(),
+		svc.buildAppGuideSkill(),
 	)
 	svc.Automation = NewAutomationWorker(svc)
 	return svc

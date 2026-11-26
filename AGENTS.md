@@ -3,7 +3,7 @@
 家用 AI 对话产品：`server/` 是 Go 服务端，`app/` 是 Flutter 客户端。一套 Flutter 代码同时支持
 **手机端（Android、iOS）和电脑端（macOS、Windows）**。
 
-## 三条硬规则
+## 四条硬规则
 
 1. **每个新功能都要同时考虑电脑端和移动端。** 动手前先想清楚两端分别怎么交互（触摸/长按 vs 鼠标/右键/键盘）、
    布局怎么适配（抽屉 vs 侧栏）、平台能力有没有（拍照、通知、分享进来）。
@@ -12,6 +12,10 @@
    顺手按职责拆开，不要继续往里加。拆分时跨文件用到的私有组件改成有意义的公开名字，不用 `part`。
 3. **改完必须验证**：在 `app/` 下 `flutter analyze` 零问题、`flutter test` 全绿；动了桌面相关代码再跑
    `flutter build macos --debug`。服务端改动跑 `go test ./...`。
+4. **用户可见功能改动必须同步维护小暖内置使用指南**（`server/internal/chat/guide/docs/*.md` 与 `server/internal/chat/guide/guide.go`）：
+   只要新增、修改或删除了影响用户使用的能力、入口路径、按钮文案、手机/电脑端差异、快捷键或限制（无论改在 `app/` 还是 `server/`），
+   必须顺手**更新、新增或删除**对应主题文档；新增或删除主题文件时同步更新 `guide.go` 的 `Topics` 目录与 `overview.md`，
+   保证小暖通过 `app_guide` 技能回答用法时与真实 App 一致。
 
 ## 客户端分层（app/lib）
 

@@ -212,6 +212,11 @@ func (s *Service) runTools(ctx context.Context, t *toolTurn, calls []llm.ToolCal
 						results[i] = out
 						continue
 					}
+					if out, handled := s.execAppGuideTool(t, call.Name, call.Arguments); handled {
+						usedReadTool = true
+						results[i] = out
+						continue
+					}
 					if out, handled := s.execScheduleTool(ctx, t, call.Name, call.Arguments); handled {
 						usedReadTool = true
 						results[i] = out
