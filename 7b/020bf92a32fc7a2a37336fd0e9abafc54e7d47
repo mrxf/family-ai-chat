@@ -1,0 +1,42 @@
+AGENTS.md
+  h_8f297825d1fe21 6,15-18
+server/internal/chat/guide/docs/assistants.md
+  h_8f297825d1fe21 1-14
+server/internal/chat/guide/docs/chat.md
+  h_8f297825d1fe21 1-36
+server/internal/chat/guide/docs/home_and_cards.md
+  h_8f297825d1fe21 1-28
+server/internal/chat/guide/docs/memories.md
+  h_8f297825d1fe21 1-30
+server/internal/chat/guide/docs/overview.md
+  h_8f297825d1fe21 1-22
+server/internal/chat/guide/docs/privacy_and_share.md
+  h_8f297825d1fe21 1-35
+server/internal/chat/guide/docs/schedules.md
+  h_8f297825d1fe21 1-39
+server/internal/chat/guide/docs/settings_and_shortcuts.md
+  h_8f297825d1fe21 1-35
+server/internal/chat/guide/guide.go
+  h_8f297825d1fe21 1-137
+server/internal/chat/guide/guide_test.go
+  h_8f297825d1fe21 1-43
+server/internal/chat/service.go
+  h_8f297825d1fe21 109
+server/internal/chat/tools_app_guide.go
+  h_8f297825d1fe21 1-125
+server/internal/chat/tools_app_guide_test.go
+  h_8f297825d1fe21 1-81
+server/internal/chat/tools_dispatch.go
+  h_8f297825d1fe21 215-219
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "7b020bf92a32fc7a2a37336fd0e9abafc54e7d47",
+  "prompts": {},
+  "humans": {
+    "h_8f297825d1fe21": {
+      "author": "zhangshuyuan <zhangshuyuan@kingsoft.com>"
+    }
+  }
+}
